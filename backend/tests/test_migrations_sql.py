@@ -1,0 +1,25 @@
+"""Static checks for SQL migrations (no database required)."""
+
+from pathlib import Path
+
+from app.infrastructure.database.migrations import get_migrations_dir
+
+
+def test_migrations_directory_contains_bootstrap_and_pem_foundation() -> None:
+    migrations_dir = get_migrations_dir()
+    files = sorted(path.name for path in migrations_dir.glob("*.sql"))
+    assert files == ["001_bootstrap.sql", "002_pem_foundation.sql"]
+
+
+def test_pem_foundation_migration_defines_core_tables() -> None:
+    sql = (get_migrations_dir() / "002_pem_foundation.sql").read_text(encoding="utf-8")
+    for table in ("projects", "pem_snapshots", "revisions"):
+        assert f"CREATE TABLE IF NOT EXISTS {table}" in sql
+    assert "snapshot_data JSONB NOT NULL" in sql
+    assert "('002', 'pem_foundation')" in sql
+
+
+def test_bootstrap_migration_is_unchanged_minimum() -> None:
+    sql = (get_migrations_dir() / "001_bootstrap.sql").read_text(encoding="utf-8")
+    assert "schema_migrations" in sql
+    assert "CREATE TABLE IF NOT EXISTS projects" not in sql

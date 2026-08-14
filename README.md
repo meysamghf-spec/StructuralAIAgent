@@ -2,9 +2,11 @@
 
 AI-powered engineering platform with Structural Engineering as the initial domain. The core architecture is domain-independent and extensible for future engineering disciplines (Mechanical, Electrical, Computer, Industrial, and others).
 
-**Current status:** Phase 1 — **Milestone 1** (Repository Bootstrap & Initial Project Skeleton)
+**Current status:** Phase 1 — **Milestone 2** (Persistence + ProjectEngineeringModel Foundation)
 
 Phase 0 architecture is frozen (`PHASE_0_ARCHITECTURE_ASSESSMENT.md`). AG-01 through AG-75 are resolved.
+
+Milestone 1 delivered repository bootstrap. Milestone 2 adds PostgreSQL persistence for projects, versioned PEM snapshots (JSONB), and revisions.
 
 ## Architecture Overview
 
@@ -23,7 +25,7 @@ engineering-ai-platform/
 
 **Layered backend:** `api` → `application` → `domain` ← `infrastructure`
 
-**Not implemented in M1:** agents, LLM, CSI/CAD integrations, full database schema, engineering calculations.
+**Not implemented in M1–M2:** agents, LLM, CSI/CAD integrations, CodeEngine, CompatibilityEngine, UnitConversionService, REST project API.
 
 ## Prerequisites
 
@@ -95,29 +97,28 @@ npm install
 npm test
 ```
 
-## Database (Bootstrap)
+## Database (Migrations)
 
-Milestone 1 includes migration infrastructure only. Apply the bootstrap migration when PostgreSQL is available:
+Milestone 2 adds `002_pem_foundation.sql` (projects, PEM snapshots, revisions). Apply when PostgreSQL is available:
 
 ```bash
 psql "$DATABASE_URL" -f database/migrations/001_bootstrap.sql
+psql "$DATABASE_URL" -f database/migrations/002_pem_foundation.sql
 ```
 
-See `database/README.md` for details.
+Persistence integration tests require a reachable PostgreSQL instance (`DATABASE_URL` or `TEST_DATABASE_URL`).
 
-## Phase 1 Milestone 1 Scope
+## Phase 1 Milestone 2 Scope
 
 This milestone delivers:
 
-- Repository structure matching approved architecture
-- Minimal FastAPI app with `GET /health`
-- Minimal Next.js landing page
-- PostgreSQL migration infrastructure (bootstrap only)
-- Module boundaries for engineering, agents, workers, integrations
-- Test infrastructure (backend health test; frontend vitest scaffold)
-- Git repository with `.gitignore`
+- PostgreSQL schema: `projects`, `pem_snapshots` (JSONB), `revisions`
+- Domain models: `ProjectEngineeringModel`, `CodeConfiguration`, `UnitConfiguration`, `Revision`
+- Repository/service boundaries (domain ← infrastructure)
+- Software-default code profile and US Customary unit defaults in initial PEM
+- Backend persistence tests (integration tests skip if PostgreSQL unavailable)
 
-**Milestone 2 has NOT started.**
+**Milestone 3 has NOT started.**
 
 ## License
 
