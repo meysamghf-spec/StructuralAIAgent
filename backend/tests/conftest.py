@@ -44,7 +44,15 @@ def db_session(database_ready: str, monkeypatch: pytest.MonkeyPatch) -> Generato
         with conn.cursor() as cur:
             cur.execute(
                 """
-                TRUNCATE TABLE revisions, pem_snapshots, projects
+                TRUNCATE TABLE
+                    prompt_templates,
+                    agent_version_capabilities,
+                    agent_versions,
+                    agent_capabilities,
+                    agent_definitions,
+                    revisions,
+                    pem_snapshots,
+                    projects
                 RESTART IDENTITY CASCADE
                 """
             )

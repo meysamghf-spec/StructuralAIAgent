@@ -7,6 +7,7 @@ PostgreSQL is the primary database (AG-34).
 - `migrations/` — ordered SQL migration files applied in lexical order
 - `001_bootstrap.sql` — schema migration tracking table (Milestone 1)
 - `002_pem_foundation.sql` — projects, PEM snapshots (JSONB), revisions (Milestone 2)
+- `003_agent_foundation.sql` — agent registry, versions, capabilities, prompts (Milestone 4)
 
 ## Milestone 2 Schema
 
@@ -17,6 +18,18 @@ PostgreSQL is the primary database (AG-34).
 | `revisions` | Traceable change records linking before/after PEM snapshots |
 
 `CodeConfiguration` and `UnitConfiguration` are first-class structures embedded in `pem_snapshots.snapshot_data`.
+
+## Milestone 4 Schema
+
+| Table | Purpose |
+|-------|---------|
+| `agent_definitions` | Platform-scoped agent registry entries |
+| `agent_versions` | Immutable versioned agent configurations |
+| `agent_capabilities` | Capability catalog |
+| `agent_version_capabilities` | Capabilities assigned to a version |
+| `prompt_templates` | Versioned prompt templates per agent version |
+
+Agent definitions are **platform-scoped** (no `project_id`). Project isolation remains on PEM/project tables.
 
 ## Configuration
 
@@ -37,6 +50,7 @@ TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/structuralaiaage
 ```bash
 psql "$DATABASE_URL" -f database/migrations/001_bootstrap.sql
 psql "$DATABASE_URL" -f database/migrations/002_pem_foundation.sql
+psql "$DATABASE_URL" -f database/migrations/003_agent_foundation.sql
 ```
 
 Backend persistence tests apply migrations automatically when PostgreSQL is reachable.

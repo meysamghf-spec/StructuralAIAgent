@@ -2,11 +2,11 @@
 
 AI-powered engineering platform with Structural Engineering as the initial domain. The core architecture is domain-independent and extensible for future engineering disciplines (Mechanical, Electrical, Computer, Industrial, and others).
 
-**Current status:** Phase 1 — **Milestone 3** (REST Project API)
+**Current status:** Phase 1 — **Milestone 4** (Agent Foundation)
 
 Phase 0 architecture is frozen (`PHASE_0_ARCHITECTURE_ASSESSMENT.md`). AG-01 through AG-75 are resolved.
 
-Milestone 1 delivered repository bootstrap. Milestone 2 adds PostgreSQL persistence for projects, versioned PEM snapshots (JSONB), and revisions. Milestone 3 exposes project/PEM/revision operations via `/api/v1`.
+Milestone 1 delivered repository bootstrap. Milestone 2 adds PostgreSQL persistence for projects, versioned PEM snapshots (JSONB), and revisions. Milestone 3 exposes project/PEM/revision operations via `/api/v1`. Milestone 4 adds the platform-scoped Agent Foundation registry (definitions, versions, capabilities, prompt templates).
 
 ## Architecture Overview
 
@@ -25,7 +25,7 @@ engineering-ai-platform/
 
 **Layered backend:** `api` → `application` → `domain` ← `infrastructure`
 
-**Not implemented in M1–M3:** agents, LLM, CSI/CAD integrations, CodeEngine, CompatibilityEngine, UnitConversionService, authentication.
+**Not implemented in M1–M4:** Meta-Agent runtime, Prompt Engineering Agent runtime, LLM execution, orchestration, CSI/CAD integrations, CodeEngine, CompatibilityEngine, UnitConversionService, authentication.
 
 ## Prerequisites
 
@@ -69,7 +69,36 @@ curl http://localhost:8000/health
 # {"status":"ok"}
 ```
 
-OpenAPI docs (M3 endpoints): [http://localhost:8000/docs](http://localhost:8000/docs)
+OpenAPI docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+
+### M4 Agent API Examples
+
+Create an agent definition:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/agents \
+  -H "Content-Type: application/json" \
+  -d '{"key":"example-agent","name":"Example Agent"}'
+```
+
+Create and activate a version:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/agents/{agent_id}/versions \
+  -H "Content-Type: application/json" \
+  -H "X-Actor-Id: engineer-1" \
+  -d '{"instructions":"System instructions","capability_keys":["routing"]}'
+
+curl -X POST http://localhost:8000/api/v1/agents/{agent_id}/versions/1/activate
+```
+
+Create a versioned prompt template:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/agents/{agent_id}/versions/1/prompts \
+  -H "Content-Type: application/json" \
+  -d '{"name":"system","template":"You are {{role}}","variables_schema":{"role":"string"}}'
+```
 
 ### M3 API Examples
 
@@ -126,16 +155,34 @@ npm test
 
 ## Database (Migrations)
 
-Milestone 2 adds `002_pem_foundation.sql` (projects, PEM snapshots, revisions). Apply when PostgreSQL is available:
+Milestone 2 adds `002_pem_foundation.sql` (projects, PEM snapshots, revisions). Milestone 4 adds `003_agent_foundation.sql` (agent registry). Apply when PostgreSQL is available:
 
 ```bash
 psql "$DATABASE_URL" -f database/migrations/001_bootstrap.sql
 psql "$DATABASE_URL" -f database/migrations/002_pem_foundation.sql
+psql "$DATABASE_URL" -f database/migrations/003_agent_foundation.sql
 ```
 
 Persistence integration tests require a reachable PostgreSQL instance (`DATABASE_URL` or `TEST_DATABASE_URL`).
 
-## Phase 1 Milestone 3 Scope
+## Phase 1 Milestone 4 Scope
+
+This milestone delivers:
+
+- Platform-scoped Agent Foundation (not project-scoped)
+- Domain models: `AgentDefinition`, `AgentVersion`, `AgentCapability`, `PromptTemplate`
+- Contracts only: `AgentExecution`, `HumanApprovalGate` (no executor, no approval workflow)
+- Database migration `003_agent_foundation.sql`
+- Application services: `AgentRegistryService`, `AgentVersionService`, `PromptTemplateService`
+- REST API under `/api/v1/agents` for registry, versions, prompts
+- Lifecycle rules: DRAFT/ACTIVE/ARCHIVED; one ACTIVE version per agent; immutable ACTIVE versions
+- Versioned prompt templates (historical versions retained)
+
+**Not implemented:** Meta-Agent, Prompt Engineering Agent runtime, LLM execution, orchestration, authentication.
+
+**Milestone 5 has NOT started.**
+
+## Phase 1 Milestone 3 Scope (complete)
 
 This milestone delivers:
 
@@ -145,8 +192,6 @@ This milestone delivers:
 - Development CORS for `http://localhost:3000`
 - API integration tests against PostgreSQL
 - OpenAPI documentation at `/docs`
-
-**Milestone 4 has NOT started.**
 
 ## Phase 1 Milestone 2 Scope (complete)
 

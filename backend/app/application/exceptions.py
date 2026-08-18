@@ -85,3 +85,77 @@ class InvalidChangeTypeError(ApplicationError):
             status_code=400,
             details={"change_type": change_type},
         )
+
+
+class AgentNotFoundError(ApplicationError):
+    def __init__(self, agent_id: UUID) -> None:
+        super().__init__(
+            "AGENT_NOT_FOUND",
+            "Agent definition not found",
+            status_code=404,
+            details={"agent_id": str(agent_id)},
+        )
+
+
+class AgentKeyConflictError(ApplicationError):
+    def __init__(self, key: str) -> None:
+        super().__init__(
+            "AGENT_KEY_CONFLICT",
+            "Agent key already exists",
+            status_code=409,
+            details={"key": key},
+        )
+
+
+class AgentVersionNotFoundError(ApplicationError):
+    def __init__(self, agent_id: UUID, version: int) -> None:
+        super().__init__(
+            "AGENT_VERSION_NOT_FOUND",
+            "Agent version not found",
+            status_code=404,
+            details={"agent_id": str(agent_id), "version": version},
+        )
+
+
+class AgentVersionImmutableError(ApplicationError):
+    def __init__(self, agent_id: UUID, version: int) -> None:
+        super().__init__(
+            "AGENT_VERSION_IMMUTABLE",
+            "Active agent versions are immutable; create a new version instead",
+            status_code=400,
+            details={"agent_id": str(agent_id), "version": version},
+        )
+
+
+class InvalidLifecycleTransitionError(ApplicationError):
+    def __init__(self, message: str, *, details: dict | None = None) -> None:
+        super().__init__(
+            "INVALID_LIFECYCLE_TRANSITION",
+            message,
+            status_code=400,
+            details=details or {},
+        )
+
+
+class PromptTemplateNotFoundError(ApplicationError):
+    def __init__(self, agent_id: UUID, version: int, prompt_version: int) -> None:
+        super().__init__(
+            "PROMPT_TEMPLATE_NOT_FOUND",
+            "Prompt template not found",
+            status_code=404,
+            details={
+                "agent_id": str(agent_id),
+                "agent_version": version,
+                "prompt_version": prompt_version,
+            },
+        )
+
+
+class CapabilityNotFoundError(ApplicationError):
+    def __init__(self, capability_key: str) -> None:
+        super().__init__(
+            "CAPABILITY_NOT_FOUND",
+            "Agent capability not found",
+            status_code=404,
+            details={"capability_key": capability_key},
+        )

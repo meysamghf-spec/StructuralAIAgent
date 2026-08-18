@@ -8,8 +8,8 @@ from app.api.routes import api_router
 def create_app() -> FastAPI:
     app = FastAPI(
         title="Engineering AI Platform API",
-        description="Phase 1 — Milestone 3 REST project API",
-        version="0.3.0",
+        description="Phase 1 — Milestone 4 Agent Foundation",
+        version="0.4.0",
     )
     app.add_middleware(
         CORSMiddleware,
