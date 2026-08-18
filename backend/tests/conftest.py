@@ -46,6 +46,12 @@ def db_session(database_ready: str, monkeypatch: pytest.MonkeyPatch) -> Generato
             cur.execute(
                 """
                 TRUNCATE TABLE
+                    agent_executions,
+                    report_versions,
+                    reports,
+                    traceability_links,
+                    human_approval_events,
+                    human_approval_requests,
                     project_memory,
                     project_files,
                     prompt_templates,

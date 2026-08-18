@@ -11,7 +11,9 @@ from app.domain.models.agent import (
     AgentDefinitionStatus,
     AgentVersion,
     AgentVersionStatus,
+    EngineeringAgentType,
 )
+from app.domain.models.agent_runtime import AgentExecutionRecord, AgentExecutionStatus
 from app.domain.models.prompt_template import PromptTemplate, PromptTemplateStatus
 
 
@@ -22,13 +24,19 @@ class AgentDefinitionRepository(Protocol):
         key: str,
         name: str,
         description: str | None = None,
+        agent_type: EngineeringAgentType | None = None,
+        configuration: dict | None = None,
     ) -> AgentDefinition: ...
 
     def get_by_id(self, agent_id: UUID) -> AgentDefinition | None: ...
 
     def get_by_key(self, key: str) -> AgentDefinition | None: ...
 
+    def get_by_agent_type(self, agent_type: EngineeringAgentType) -> AgentDefinition | None: ...
+
     def list_all(self) -> list[AgentDefinition]: ...
+
+    def list_by_agent_type(self, agent_type: EngineeringAgentType) -> list[AgentDefinition]: ...
 
     def update_status(
         self, agent_id: UUID, status: AgentDefinitionStatus
@@ -111,3 +119,27 @@ class PromptTemplateRepository(Protocol):
     def list_for_version(self, agent_version_id: UUID) -> list[PromptTemplate]: ...
 
     def get_latest_for_version(self, agent_version_id: UUID) -> PromptTemplate | None: ...
+
+
+class AgentExecutionRepository(Protocol):
+    def create(
+        self,
+        *,
+        project_id: UUID,
+        agent_definition_id: UUID,
+        agent_version: int,
+        input_request: dict,
+        context_snapshot: dict,
+        created_by: str | None = None,
+    ) -> AgentExecutionRecord: ...
+
+    def get_by_id(self, execution_id: UUID) -> AgentExecutionRecord | None: ...
+
+    def update(self, record: AgentExecutionRecord) -> AgentExecutionRecord: ...
+
+    def list_for_project(
+        self,
+        project_id: UUID,
+        *,
+        limit: int = 100,
+    ) -> list[AgentExecutionRecord]: ...

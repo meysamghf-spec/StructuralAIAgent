@@ -9,7 +9,7 @@ from app.application.exceptions import (
     AgentNotFoundError,
     InvalidLifecycleTransitionError,
 )
-from app.domain.models.agent import AgentDefinition, AgentDefinitionStatus
+from app.domain.models.agent import AgentDefinition, AgentDefinitionStatus, EngineeringAgentType
 from app.domain.repositories.agent_protocols import AgentDefinitionRepository
 
 
@@ -23,10 +23,18 @@ class AgentRegistryService:
         key: str,
         name: str,
         description: str | None = None,
+        agent_type: EngineeringAgentType | None = None,
+        configuration: dict | None = None,
     ) -> AgentDefinition:
         if self._definitions.get_by_key(key) is not None:
             raise AgentKeyConflictError(key)
-        return self._definitions.create(key=key, name=name, description=description)
+        return self._definitions.create(
+            key=key,
+            name=name,
+            description=description,
+            agent_type=agent_type,
+            configuration=configuration,
+        )
 
     def get_agent(self, agent_id: UUID) -> AgentDefinition:
         definition = self._definitions.get_by_id(agent_id)

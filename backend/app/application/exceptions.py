@@ -127,6 +127,26 @@ class AgentVersionImmutableError(ApplicationError):
         )
 
 
+class AgentExecutionNotFoundError(ApplicationError):
+    def __init__(self, execution_id: UUID) -> None:
+        super().__init__(
+            "AGENT_EXECUTION_NOT_FOUND",
+            "Agent execution not found",
+            status_code=404,
+            details={"execution_id": str(execution_id)},
+        )
+
+
+class AgentHandlerNotFoundError(ApplicationError):
+    def __init__(self, agent_type: str) -> None:
+        super().__init__(
+            "AGENT_HANDLER_NOT_FOUND",
+            "No handler registered for agent type",
+            status_code=400,
+            details={"agent_type": agent_type},
+        )
+
+
 class InvalidLifecycleTransitionError(ApplicationError):
     def __init__(self, message: str, *, details: dict | None = None) -> None:
         super().__init__(
@@ -324,4 +344,53 @@ class OrchestrationTaskNotSupportedError(ApplicationError):
             "Orchestration task type is not supported",
             status_code=400,
             details={"task_type": task_type},
+        )
+
+
+class ApprovalNotFoundError(ApplicationError):
+    def __init__(self, project_id: UUID, request_id: UUID) -> None:
+        super().__init__(
+            "APPROVAL_NOT_FOUND",
+            "Approval request not found",
+            status_code=404,
+            details={
+                "project_id": str(project_id),
+                "request_id": str(request_id),
+            },
+        )
+
+
+class ApprovalInvalidStateError(ApplicationError):
+    def __init__(
+        self,
+        project_id: UUID,
+        request_id: UUID,
+        *,
+        current_status: str,
+    ) -> None:
+        super().__init__(
+            "APPROVAL_INVALID_STATE",
+            "Approval request is not in a valid state for this operation",
+            status_code=409,
+            details={
+                "project_id": str(project_id),
+                "request_id": str(request_id),
+                "current_status": current_status,
+            },
+        )
+
+
+class ReportNotFoundError(ApplicationError):
+    def __init__(self, project_id: UUID, report_id: UUID, *, version: int | None = None) -> None:
+        details: dict = {
+            "project_id": str(project_id),
+            "report_id": str(report_id),
+        }
+        if version is not None:
+            details["version"] = version
+        super().__init__(
+            "REPORT_NOT_FOUND",
+            "Report not found",
+            status_code=404,
+            details=details,
         )

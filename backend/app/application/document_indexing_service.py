@@ -13,6 +13,8 @@ from uuid import UUID
 from app.application.exceptions import FileNotReadyForIndexingError
 from app.application.file_registry_service import FileRegistryService
 from app.application.project_memory_service import ProjectMemoryService
+from app.application.traceability_integration import record_source_to_memory
+from app.application.traceability_service import TraceabilityService
 from app.domain.models.file_artifact import ExtractionStatus, ParsingStatus, ProjectFile
 from app.domain.models.project_memory import (
     FILE_MEMORY_SOURCE_TYPE,
@@ -27,9 +29,11 @@ class DocumentIndexingService:
         *,
         file_registry_service: FileRegistryService,
         memory_service: ProjectMemoryService,
+        traceability_service: TraceabilityService | None = None,
     ) -> None:
         self._files = file_registry_service
         self._memory = memory_service
+        self._traceability = traceability_service
 
     def is_ready_for_indexing(self, project_id: UUID, file_id: UUID) -> bool:
         file_record = self._files.get_project_file(project_id, file_id)
@@ -53,7 +57,7 @@ class DocumentIndexingService:
         extraction = file_record.metadata.get("extraction", {})
         stub_metadata = extraction.get("metadata", {}) if isinstance(extraction, dict) else {}
 
-        return self._memory.create_memory(
+        memory = self._memory.create_memory(
             project_id,
             MemoryType.EXTRACTED_INFORMATION,
             _build_index_content(file_record, stub_metadata),
@@ -69,6 +73,15 @@ class DocumentIndexingService:
             },
             created_by=created_by or file_record.created_by,
         )
+        if self._traceability is not None:
+            record_source_to_memory(
+                self._traceability,
+                project_id=project_id,
+                file_id=file_id,
+                memory_id=memory.id,
+                metadata={"filename": file_record.filename},
+            )
+        return memory
 
     def get_memories_for_file(
         self,

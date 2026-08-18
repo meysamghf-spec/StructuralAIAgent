@@ -1,6 +1,7 @@
 ﻿"""Factory helpers for wiring application services to PostgreSQL repositories."""
 
 from app.application.agent_registry_service import AgentRegistryService
+from app.application.agent_runtime_service import AgentRuntimeService
 from app.application.agent_version_service import AgentVersionService
 from app.application.ai_gateway_service import AIGatewayService
 from app.application.analysis_engine_service import AnalysisEngineService
@@ -10,13 +11,16 @@ from app.application.design_engine_service import DesignEngineService
 from app.application.document_indexing_service import DocumentIndexingService
 from app.application.file_ingestion_service import FileIngestionService
 from app.application.file_registry_service import FileRegistryService
+from app.application.human_approval_service import HumanApprovalService
 from app.application.hybrid_orchestration_service import HybridOrchestrationService
 from app.application.integration_service import IntegrationService
+from app.application.traceability_service import TraceabilityService
 from app.application.pem_revision_service import PemRevisionService
 from app.application.project_context_assembly_service import ProjectContextAssemblyService
 from app.application.project_memory_service import ProjectMemoryService
 from app.application.project_service import PemService, ProjectService
-from app.application.prompt_template_service import PromptTemplateService
+from app.application.prompt_generation_service import PromptGenerationService
+from app.application.report_generation_service import ReportGenerationService
 from app.application.revision_service import RevisionService
 from app.application.unit_conversion_service import UnitConversionService
 from app.application.validation_engine_service import ValidationEngineService
@@ -26,16 +30,23 @@ from app.infrastructure.integrations import build_integration_adapters
 from app.infrastructure.ai.stub_ai_provider import StubAIProvider
 from app.domain.models.ai_gateway import AIProviderKind
 from app.infrastructure.parsers.stub_parser import StubTextParser
+from app.application.prompt_template_service import PromptTemplateService
 from app.infrastructure.repositories.postgres_agent_capability_repository import (
     PostgresAgentCapabilityRepository,
 )
 from app.infrastructure.repositories.postgres_agent_definition_repository import (
     PostgresAgentDefinitionRepository,
 )
+from app.infrastructure.repositories.postgres_agent_execution_repository import (
+    PostgresAgentExecutionRepository,
+)
 from app.infrastructure.repositories.postgres_agent_version_repository import (
     PostgresAgentVersionRepository,
 )
 from app.infrastructure.repositories.postgres_file_repository import PostgresFileRepository
+from app.infrastructure.repositories.postgres_human_approval_repository import (
+    PostgresHumanApprovalRepository,
+)
 from app.infrastructure.repositories.postgres_pem_repository import PostgresPemRepository
 from app.infrastructure.repositories.postgres_project_memory_repository import (
     PostgresProjectMemoryRepository,
@@ -44,7 +55,11 @@ from app.infrastructure.repositories.postgres_project_repository import Postgres
 from app.infrastructure.repositories.postgres_prompt_template_repository import (
     PostgresPromptTemplateRepository,
 )
+from app.infrastructure.repositories.postgres_report_repository import PostgresReportRepository
 from app.infrastructure.repositories.postgres_revision_repository import PostgresRevisionRepository
+from app.infrastructure.repositories.postgres_traceability_repository import (
+    PostgresTraceabilityRepository,
+)
 from app.infrastructure.storage.local_file_storage import LocalFileStorage
 
 
@@ -64,12 +79,28 @@ def _project_memory_repository() -> PostgresProjectMemoryRepository:
     return PostgresProjectMemoryRepository()
 
 
+def _human_approval_repository() -> PostgresHumanApprovalRepository:
+    return PostgresHumanApprovalRepository()
+
+
+def _traceability_repository() -> PostgresTraceabilityRepository:
+    return PostgresTraceabilityRepository()
+
+
+def _report_repository() -> PostgresReportRepository:
+    return PostgresReportRepository()
+
+
 def _agent_definition_repository() -> PostgresAgentDefinitionRepository:
     return PostgresAgentDefinitionRepository()
 
 
 def _agent_version_repository() -> PostgresAgentVersionRepository:
     return PostgresAgentVersionRepository()
+
+
+def _agent_execution_repository() -> PostgresAgentExecutionRepository:
+    return PostgresAgentExecutionRepository()
 
 
 def _agent_capability_repository() -> PostgresAgentCapabilityRepository:
@@ -144,10 +175,18 @@ def build_project_memory_service() -> ProjectMemoryService:
     )
 
 
+def build_traceability_service() -> TraceabilityService:
+    return TraceabilityService(
+        project_repository=_project_repository(),
+        traceability_repository=_traceability_repository(),
+    )
+
+
 def build_document_indexing_service() -> DocumentIndexingService:
     return DocumentIndexingService(
         file_registry_service=build_file_registry_service(),
         memory_service=build_project_memory_service(),
+        traceability_service=build_traceability_service(),
     )
 
 
@@ -176,6 +215,27 @@ def build_validation_engine_service() -> ValidationEngineService:
         project_service=build_project_service(),
         pem_service=build_pem_service(),
         code_engine_service=build_code_engine_service(),
+    )
+
+
+def build_human_approval_service() -> HumanApprovalService:
+    return HumanApprovalService(
+        project_repository=_project_repository(),
+        approval_repository=_human_approval_repository(),
+        memory_service=build_project_memory_service(),
+        traceability_service=build_traceability_service(),
+    )
+
+
+def build_report_generation_service() -> ReportGenerationService:
+    return ReportGenerationService(
+        project_repository=_project_repository(),
+        report_repository=_report_repository(),
+        context_service=build_project_context_assembly_service(),
+        traceability_service=build_traceability_service(),
+        approval_service=build_human_approval_service(),
+        validation_service=build_validation_engine_service(),
+        pem_service=build_pem_service(),
     )
 
 
@@ -229,4 +289,20 @@ def build_prompt_template_service() -> PromptTemplateService:
     return PromptTemplateService(
         prompt_repository=_prompt_template_repository(),
         version_service=build_agent_version_service(),
+    )
+
+
+def build_prompt_generation_service() -> PromptGenerationService:
+    return PromptGenerationService(ai_gateway=build_ai_gateway_service())
+
+
+def build_agent_runtime_service() -> AgentRuntimeService:
+    return AgentRuntimeService(
+        definition_repository=_agent_definition_repository(),
+        version_repository=_agent_version_repository(),
+        execution_repository=_agent_execution_repository(),
+        context_service=build_project_context_assembly_service(),
+        prompt_generation_service=build_prompt_generation_service(),
+        traceability_service=build_traceability_service(),
+        approval_service=build_human_approval_service(),
     )

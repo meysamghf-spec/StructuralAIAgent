@@ -1,4 +1,4 @@
-"""HumanApprovalGate contract — M4 foundation only; no workflow persistence."""
+"""Human Approval Gate domain models and extension contract."""
 
 from __future__ import annotations
 
@@ -18,8 +18,60 @@ class ApprovalStatus(StrEnum):
     CANCELLED = "CANCELLED"
 
 
+class ApprovalTargetType(StrEnum):
+    AGENT_ACTION = "AGENT_ACTION"
+    DESIGN_DECISION = "DESIGN_DECISION"
+    CONFIGURATION_CHANGE = "CONFIGURATION_CHANGE"
+    MODEL_CHANGE = "MODEL_CHANGE"
+
+
+class ApprovalEventType(StrEnum):
+    CREATED = "CREATED"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    CANCELLED = "CANCELLED"
+
+
+APPROVAL_MEMORY_SOURCE_TYPE = "approval"
+
+
+class HumanApprovalRequest(BaseModel):
+    """Persisted approval workflow request."""
+
+    id: UUID
+    project_id: UUID
+    requester: str
+    target_type: ApprovalTargetType
+    target_action: str
+    target_object_type: str | None = None
+    target_object_id: UUID | None = None
+    summary: str
+    status: ApprovalStatus = ApprovalStatus.PENDING
+    approver: str | None = None
+    decision: ApprovalStatus | None = None
+    rejection_reason: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    requested_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    resolved_at: datetime | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class ApprovalEvent(BaseModel):
+    """Audit event for approval workflow history."""
+
+    id: UUID
+    approval_request_id: UUID
+    project_id: UUID
+    event_type: ApprovalEventType
+    actor: str
+    reason: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
 class ApprovalRequest(BaseModel):
-    """Proposal submitted for human review."""
+    """Lightweight proposal shape for HumanApprovalGate protocol consumers."""
 
     request_id: UUID
     task_type: str
@@ -32,7 +84,7 @@ class ApprovalRequest(BaseModel):
 
 
 class HumanApprovalGate(Protocol):
-    """Interface for future approval workflows (MASTER PROMPT §7, AG-37/46)."""
+    """Interface for high-impact operations requiring human review."""
 
     def requires_approval(self, task_type: str, context: dict[str, Any]) -> bool: ...
 

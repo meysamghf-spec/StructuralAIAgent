@@ -45,3 +45,66 @@ export type CreateProjectResponse = {
 export type HealthResponse = {
   status: string;
 };
+
+export type EngineeringAgentType =
+  | "STRUCTURAL_MODELING_AGENT"
+  | "LOAD_ASSESSMENT_AGENT"
+  | "ANALYSIS_AGENT"
+  | "CONCRETE_DESIGN_AGENT"
+  | "STEEL_DESIGN_AGENT"
+  | "SEISMIC_AGENT"
+  | "VALIDATION_AGENT"
+  | "CAD_AGENT"
+  | "REPORTING_AGENT"
+  | "DOCUMENT_INTERPRETATION_AGENT"
+  | "PROMPT_GENERATION_AGENT";
+
+export type AgentDefinitionSummary = {
+  id: string;
+  key: string;
+  name: string;
+  description: string | null;
+  agent_type: EngineeringAgentType | null;
+  status: string;
+  current_version: number | null;
+  configuration: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AgentListResponse = {
+  agents: AgentDefinitionSummary[];
+};
+
+export type AgentExecutionStatus =
+  | "CREATED"
+  | "RUNNING"
+  | "COMPLETED"
+  | "FAILED"
+  | "WAITING_APPROVAL"
+  | "CANCELLED";
+
+export type AgentExecutionSummary = {
+  id: string;
+  project_id: string;
+  agent_definition_id: string;
+  agent_version: number;
+  execution_status: AgentExecutionStatus;
+  approval_request_id: string | null;
+  validation_status: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AgentExecutionListResponse = {
+  executions: AgentExecutionSummary[];
+};
+
+export async function listAgents(): Promise<AgentListResponse> {
+  return apiFetch<AgentListResponse>("/api/v1/agents");
+}
+
+export async function listAgentExecutions(projectId: string): Promise<AgentExecutionListResponse> {
+  return apiFetch<AgentExecutionListResponse>(`/api/v1/agent-executions?project_id=${projectId}`);
+}

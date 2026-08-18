@@ -42,6 +42,8 @@ def create_agent(
         key=body.key,
         name=body.name,
         description=body.description,
+        agent_type=body.agent_type,
+        configuration=body.configuration,
     )
     return AgentDefinitionResponse.from_domain(definition)
 

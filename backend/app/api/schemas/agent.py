@@ -14,6 +14,7 @@ from app.domain.models.agent import (
     AgentDefinitionStatus,
     AgentVersion,
     AgentVersionStatus,
+    EngineeringAgentType,
 )
 
 
@@ -21,6 +22,8 @@ class CreateAgentRequest(BaseModel):
     key: str = Field(..., min_length=1, max_length=128)
     name: str = Field(..., min_length=1, max_length=255)
     description: str | None = None
+    agent_type: EngineeringAgentType | None = None
+    configuration: dict[str, Any] = Field(default_factory=dict)
 
 
 class AgentDefinitionResponse(BaseModel):
@@ -28,8 +31,10 @@ class AgentDefinitionResponse(BaseModel):
     key: str
     name: str
     description: str | None = None
+    agent_type: EngineeringAgentType | None = None
     status: AgentDefinitionStatus
     current_version: int | None = None
+    configuration: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime
 
