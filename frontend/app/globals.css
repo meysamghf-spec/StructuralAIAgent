@@ -173,6 +173,251 @@ a {
   color: #fecaca;
 }
 
+.section-header {
+  margin-bottom: 0.85rem;
+}
+
+.section-header h3 {
+  margin-bottom: 0.35rem;
+}
+
+.text-link {
+  color: #38bdf8;
+  font-size: 0.95rem;
+}
+
+.project-select,
+.request-input {
+  width: 100%;
+}
+
+.request-form {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 0.85rem;
+}
+
+.request-input {
+  resize: vertical;
+  min-height: 110px;
+  line-height: 1.5;
+}
+
+.agent-grid {
+  margin-top: 0.5rem;
+}
+
+.agent-card {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.agent-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.agent-description {
+  line-height: 1.55;
+}
+
+.agent-capabilities li::before {
+  content: "• ";
+  color: #38bdf8;
+}
+
+.status-pill {
+  border-radius: 999px;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  background: #334155;
+  color: #e2e8f0;
+}
+
+.status-available {
+  background: #14532d;
+  color: #bbf7d0;
+}
+
+.status-in-setup {
+  background: #422006;
+  color: #fde68a;
+}
+
+.status-unavailable {
+  background: #3f3f46;
+  color: #d4d4d8;
+}
+
+.execution-list {
+  list-style: none;
+  display: grid;
+  gap: 1rem;
+}
+
+.execution-card {
+  display: grid;
+  gap: 1rem;
+}
+
+.execution-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.execution-card-header h4 {
+  margin-bottom: 0.25rem;
+}
+
+.progress-badge {
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.progress-starting,
+.progress-in_progress {
+  background: #1e3a8a;
+  color: #bfdbfe;
+}
+
+.progress-awaiting_approval {
+  background: #713f12;
+  color: #fde68a;
+}
+
+.progress-completed {
+  background: #14532d;
+  color: #bbf7d0;
+}
+
+.progress-rejected,
+.progress-failed,
+.progress-cancelled {
+  background: #450a0a;
+  color: #fecaca;
+}
+
+.progress-stepper {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.progress-step-wrap {
+  display: contents;
+}
+
+.progress-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  text-align: center;
+}
+
+.progress-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: #475569;
+  border: 2px solid #64748b;
+}
+
+.progress-line {
+  height: 2px;
+  background: #475569;
+  align-self: center;
+}
+
+.progress-step.complete .progress-dot {
+  background: #0284c7;
+  border-color: #38bdf8;
+}
+
+.progress-step.active .progress-dot {
+  background: #38bdf8;
+  border-color: #7dd3fc;
+  box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.18);
+}
+
+.progress-step.terminal-negative .progress-dot {
+  background: #dc2626;
+  border-color: #f87171;
+}
+
+.progress-label {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  line-height: 1.3;
+}
+
+.progress-step.active .progress-label,
+.progress-step.complete .progress-label {
+  color: #e2e8f0;
+}
+
+.execution-result {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+}
+
+.result-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+  margin-bottom: 0.35rem;
+}
+
+.result-text {
+  line-height: 1.55;
+  color: #f8fafc;
+}
+
+.validation-line,
+.report-line {
+  margin-top: 0.65rem;
+}
+
+.approval-panel {
+  background: #172033;
+  border: 1px solid #475569;
+  border-radius: 10px;
+  padding: 1rem;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.approval-panel-header {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.approval-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.approval-form {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.approval-form h4 {
+  font-size: 0.95rem;
+}
+
 @media (max-width: 960px) {
   .shell {
     grid-template-columns: 1fr;
@@ -190,5 +435,22 @@ a {
 
   .form-row {
     flex-direction: column;
+  }
+
+  .progress-stepper {
+    grid-template-columns: 1fr;
+  }
+
+  .progress-step-wrap {
+    display: grid;
+    gap: 0.35rem;
+  }
+
+  .progress-line {
+    display: none;
+  }
+
+  .approval-actions {
+    grid-template-columns: 1fr;
   }
 }

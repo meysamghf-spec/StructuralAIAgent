@@ -1,5 +1,6 @@
 ﻿"""Factory helpers for wiring application services to PostgreSQL repositories."""
 
+from app.application.agent_approval_completion_service import AgentApprovalCompletionService
 from app.application.agent_registry_service import AgentRegistryService
 from app.application.agent_runtime_service import AgentRuntimeService
 from app.application.agent_version_service import AgentVersionService
@@ -218,12 +219,23 @@ def build_validation_engine_service() -> ValidationEngineService:
     )
 
 
+def build_agent_approval_completion_service() -> AgentApprovalCompletionService:
+    return AgentApprovalCompletionService(
+        execution_repository=_agent_execution_repository(),
+        orchestration_service=build_hybrid_orchestration_service(),
+        memory_service=build_project_memory_service(),
+        traceability_service=build_traceability_service(),
+        report_repository=_report_repository(),
+    )
+
+
 def build_human_approval_service() -> HumanApprovalService:
     return HumanApprovalService(
         project_repository=_project_repository(),
         approval_repository=_human_approval_repository(),
         memory_service=build_project_memory_service(),
         traceability_service=build_traceability_service(),
+        agent_completion_service=build_agent_approval_completion_service(),
     )
 
 
@@ -305,4 +317,5 @@ def build_agent_runtime_service() -> AgentRuntimeService:
         prompt_generation_service=build_prompt_generation_service(),
         traceability_service=build_traceability_service(),
         approval_service=build_human_approval_service(),
+        orchestration_service=build_hybrid_orchestration_service(),
     )

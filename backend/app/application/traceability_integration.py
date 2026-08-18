@@ -206,3 +206,41 @@ def record_agent_result_to_approval(
         relationship_type=TraceabilityRelationshipType.AGENT_RESULT_TO_APPROVAL,
         metadata=metadata,
     )
+
+
+def record_approval_to_agent_result(
+    traceability: TraceabilityService,
+    *,
+    project_id: UUID,
+    approval_id: UUID,
+    result_id: UUID,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    traceability.create_link(
+        project_id,
+        source_type=TraceObjectType.APPROVAL.value,
+        source_id=approval_id,
+        target_type=TraceObjectType.AGENT_RESULT.value,
+        target_id=result_id,
+        relationship_type=TraceabilityRelationshipType.APPROVAL_TO_AGENT_RESULT,
+        metadata=metadata,
+    )
+
+
+def record_agent_result_to_report(
+    traceability: TraceabilityService,
+    *,
+    project_id: UUID,
+    result_id: UUID,
+    report_id: UUID,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    traceability.create_link(
+        project_id,
+        source_type=TraceObjectType.AGENT_RESULT.value,
+        source_id=result_id,
+        target_type=TraceObjectType.REPORT.value,
+        target_id=report_id,
+        relationship_type=TraceabilityRelationshipType.AGENT_RESULT_TO_REPORT,
+        metadata=metadata,
+    )

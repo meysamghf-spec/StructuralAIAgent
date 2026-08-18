@@ -12,6 +12,7 @@ def test_trace_relationship_types_include_core_chain() -> None:
     assert "DECISION_TO_APPROVAL" in values
     assert "DESIGN_TO_REPORT" in values
     assert "REQUEST_TO_AGENT_EXECUTION" in values
+    assert "AGENT_RESULT_TO_REPORT" in values
 
 
 def test_trace_object_types_are_extensible_strings() -> None:

@@ -157,3 +157,23 @@ class PostgresAgentExecutionRepository:
                 )
                 rows = cur.fetchall()
         return [_row_to_record(row) for row in rows]
+
+    def get_by_approval_request_id(
+        self,
+        approval_request_id: UUID,
+    ) -> AgentExecutionRecord | None:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT {_AGENT_EXECUTION_COLUMNS}
+                    FROM agent_executions
+                    WHERE approval_request_id = %s
+                    LIMIT 1
+                    """,
+                    (approval_request_id,),
+                )
+                row = cur.fetchone()
+        if not row:
+            return None
+        return _row_to_record(row)

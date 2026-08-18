@@ -95,6 +95,19 @@ export type AgentExecutionSummary = {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  user_view: AgentExecutionUserView;
+  traceability_metadata?: {
+    report_id?: string;
+    [key: string]: unknown;
+  };
+};
+
+export type AgentExecutionUserView = {
+  progress: "starting" | "in_progress" | "awaiting_approval" | "completed" | "rejected" | "failed" | "cancelled";
+  requires_approval: boolean;
+  approval_request_id: string | null;
+  final_result: string | null;
+  summary: string | null;
 };
 
 export type AgentExecutionListResponse = {
@@ -107,4 +120,45 @@ export async function listAgents(): Promise<AgentListResponse> {
 
 export async function listAgentExecutions(projectId: string): Promise<AgentExecutionListResponse> {
   return apiFetch<AgentExecutionListResponse>(`/api/v1/agent-executions?project_id=${projectId}`);
+}
+
+export type CreateAgentExecutionRequest = {
+  project_id: string;
+  user_request: string;
+  agent_type?: EngineeringAgentType;
+  requires_approval?: boolean;
+};
+
+export async function createAgentExecution(
+  body: CreateAgentExecutionRequest,
+): Promise<AgentExecutionSummary> {
+  return apiFetch<AgentExecutionSummary>("/api/v1/agent-executions", {
+    method: "POST",
+    body: JSON.stringify(body),
+    headers: { "X-Actor-Id": "workspace-user" },
+  });
+}
+
+export async function approveAgentRequest(
+  projectId: string,
+  approvalRequestId: string,
+  approver: string,
+  decisionNote?: string,
+): Promise<void> {
+  await apiFetch(`/api/v1/approvals/${approvalRequestId}/approve?project_id=${projectId}`, {
+    method: "POST",
+    body: JSON.stringify({ approver, decision_note: decisionNote ?? null }),
+  });
+}
+
+export async function rejectAgentRequest(
+  projectId: string,
+  approvalRequestId: string,
+  approver: string,
+  rejectionReason: string,
+): Promise<void> {
+  await apiFetch(`/api/v1/approvals/${approvalRequestId}/reject?project_id=${projectId}`, {
+    method: "POST",
+    body: JSON.stringify({ approver, rejection_reason: rejectionReason }),
+  });
 }

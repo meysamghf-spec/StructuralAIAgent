@@ -45,6 +45,7 @@ def test_create_and_get_agent_execution(api_client: TestClient) -> None:
     body = response.json()
     assert body["execution_status"] == "COMPLETED"
     assert body["created_by"] == "api-engineer"
+    assert body["user_view"]["progress"] == "completed"
     assert body["context_snapshot"]["project_name"] == "Agent Execution Project"
 
     execution_id = body["id"]

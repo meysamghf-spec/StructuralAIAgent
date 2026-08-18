@@ -10,6 +10,7 @@ from app.application.exceptions import (
     ApprovalNotFoundError,
     ProjectNotFoundError,
 )
+from app.application.agent_approval_completion_service import AgentApprovalCompletionService
 from app.application.project_memory_service import ProjectMemoryService
 from app.application.traceability_integration import (
     record_approval_to_model,
@@ -42,11 +43,13 @@ class HumanApprovalService:
         approval_repository: HumanApprovalRepository,
         memory_service: ProjectMemoryService,
         traceability_service: TraceabilityService | None = None,
+        agent_completion_service: AgentApprovalCompletionService | None = None,
     ) -> None:
         self._projects = project_repository
         self._approvals = approval_repository
         self._memory = memory_service
         self._traceability = traceability_service
+        self._agent_completion = agent_completion_service
 
     def requires_approval(
         self,
@@ -156,6 +159,7 @@ class HumanApprovalService:
             content=self._approval_memory_content(updated, decision_note),
             created_by=approver,
         )
+        self._notify_agent_completion(project_id, updated)
         return updated
 
     def reject_request(
@@ -196,6 +200,7 @@ class HumanApprovalService:
             content=self._rejection_memory_content(updated, rejection_reason),
             created_by=approver,
         )
+        self._notify_agent_completion(project_id, updated)
         return updated
 
     def cancel_request(
@@ -228,6 +233,7 @@ class HumanApprovalService:
             reason=reason,
             metadata={"target_action": request.target_action},
         )
+        self._notify_agent_completion(project_id, updated)
         return updated
 
     def get_history(
@@ -274,6 +280,15 @@ class HumanApprovalService:
                 current_status=request.status.value,
             )
         return request
+
+    def _notify_agent_completion(
+        self,
+        project_id: UUID,
+        request: HumanApprovalRequest,
+    ) -> None:
+        if self._agent_completion is None:
+            return
+        self._agent_completion.handle_approval_resolved(project_id, request)
 
     def _record_memory_for_decision(
         self,

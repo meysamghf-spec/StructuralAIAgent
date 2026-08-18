@@ -17,6 +17,7 @@ from app.application.exceptions import (
     AgentNotFoundError,
 )
 from app.application.human_approval_service import HumanApprovalService
+from app.application.hybrid_orchestration_service import HybridOrchestrationService
 from app.application.project_context_assembly_service import ProjectContextAssemblyService
 from app.application.prompt_generation_service import PromptGenerationService
 from app.application.traceability_integration import (
@@ -36,6 +37,7 @@ from app.domain.models.agent_runtime import (
     PromptGenerationResult,
 )
 from app.domain.models.human_approval import ApprovalTargetType
+from app.domain.models.orchestration import OrchestrationTask
 from app.domain.models.project_context import ProjectContextAssembly
 from app.domain.repositories.agent_protocols import (
     AgentDefinitionRepository,
@@ -64,6 +66,7 @@ class AgentRuntimeService:
         prompt_generation_service: PromptGenerationService,
         traceability_service: TraceabilityService,
         approval_service: HumanApprovalService,
+        orchestration_service: HybridOrchestrationService | None = None,
         handlers: dict[EngineeringAgentType, EngineeringAgentHandler] | None = None,
     ) -> None:
         self._definitions = definition_repository
@@ -73,6 +76,7 @@ class AgentRuntimeService:
         self._prompt_generation = prompt_generation_service
         self._traceability = traceability_service
         self._approval = approval_service
+        self._orchestration = orchestration_service
         self._handlers = handlers or build_engineering_agent_handlers()
 
     def execute(
@@ -131,6 +135,11 @@ class AgentRuntimeService:
                 user_request=request.user_request,
                 parameters=request.parameters,
                 context=context_snapshot,
+            )
+            agent_result = self._apply_orchestration(
+                project_id=request.project_id,
+                request=request,
+                agent_result=agent_result,
             )
             validation_status = self._validate_result(agent_result)
             requires_approval = self._requires_approval(
@@ -245,11 +254,43 @@ class AgentRuntimeService:
         return handler
 
     def _validate_result(self, agent_result: AgentResult) -> AgentValidationStatus:
+        orchestration_status = agent_result.validation_information.get("orchestration_status")
+        if orchestration_status in {"ERROR", "FAIL", "FAILED"}:
+            return AgentValidationStatus.ERROR
+        if orchestration_status in {"WARNING", "WARN"}:
+            return AgentValidationStatus.WARNING
         if agent_result.validation_information.get("stub"):
             return AgentValidationStatus.REQUIRES_ENGINEER_REVIEW
         if agent_result.confidence is not None and agent_result.confidence < 0.5:
             return AgentValidationStatus.WARNING
         return AgentValidationStatus.PASS
+
+    def _apply_orchestration(
+        self,
+        *,
+        project_id: UUID,
+        request: AgentExecutionRequest,
+        agent_result: AgentResult,
+    ) -> AgentResult:
+        if self._orchestration is None:
+            return agent_result
+
+        task_type = request.parameters.get("orchestration_task")
+        if task_type is None:
+            task_type = "project.validate"
+
+        orchestration_result = self._orchestration.execute(
+            OrchestrationTask(
+                task_type=str(task_type),
+                project_id=project_id,
+                payload=dict(request.parameters.get("orchestration_payload", {})),
+            )
+        )
+        validation_information = dict(agent_result.validation_information)
+        validation_information["orchestration"] = orchestration_result.model_dump(mode="json")
+        validation_information["orchestration_status"] = orchestration_result.status
+        validation_information["orchestration_route"] = orchestration_result.route.value
+        return agent_result.model_copy(update={"validation_information": validation_information})
 
     def _requires_approval(
         self,

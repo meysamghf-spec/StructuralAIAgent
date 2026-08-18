@@ -15,6 +15,7 @@ from app.domain.models.agent_runtime import (
     AgentResult,
     AgentValidationStatus,
 )
+from app.domain.models.agent_runtime_view import AgentExecutionUserView, build_agent_execution_user_view
 
 
 class CreateAgentExecutionRequest(BaseModel):
@@ -61,11 +62,13 @@ class AgentExecutionResponse(BaseModel):
     created_by: str | None = None
     created_at: datetime
     updated_at: datetime
+    user_view: AgentExecutionUserView
 
     @classmethod
     def from_domain(cls, record: AgentExecutionRecord) -> AgentExecutionResponse:
         payload = record.model_dump()
         payload["agent_result"] = AgentResultResponse.from_domain(record.agent_result)
+        payload["user_view"] = build_agent_execution_user_view(record).model_dump()
         return cls.model_validate(payload)
 
 

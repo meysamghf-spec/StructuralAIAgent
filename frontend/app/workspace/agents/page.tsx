@@ -1,10 +1,22 @@
-import WorkspacePlaceholder from "@/components/WorkspacePlaceholder";
+import { Suspense } from "react";
+import AgentsWorkspaceClient from "./AgentsWorkspaceClient";
+
+function AgentsWorkspaceFallback() {
+  return (
+    <section className="panel-stack">
+      <header className="page-header">
+        <p className="eyebrow">Engineering Assistants</p>
+        <h2>Agent Workspace</h2>
+        <p className="muted">Loading assistant workspace…</p>
+      </header>
+    </section>
+  );
+}
 
 export default function AgentsWorkspacePage() {
   return (
-    <WorkspacePlaceholder
-      title="Agents"
-      description="Agent registry, execution history, approval status, and future Meta-Agent workflows. API helpers: listAgents(), listAgentExecutions(projectId)."
-    />
+    <Suspense fallback={<AgentsWorkspaceFallback />}>
+      <AgentsWorkspaceClient />
+    </Suspense>
   );
 }

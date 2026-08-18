@@ -63,3 +63,4 @@ def test_traceability_enums_include_agent_runtime() -> None:
     assert TraceObjectType.AGENT_EXECUTION.value == "agent_execution"
     assert TraceObjectType.AGENT_RESULT.value == "agent_result"
     assert TraceabilityRelationshipType.REQUEST_TO_AGENT_EXECUTION.value == "REQUEST_TO_AGENT_EXECUTION"
+    assert TraceabilityRelationshipType.AGENT_RESULT_TO_REPORT.value == "AGENT_RESULT_TO_REPORT"

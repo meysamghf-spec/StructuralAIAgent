@@ -143,3 +143,8 @@ class AgentExecutionRepository(Protocol):
         *,
         limit: int = 100,
     ) -> list[AgentExecutionRecord]: ...
+
+    def get_by_approval_request_id(
+        self,
+        approval_request_id: UUID,
+    ) -> AgentExecutionRecord | None: ...
