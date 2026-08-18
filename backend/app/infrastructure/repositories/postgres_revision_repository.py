@@ -110,3 +110,32 @@ class PostgresRevisionRepository:
             row["change_type"] = RevisionChangeType(row["change_type"])
             revisions.append(Revision.model_validate(row))
         return revisions
+
+    def get_by_revision_number(
+        self, project_id: UUID, revision_number: int
+    ) -> Revision | None:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT
+                        id,
+                        project_id,
+                        revision_number,
+                        change_type,
+                        summary,
+                        before_snapshot_id,
+                        after_snapshot_id,
+                        created_by,
+                        metadata,
+                        created_at
+                    FROM revisions
+                    WHERE project_id = %s AND revision_number = %s
+                    """,
+                    (project_id, revision_number),
+                )
+                row = cur.fetchone()
+        if not row:
+            return None
+        row["change_type"] = RevisionChangeType(row["change_type"])
+        return Revision.model_validate(row)

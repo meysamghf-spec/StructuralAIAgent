@@ -119,6 +119,15 @@ class ProjectMetadata(BaseModel):
     description: str | None = None
 
 
+class PemSnapshotMeta(BaseModel):
+    """Metadata for a persisted PEM snapshot row (not the full document)."""
+
+    id: UUID
+    project_id: UUID
+    version: int
+    is_current: bool
+
+
 class ProjectEngineeringModel(BaseModel):
     """
     Single Source of Truth for project engineering data.

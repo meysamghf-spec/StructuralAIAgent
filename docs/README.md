@@ -4,13 +4,13 @@
 
 Architecture is frozen in `PHASE_0_ARCHITECTURE_ASSESSMENT.md` (do not modify without approval).
 
-## Phase 1 — Milestone 1
+## Phase 1 — Milestones
 
-Repository bootstrap and initial project skeleton. See root `README.md` for setup instructions.
+| Milestone | Scope | Status |
+|-----------|-------|--------|
+| **M1** | Repository bootstrap, FastAPI health, Next.js landing, migration infrastructure | Complete |
+| **M2** | PostgreSQL persistence, PEM snapshots (JSONB), revisions, domain models, repository protocols | Complete |
+| **M3** | REST Project API (`/api/v1`), PEM revision traceability, API integration tests, OpenAPI `/docs` | Complete |
+| **M4+** | Not started | — |
 
-## Milestone Roadmap
-
-| Milestone | Scope |
-|-----------|-------|
-| **M1** (current) | Repository bootstrap, FastAPI health, Next.js landing, migration infrastructure |
-| **M2+** | Approved database schema, PEM foundations, persistence layer |
+See root `README.md` for setup and API examples.

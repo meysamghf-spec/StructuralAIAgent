@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from app.domain.models.pem import (
+    PemSnapshotMeta,
     ProjectEngineeringModel,
     create_initial_pem,
 )
@@ -63,6 +64,9 @@ class ProjectService:
     def get_project(self, project_id: UUID) -> Project | None:
         return self._projects.get_by_id(project_id)
 
+    def list_projects(self) -> list[Project]:
+        return self._projects.list_all()
+
 
 class PemService:
     def __init__(self, pem_repository: PemRepository) -> None:
@@ -70,6 +74,20 @@ class PemService:
 
     def get_current_pem(self, project_id: UUID) -> ProjectEngineeringModel | None:
         return self._pem.get_current(project_id)
+
+    def get_pem_version(self, project_id: UUID, version: int) -> ProjectEngineeringModel | None:
+        return self._pem.get_snapshot_by_version(project_id, version)
+
+    def list_pem_versions(self, project_id: UUID) -> list[int]:
+        return self._pem.list_versions(project_id)
+
+    def get_current_snapshot_meta(self, project_id: UUID) -> PemSnapshotMeta | None:
+        return self._pem.get_current_snapshot_meta(project_id)
+
+    def get_snapshot_meta_by_version(
+        self, project_id: UUID, version: int
+    ) -> PemSnapshotMeta | None:
+        return self._pem.get_snapshot_meta_by_version(project_id, version)
 
     def save_new_version(
         self,

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from uuid import UUID
 
-from app.domain.models.pem import ProjectEngineeringModel
+from app.domain.models.pem import PemSnapshotMeta, ProjectEngineeringModel
 from app.infrastructure.database.connection import get_connection
 
 
@@ -108,3 +108,39 @@ class PostgresPemRepository:
                 )
                 rows = cur.fetchall()
         return [int(row["version"]) for row in rows]
+
+    def get_current_snapshot_meta(self, project_id: UUID) -> PemSnapshotMeta | None:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT id, project_id, version, is_current
+                    FROM pem_snapshots
+                    WHERE project_id = %s AND is_current = TRUE
+                    ORDER BY version DESC
+                    LIMIT 1
+                    """,
+                    (project_id,),
+                )
+                row = cur.fetchone()
+        if not row:
+            return None
+        return PemSnapshotMeta.model_validate(row)
+
+    def get_snapshot_meta_by_version(
+        self, project_id: UUID, version: int
+    ) -> PemSnapshotMeta | None:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT id, project_id, version, is_current
+                    FROM pem_snapshots
+                    WHERE project_id = %s AND version = %s
+                    """,
+                    (project_id, version),
+                )
+                row = cur.fetchone()
+        if not row:
+            return None
+        return PemSnapshotMeta.model_validate(row)

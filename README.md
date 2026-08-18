@@ -2,11 +2,11 @@
 
 AI-powered engineering platform with Structural Engineering as the initial domain. The core architecture is domain-independent and extensible for future engineering disciplines (Mechanical, Electrical, Computer, Industrial, and others).
 
-**Current status:** Phase 1 — **Milestone 2** (Persistence + ProjectEngineeringModel Foundation)
+**Current status:** Phase 1 — **Milestone 3** (REST Project API)
 
 Phase 0 architecture is frozen (`PHASE_0_ARCHITECTURE_ASSESSMENT.md`). AG-01 through AG-75 are resolved.
 
-Milestone 1 delivered repository bootstrap. Milestone 2 adds PostgreSQL persistence for projects, versioned PEM snapshots (JSONB), and revisions.
+Milestone 1 delivered repository bootstrap. Milestone 2 adds PostgreSQL persistence for projects, versioned PEM snapshots (JSONB), and revisions. Milestone 3 exposes project/PEM/revision operations via `/api/v1`.
 
 ## Architecture Overview
 
@@ -25,7 +25,7 @@ engineering-ai-platform/
 
 **Layered backend:** `api` → `application` → `domain` ← `infrastructure`
 
-**Not implemented in M1–M2:** agents, LLM, CSI/CAD integrations, CodeEngine, CompatibilityEngine, UnitConversionService, REST project API.
+**Not implemented in M1–M3:** agents, LLM, CSI/CAD integrations, CodeEngine, CompatibilityEngine, UnitConversionService, authentication.
 
 ## Prerequisites
 
@@ -69,6 +69,33 @@ curl http://localhost:8000/health
 # {"status":"ok"}
 ```
 
+OpenAPI docs (M3 endpoints): [http://localhost:8000/docs](http://localhost:8000/docs)
+
+### M3 API Examples
+
+Create a project:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/projects \
+  -H "Content-Type: application/json" \
+  -H "X-Actor-Id: engineer-1" \
+  -d '{"name":"Tower A","description":"Test project"}'
+```
+
+Get current PEM:
+
+```bash
+curl http://localhost:8000/api/v1/projects/{project_id}/pem/current
+```
+
+Update PEM (creates new snapshot + revision):
+
+```bash
+curl -X PUT http://localhost:8000/api/v1/projects/{project_id}/pem \
+  -H "Content-Type: application/json" \
+  -d '{"pem":{...},"change_type":"PEM_UPDATE","summary":"Updated metadata"}'
+```
+
 ## Start Frontend
 
 ```bash
@@ -108,17 +135,28 @@ psql "$DATABASE_URL" -f database/migrations/002_pem_foundation.sql
 
 Persistence integration tests require a reachable PostgreSQL instance (`DATABASE_URL` or `TEST_DATABASE_URL`).
 
-## Phase 1 Milestone 2 Scope
+## Phase 1 Milestone 3 Scope
 
 This milestone delivers:
+
+- REST API under `/api/v1` for projects, PEM (current/historical), and revisions
+- Application services: `PemRevisionService`, `RevisionService` (PEM PUT creates snapshot + revision)
+- API DTOs, consistent error envelope, optional `X-Actor-Id` header
+- Development CORS for `http://localhost:3000`
+- API integration tests against PostgreSQL
+- OpenAPI documentation at `/docs`
+
+**Milestone 4 has NOT started.**
+
+## Phase 1 Milestone 2 Scope (complete)
+
+This milestone delivered:
 
 - PostgreSQL schema: `projects`, `pem_snapshots` (JSONB), `revisions`
 - Domain models: `ProjectEngineeringModel`, `CodeConfiguration`, `UnitConfiguration`, `Revision`
 - Repository/service boundaries (domain ← infrastructure)
 - Software-default code profile and US Customary unit defaults in initial PEM
 - Backend persistence tests (integration tests skip if PostgreSQL unavailable)
-
-**Milestone 3 has NOT started.**
 
 ## License
 

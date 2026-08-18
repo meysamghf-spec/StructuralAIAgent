@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Protocol
 from uuid import UUID
 
-from app.domain.models.pem import ProjectEngineeringModel
+from app.domain.models.pem import PemSnapshotMeta, ProjectEngineeringModel
 from app.domain.models.project import Project
 from app.domain.models.revision import Revision, RevisionChangeType
 
@@ -36,6 +36,12 @@ class PemRepository(Protocol):
 
     def list_versions(self, project_id: UUID) -> list[int]: ...
 
+    def get_current_snapshot_meta(self, project_id: UUID) -> PemSnapshotMeta | None: ...
+
+    def get_snapshot_meta_by_version(
+        self, project_id: UUID, version: int
+    ) -> PemSnapshotMeta | None: ...
+
 
 class RevisionRepository(Protocol):
     def create(
@@ -53,3 +59,7 @@ class RevisionRepository(Protocol):
     def list_for_project(self, project_id: UUID) -> list[Revision]: ...
 
     def get_next_revision_number(self, project_id: UUID) -> int: ...
+
+    def get_by_revision_number(
+        self, project_id: UUID, revision_number: int
+    ) -> Revision | None: ...

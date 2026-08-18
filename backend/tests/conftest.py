@@ -54,3 +54,13 @@ def db_session(database_ready: str, monkeypatch: pytest.MonkeyPatch) -> Generato
 @pytest.fixture
 def project_service(db_session: str) -> ProjectService:
     return build_project_service()
+
+
+@pytest.fixture
+def api_client(db_session: str) -> Generator:
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    with TestClient(app) as client:
+        yield client
