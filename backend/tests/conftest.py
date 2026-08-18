@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Generator
+from pathlib import Path
 
 import pytest
 
@@ -45,6 +46,7 @@ def db_session(database_ready: str, monkeypatch: pytest.MonkeyPatch) -> Generato
             cur.execute(
                 """
                 TRUNCATE TABLE
+                    project_files,
                     prompt_templates,
                     agent_version_capabilities,
                     agent_versions,
@@ -65,10 +67,24 @@ def project_service(db_session: str) -> ProjectService:
 
 
 @pytest.fixture
-def api_client(db_session: str) -> Generator:
+def api_client(db_session: str, tmp_path, monkeypatch: pytest.MonkeyPatch) -> Generator:
+    storage_root = tmp_path / "file_storage"
+    storage_root.mkdir()
+    monkeypatch.setenv("FILE_STORAGE_ROOT", str(storage_root))
+    get_settings.cache_clear()
+
     from fastapi.testclient import TestClient
 
     from app.main import app
 
     with TestClient(app) as client:
         yield client
+
+
+@pytest.fixture
+def file_storage_root(tmp_path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    storage_root = tmp_path / "file_storage"
+    storage_root.mkdir()
+    monkeypatch.setenv("FILE_STORAGE_ROOT", str(storage_root))
+    get_settings.cache_clear()
+    return storage_root

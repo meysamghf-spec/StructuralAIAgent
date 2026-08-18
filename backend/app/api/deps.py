@@ -8,6 +8,8 @@ from fastapi import Header
 
 from app.application.agent_registry_service import AgentRegistryService
 from app.application.agent_version_service import AgentVersionService
+from app.application.file_ingestion_service import FileIngestionService
+from app.application.file_registry_service import FileRegistryService
 from app.application.pem_revision_service import PemRevisionService
 from app.application.project_service import PemService, ProjectService
 from app.application.prompt_template_service import PromptTemplateService
@@ -15,6 +17,8 @@ from app.application.revision_service import RevisionService
 from app.application.service_factory import (
     build_agent_registry_service,
     build_agent_version_service,
+    build_file_ingestion_service,
+    build_file_registry_service,
     build_pem_revision_service,
     build_pem_service,
     build_project_service,
@@ -55,3 +59,11 @@ def get_agent_version_service() -> AgentVersionService:
 
 def get_prompt_template_service() -> PromptTemplateService:
     return build_prompt_template_service()
+
+
+def get_file_registry_service() -> FileRegistryService:
+    return build_file_registry_service()
+
+
+def get_file_ingestion_service() -> FileIngestionService:
+    return build_file_ingestion_service()

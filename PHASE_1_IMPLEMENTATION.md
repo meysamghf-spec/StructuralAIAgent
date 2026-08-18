@@ -6,7 +6,7 @@
 
 This document records the **actual Phase 1 implementation history** as verified from Git commits and the current repository state. It does **not** modify or replace Phase 0 architecture decisions.
 
-**Layering (established in M1, preserved through M4):**
+**Layering (established in M1, preserved through M5):**
 
 ```text
 api → application → domain ← infrastructure
@@ -21,7 +21,8 @@ api → application → domain ← infrastructure
 | **M1** | **COMMITTED** | `04f7a3c` | Phase 1 M1: repository bootstrap and initial skeleton |
 | **M2** | **COMMITTED** | `12e3f7b` | Phase 1 M2: persistence foundation |
 | **M3** | **COMMITTED** | `5282c4a` | Phase 1 M3: REST project API |
-| **M4** | **UNCOMMITTED** | — | Agent Foundation (working tree) |
+| **M4** | **COMMITTED** | `71486c9` | Phase 1 M4: agent foundation |
+| **M5** | **UNCOMMITTED** | — | File Ingestion Foundation (working tree) |
 
 ---
 
@@ -272,12 +273,12 @@ All M2 persistence tests remain in tree and passing at M3 commit.
 
 ## Phase 1 — Milestone 4
 
-**Status: UNCOMMITTED**
+**Status: COMMITTED**
 
 | Field | Value |
 |-------|-------|
-| **Commit** | — (not committed) |
-| **Working tree** | Implemented locally; modified + untracked files present |
+| **Commit** | `71486c9` |
+| **Message** | Phase 1 M4: agent foundation |
 
 ### 1. Objective
 
@@ -293,7 +294,7 @@ Build the **Agent Foundation** layer required for future Meta-Agent, Prompt Engi
 - Lifecycle: DRAFT / ACTIVE / ARCHIVED; one ACTIVE version per definition; ACTIVE versions immutable
 - Versioned prompt templates (historical versions retained)
 - REST API under `/api/v1/agents`
-- Backend version `0.4.0` (in uncommitted `main.py`)
+- Backend version `0.4.0`
 
 ### 3. Architecture / layers affected
 
@@ -366,9 +367,85 @@ Frontend unchanged: 1 Vitest test; production build succeeds.
 
 ### 8. Git commit / status
 
-- **NOT committed**
-- **Modified (10):** `README.md`, `docs/README.md`, `database/README.md`, `backend/app/main.py`, `backend/app/api/deps.py`, `backend/app/api/routes/v1.py`, `backend/app/application/exceptions.py`, `backend/app/application/service_factory.py`, `backend/tests/conftest.py`, `backend/tests/test_migrations_sql.py`
-- **Untracked (20):** migration `003_agent_foundation.sql`, domain/application/infrastructure/api/test files for agent foundation (per `git status` at documentation time)
+- **Committed** at `71486c9`
+
+---
+
+## Phase 1 — Milestone 5
+
+**Status: UNCOMMITTED**
+
+| Field | Value |
+|-------|-------|
+| **Commit** | — (not committed; awaiting review) |
+| **Base** | `71486c9` (M4) |
+
+### 1. Objective
+
+Establish **File Ingestion Foundation**: project-scoped file registration, secure basic upload, local filesystem storage, file metadata, type detection, parser/extraction contracts, stub parser, synchronous ingestion status tracking, and REST API — without PEM mutation or production parsers.
+
+### 2. Implementation scope
+
+- Migration `004_file_ingestion_foundation.sql` (`project_files`)
+- Domain: `ProjectFile`, ingestion types, `FileParserProtocol`, `FileStorageProtocol`, `ProjectFileRepository`
+- Infrastructure: `LocalFileStorage`, `PostgresFileRepository`, `StubTextParser`
+- Application: `FileRegistryService`, `FileIngestionService`, upload validation, file type detection
+- Config: `FILE_STORAGE_ROOT`, `MAX_UPLOAD_BYTES`
+- REST API under `/api/v1/projects/{project_id}/files`
+- Backend version `0.5.0`
+- Dependency: `python-multipart` for multipart uploads
+
+### 3. Database / migrations
+
+| Migration | Change |
+|-----------|--------|
+| `001`–`003` | Unchanged |
+| `004_file_ingestion_foundation.sql` | `project_files` with FK `project_id → projects(id) ON DELETE CASCADE` |
+
+Columns: id, project_id, filename, content_type, file_type, file_version, source, upload_time, parsing_status, extraction_status, confidence, storage_path, metadata JSONB, created_by, created_at, updated_at.
+
+Unique constraint: `(project_id, filename, file_version)`.
+
+### 4. API
+
+| Method | Path |
+|--------|------|
+| `POST` | `/api/v1/projects/{project_id}/files` |
+| `GET` | `/api/v1/projects/{project_id}/files` |
+| `GET` | `/api/v1/projects/{project_id}/files/{file_id}` |
+| `GET` | `/api/v1/projects/{project_id}/files/{file_id}/content` |
+
+Optional `X-Actor-Id` on upload. No delete/archive.
+
+### 5. Tests / verification
+
+| Area | Tests |
+|------|-------|
+| M1–M4 regression | 64 |
+| Migration 004 static | 1 |
+| File persistence | 3 |
+| Local storage | 3 |
+| Ingestion unit (detection, validation, stub parser) | 6 |
+| File services (registry, ingestion, isolation, size) | 6 |
+| File API | 5 |
+| **Total backend** | **88** (all passed) |
+
+Frontend unchanged: 1 Vitest test passed; production build succeeded.
+
+### 6. Explicit out-of-scope (M5)
+
+- PEM snapshots/revisions mutation from files
+- Production parsers (DWG, DXF, PDF, XLSX, DOCX, OCR, vision/LLM)
+- Cloud/object storage, antivirus
+- Delete/archive endpoints
+- Celery/Redis/background workers
+- Authentication/authorization
+- Project Memory, agent runtime, orchestration, LLM
+
+### 7. Git commit / status
+
+- **NOT committed** (per user instruction)
+- **Commit hash after completion:** pending user review
 
 ---
 
@@ -390,3 +467,4 @@ Phase 1 implements a subset of the approved Phase 0 stack (AG-32 FastAPI, AG-33 
 | Date | Change |
 |------|--------|
 | 2026-08-18 | Initial Phase 1 implementation history (M1–M3 committed; M4 uncommitted) |
+| 2026-08-18 | M4 committed (`71486c9`); M5 File Ingestion Foundation implemented (uncommitted) |

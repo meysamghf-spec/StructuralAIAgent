@@ -2,11 +2,11 @@
 
 AI-powered engineering platform with Structural Engineering as the initial domain. The core architecture is domain-independent and extensible for future engineering disciplines (Mechanical, Electrical, Computer, Industrial, and others).
 
-**Current status:** Phase 1 — **Milestone 4** (Agent Foundation)
+**Current status:** Phase 1 — **Milestone 5** (File Ingestion Foundation — uncommitted)
 
 Phase 0 architecture is frozen (`PHASE_0_ARCHITECTURE_ASSESSMENT.md`). AG-01 through AG-75 are resolved.
 
-Milestone 1 delivered repository bootstrap. Milestone 2 adds PostgreSQL persistence for projects, versioned PEM snapshots (JSONB), and revisions. Milestone 3 exposes project/PEM/revision operations via `/api/v1`. Milestone 4 adds the platform-scoped Agent Foundation registry (definitions, versions, capabilities, prompt templates).
+Milestone 1 delivered repository bootstrap. Milestone 2 adds PostgreSQL persistence for projects, versioned PEM snapshots (JSONB), and revisions. Milestone 3 exposes project/PEM/revision operations via `/api/v1`. Milestone 4 adds the platform-scoped Agent Foundation registry (definitions, versions, capabilities, prompt templates). Milestone 5 adds project-scoped file registration, local filesystem storage, synchronous ingestion, and a stub parser contract.
 
 ## Architecture Overview
 
@@ -25,7 +25,7 @@ engineering-ai-platform/
 
 **Layered backend:** `api` → `application` → `domain` ← `infrastructure`
 
-**Not implemented in M1–M4:** Meta-Agent runtime, Prompt Engineering Agent runtime, LLM execution, orchestration, CSI/CAD integrations, CodeEngine, CompatibilityEngine, UnitConversionService, authentication.
+**Not implemented in M1–M5:** Meta-Agent runtime, Prompt Engineering Agent runtime, LLM execution, orchestration, CSI/CAD integrations, CodeEngine, CompatibilityEngine, UnitConversionService, authentication, production file parsers (DWG/PDF/OCR).
 
 ## Prerequisites
 
@@ -48,6 +48,8 @@ Supported variables:
 | `APP_ENV` | Application environment | `development` |
 | `API_PORT` | Backend port | `8000` |
 | `DATABASE_URL` | PostgreSQL connection string | see `.env.example` |
+| `FILE_STORAGE_ROOT` | Local directory for uploaded files (outside repo) | sibling dir `structuralaiaagent_file_storage` |
+| `MAX_UPLOAD_BYTES` | Maximum upload size in bytes | `10485760` (10 MiB) |
 
 Do not commit `.env` or secrets.
 
@@ -70,6 +72,28 @@ curl http://localhost:8000/health
 ```
 
 OpenAPI docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+
+### M5 File API Examples
+
+Upload a project file (multipart form field `file`):
+
+```bash
+curl -X POST http://localhost:8000/api/v1/projects/{project_id}/files \
+  -H "X-Actor-Id: engineer-1" \
+  -F "file=@notes.txt;type=text/plain"
+```
+
+List project files:
+
+```bash
+curl http://localhost:8000/api/v1/projects/{project_id}/files
+```
+
+Download stored content:
+
+```bash
+curl -OJ http://localhost:8000/api/v1/projects/{project_id}/files/{file_id}/content
+```
 
 ### M4 Agent API Examples
 
@@ -155,32 +179,33 @@ npm test
 
 ## Database (Migrations)
 
-Milestone 2 adds `002_pem_foundation.sql` (projects, PEM snapshots, revisions). Milestone 4 adds `003_agent_foundation.sql` (agent registry). Apply when PostgreSQL is available:
+Milestone 2 adds `002_pem_foundation.sql` (projects, PEM snapshots, revisions). Milestone 4 adds `003_agent_foundation.sql` (agent registry). Milestone 5 adds `004_file_ingestion_foundation.sql` (project files). Apply when PostgreSQL is available:
 
 ```bash
 psql "$DATABASE_URL" -f database/migrations/001_bootstrap.sql
 psql "$DATABASE_URL" -f database/migrations/002_pem_foundation.sql
 psql "$DATABASE_URL" -f database/migrations/003_agent_foundation.sql
+psql "$DATABASE_URL" -f database/migrations/004_file_ingestion_foundation.sql
 ```
 
 Persistence integration tests require a reachable PostgreSQL instance (`DATABASE_URL` or `TEST_DATABASE_URL`).
 
-## Phase 1 Milestone 4 Scope
+## Phase 1 Milestone 5 Scope (uncommitted)
 
 This milestone delivers:
 
-- Platform-scoped Agent Foundation (not project-scoped)
-- Domain models: `AgentDefinition`, `AgentVersion`, `AgentCapability`, `PromptTemplate`
-- Contracts only: `AgentExecution`, `HumanApprovalGate` (no executor, no approval workflow)
-- Database migration `003_agent_foundation.sql`
-- Application services: `AgentRegistryService`, `AgentVersionService`, `PromptTemplateService`
-- REST API under `/api/v1/agents` for registry, versions, prompts
-- Lifecycle rules: DRAFT/ACTIVE/ARCHIVED; one ACTIVE version per agent; immutable ACTIVE versions
-- Versioned prompt templates (historical versions retained)
+- Project-scoped file registry (`project_files` table)
+- Local filesystem storage via `FILE_STORAGE_ROOT` (outside source tree)
+- Synchronous upload → validate → store → detect type → stub parser → status update
+- Domain contracts: `FileParserProtocol`, `FileStorageProtocol`
+- Application services: `FileRegistryService`, `FileIngestionService`
+- REST API under `/api/v1/projects/{project_id}/files`
+- M5 allowlist: `.txt` / `text/plain` only (foundation testing)
+- Backend version `0.5.0`
 
-**Not implemented:** Meta-Agent, Prompt Engineering Agent runtime, LLM execution, orchestration, authentication.
+**Not implemented:** PEM mutation from files, production parsers, delete/archive, cloud storage, background workers, authentication.
 
-**Milestone 5 has NOT started.**
+## Phase 1 Milestone 4 Scope (complete)
 
 ## Phase 1 Milestone 3 Scope (complete)
 

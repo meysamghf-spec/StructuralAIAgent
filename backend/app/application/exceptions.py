@@ -159,3 +159,61 @@ class CapabilityNotFoundError(ApplicationError):
             status_code=404,
             details={"capability_key": capability_key},
         )
+
+
+class ProjectFileNotFoundError(ApplicationError):
+    def __init__(self, project_id: UUID, file_id: UUID) -> None:
+        super().__init__(
+            "PROJECT_FILE_NOT_FOUND",
+            "Project file not found",
+            status_code=404,
+            details={"project_id": str(project_id), "file_id": str(file_id)},
+        )
+
+
+class InvalidUploadError(ApplicationError):
+    def __init__(self, message: str) -> None:
+        super().__init__(
+            "INVALID_UPLOAD",
+            message,
+            status_code=400,
+        )
+
+
+class UploadTooLargeError(ApplicationError):
+    def __init__(self, *, max_bytes: int, actual_bytes: int) -> None:
+        super().__init__(
+            "UPLOAD_TOO_LARGE",
+            "Uploaded file exceeds maximum allowed size",
+            status_code=413,
+            details={"max_bytes": max_bytes, "actual_bytes": actual_bytes},
+        )
+
+
+class UnsupportedFileTypeError(ApplicationError):
+    def __init__(self, *, filename: str, content_type: str | None) -> None:
+        super().__init__(
+            "UNSUPPORTED_FILE_TYPE",
+            "File type is not supported",
+            status_code=415,
+            details={"filename": filename, "content_type": content_type},
+        )
+
+
+class ParserNotFoundError(ApplicationError):
+    def __init__(self, *, file_type: str) -> None:
+        super().__init__(
+            "PARSER_NOT_FOUND",
+            "No parser available for detected file type",
+            status_code=500,
+            details={"file_type": file_type},
+        )
+
+
+class FileStorageError(ApplicationError):
+    def __init__(self, message: str) -> None:
+        super().__init__(
+            "FILE_STORAGE_ERROR",
+            message,
+            status_code=500,
+        )

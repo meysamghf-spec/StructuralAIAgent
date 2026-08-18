@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://postgres@127.0.0.1:5432/structuralaiaagent"
     postgres_password: SecretStr | None = None
     test_database_url: str | None = None
+    file_storage_root: str = ""
+    max_upload_bytes: int = 10 * 1024 * 1024
 
     @field_validator("database_url")
     @classmethod
@@ -58,6 +60,12 @@ class Settings(BaseSettings):
         username = parsed.username or "postgres"
         netloc = f"{username}:{password}@{host}:{port}"
         return urlunparse(parsed._replace(netloc=netloc))
+
+    @property
+    def resolved_file_storage_root(self) -> Path:
+        if self.file_storage_root.strip():
+            return Path(self.file_storage_root).expanduser().resolve()
+        return (_repo_root().parent / "structuralaiaagent_file_storage").resolve()
 
 
 @lru_cache
