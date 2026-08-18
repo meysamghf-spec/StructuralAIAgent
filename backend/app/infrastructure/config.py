@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     test_database_url: str | None = None
     file_storage_root: str = ""
     max_upload_bytes: int = 10 * 1024 * 1024
+    auto_index_files: bool = False
 
     @field_validator("database_url")
     @classmethod

@@ -8,8 +8,15 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, UploadFile, status
 from fastapi.responses import Response
 
-from app.api.deps import get_actor_id, get_file_ingestion_service, get_file_registry_service
+from app.api.deps import (
+    get_actor_id,
+    get_document_indexing_service,
+    get_file_ingestion_service,
+    get_file_registry_service,
+)
 from app.api.schemas.file import ProjectFileListResponse, ProjectFileResponse
+from app.api.schemas.project_memory import ProjectMemoryListResponse, ProjectMemoryResponse
+from app.application.document_indexing_service import DocumentIndexingService
 from app.application.file_ingestion_service import FileIngestionService
 from app.application.file_registry_service import FileRegistryService
 
@@ -54,6 +61,39 @@ def get_project_file(
 ) -> ProjectFileResponse:
     record = registry_service.get_project_file(project_id, file_id)
     return ProjectFileResponse.from_domain(record)
+
+
+@router.get("/{file_id}/memory", response_model=ProjectMemoryListResponse)
+def list_file_memories(
+    project_id: UUID,
+    file_id: UUID,
+    indexing_service: Annotated[
+        DocumentIndexingService,
+        Depends(get_document_indexing_service),
+    ],
+) -> ProjectMemoryListResponse:
+    memories = indexing_service.get_memories_for_file(project_id, file_id)
+    return ProjectMemoryListResponse(
+        memories=[ProjectMemoryResponse.from_domain(m) for m in memories]
+    )
+
+
+@router.post(
+    "/{file_id}/index",
+    status_code=status.HTTP_201_CREATED,
+    response_model=ProjectMemoryResponse,
+)
+def index_project_file(
+    project_id: UUID,
+    file_id: UUID,
+    indexing_service: Annotated[
+        DocumentIndexingService,
+        Depends(get_document_indexing_service),
+    ],
+    actor_id: Annotated[str, Depends(get_actor_id)],
+) -> ProjectMemoryResponse:
+    memory = indexing_service.index_file(project_id, file_id, created_by=actor_id)
+    return ProjectMemoryResponse.from_domain(memory)
 
 
 @router.get("/{file_id}/content")

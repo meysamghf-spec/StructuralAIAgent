@@ -1,9 +1,10 @@
+import { AppShell } from "@/components/AppShell";
 import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Engineering AI Platform",
-  description: "AI-powered engineering platform — Phase 1 Milestone 1",
+  title: "StructuralAIAgent — Engineering Workspace",
+  description: "Structural engineering AI platform workspace",
 };
 
 export default function RootLayout({
@@ -13,7 +14,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <AppShell>{children}</AppShell>
+      </body>
     </html>
   );
 }

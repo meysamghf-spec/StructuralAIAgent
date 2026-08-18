@@ -10,6 +10,10 @@ from app.application.exceptions import (
     ProjectFileNotFoundError,
     ProjectNotFoundError,
 )
+from app.application.document_indexing_service import (
+    DocumentIndexingService,
+    is_file_ready_for_indexing,
+)
 from app.application.file_type_detection import detect_file_type
 from app.application.project_service import ProjectService
 from app.application.upload_validation import validate_filename, validate_upload_size
@@ -33,12 +37,16 @@ class FileIngestionService:
         file_storage: FileStorageProtocol,
         parsers: list[FileParserProtocol],
         max_upload_bytes: int,
+        document_indexing_service: DocumentIndexingService | None = None,
+        auto_index_on_extraction: bool = False,
     ) -> None:
         self._project_service = project_service
         self._file_repository = file_repository
         self._file_storage = file_storage
         self._parsers = parsers
         self._max_upload_bytes = max_upload_bytes
+        self._document_indexing = document_indexing_service
+        self._auto_index_on_extraction = auto_index_on_extraction
 
     def ingest_upload(
         self,
@@ -111,7 +119,7 @@ class FileIngestionService:
         metadata["extraction"] = extraction.model_dump()
 
         if extraction.success:
-            return self._require_updated(
+            record = self._require_updated(
                 self._file_repository.update_statuses(
                     project_id,
                     file_id,
@@ -123,6 +131,7 @@ class FileIngestionService:
                 project_id,
                 file_id,
             )
+            return self._maybe_auto_index(project_id, record)
 
         metadata["extraction_error"] = extraction.error_message
         return self._require_updated(
@@ -143,6 +152,19 @@ class FileIngestionService:
             if parser.supports(file_type, content_type):
                 return parser
         raise ParserNotFoundError(file_type=str(file_type))
+
+    def _maybe_auto_index(self, project_id: UUID, record: ProjectFile) -> ProjectFile:
+        if (
+            self._auto_index_on_extraction
+            and self._document_indexing is not None
+            and is_file_ready_for_indexing(record)
+        ):
+            self._document_indexing.index_file(
+                project_id,
+                record.id,
+                created_by=record.created_by,
+            )
+        return record
 
     @staticmethod
     def _require_updated(

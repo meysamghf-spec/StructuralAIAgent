@@ -7,14 +7,16 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
 
-from app.api.deps import get_actor_id, get_project_service
+from app.api.deps import get_actor_id, get_project_context_assembly_service, get_project_service
 from app.api.schemas.common import ProjectResponse, RevisionResponse
 from app.api.schemas.project import (
     CreateProjectRequest,
     CreateProjectResponse,
     ProjectListResponse,
 )
+from app.api.schemas.project_context import ProjectContextAssemblyResponse
 from app.application.exceptions import ProjectNotFoundError
+from app.application.project_context_assembly_service import ProjectContextAssemblyService
 from app.application.project_service import ProjectService
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -48,6 +50,18 @@ def list_projects(
     return ProjectListResponse(
         projects=[ProjectResponse.model_validate(p.model_dump()) for p in projects]
     )
+
+
+@router.get("/{project_id}/context", response_model=ProjectContextAssemblyResponse)
+def get_project_context(
+    project_id: UUID,
+    context_service: Annotated[
+        ProjectContextAssemblyService,
+        Depends(get_project_context_assembly_service),
+    ],
+) -> ProjectContextAssemblyResponse:
+    context = context_service.assemble(project_id)
+    return ProjectContextAssemblyResponse.from_domain(context)
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)

@@ -13,7 +13,15 @@ def test_migrations_directory_contains_bootstrap_and_pem_foundation() -> None:
         "002_pem_foundation.sql",
         "003_agent_foundation.sql",
         "004_file_ingestion_foundation.sql",
+        "005_project_memory_foundation.sql",
     ]
+
+
+def test_project_memory_migration_defines_core_table() -> None:
+    sql = (get_migrations_dir() / "005_project_memory_foundation.sql").read_text(encoding="utf-8")
+    assert "CREATE TABLE IF NOT EXISTS project_memory" in sql
+    assert "REFERENCES projects(id) ON DELETE CASCADE" in sql
+    assert "('005', 'project_memory_foundation')" in sql
 
 
 def test_file_ingestion_migration_defines_project_files_table() -> None:

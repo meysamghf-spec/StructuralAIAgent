@@ -161,6 +161,16 @@ class CapabilityNotFoundError(ApplicationError):
         )
 
 
+class ProjectMemoryNotFoundError(ApplicationError):
+    def __init__(self, project_id: UUID, memory_id: UUID) -> None:
+        super().__init__(
+            "PROJECT_MEMORY_NOT_FOUND",
+            "Project memory not found",
+            status_code=404,
+            details={"project_id": str(project_id), "memory_id": str(memory_id)},
+        )
+
+
 class ProjectFileNotFoundError(ApplicationError):
     def __init__(self, project_id: UUID, file_id: UUID) -> None:
         super().__init__(
@@ -216,4 +226,102 @@ class FileStorageError(ApplicationError):
             "FILE_STORAGE_ERROR",
             message,
             status_code=500,
+        )
+
+
+class FileNotReadyForIndexingError(ApplicationError):
+    def __init__(self, project_id: UUID, file_id: UUID, *, reason: str) -> None:
+        super().__init__(
+            "FILE_NOT_READY_FOR_INDEXING",
+            "Project file is not ready for document indexing",
+            status_code=409,
+            details={
+                "project_id": str(project_id),
+                "file_id": str(file_id),
+                "reason": reason,
+            },
+        )
+
+
+class UnsupportedUnitConversionError(ApplicationError):
+    def __init__(self, *, from_unit: str, to_unit: str, quantity_type: str) -> None:
+        super().__init__(
+            "UNSUPPORTED_UNIT_CONVERSION",
+            "Unit conversion is not supported for the requested units",
+            status_code=400,
+            details={
+                "from_unit": from_unit,
+                "to_unit": to_unit,
+                "quantity_type": quantity_type,
+            },
+        )
+
+
+class CodePluginNotFoundError(ApplicationError):
+    def __init__(self, *, plugin_id: str) -> None:
+        super().__init__(
+            "CODE_PLUGIN_NOT_FOUND",
+            "Code standard plugin was not found",
+            status_code=404,
+            details={"plugin_id": plugin_id},
+        )
+
+
+class CodeCheckNotFoundError(ApplicationError):
+    def __init__(self, *, plugin_id: str, check_id: str) -> None:
+        super().__init__(
+            "CODE_CHECK_NOT_FOUND",
+            "Code check was not found for the selected plugin",
+            status_code=404,
+            details={"plugin_id": plugin_id, "check_id": check_id},
+        )
+
+
+class IntegrationAdapterNotFoundError(ApplicationError):
+    def __init__(self, *, software: str) -> None:
+        super().__init__(
+            "INTEGRATION_ADAPTER_NOT_FOUND",
+            "Integration adapter was not found",
+            status_code=404,
+            details={"software": software},
+        )
+
+
+class IntegrationOperationNotSupportedError(ApplicationError):
+    def __init__(self, *, software: str, operation: str) -> None:
+        super().__init__(
+            "INTEGRATION_OPERATION_NOT_SUPPORTED",
+            "Integration operation is not supported by the adapter",
+            status_code=400,
+            details={"software": software, "operation": operation},
+        )
+
+
+class AIProviderNotFoundError(ApplicationError):
+    def __init__(self, *, provider: str) -> None:
+        super().__init__(
+            "AI_PROVIDER_NOT_FOUND",
+            "AI provider was not found",
+            status_code=404,
+            details={"provider": provider},
+        )
+
+
+class AIModelNotSupportedError(ApplicationError):
+    def __init__(self, *, model: str, provider: str) -> None:
+        super().__init__(
+            "AI_MODEL_NOT_SUPPORTED",
+            "AI model is not supported by the selected provider",
+            status_code=400,
+            details={"model": model, "provider": provider},
+        )
+
+
+class OrchestrationTaskNotSupportedError(ApplicationError):
+    def __init__(self, *, task_type: str) -> None:
+        super().__init__(
+            "ORCHESTRATION_TASK_NOT_SUPPORTED",
+            "Orchestration task type is not supported",
+            status_code=400,
+            details={"task_type": task_type},
         )
