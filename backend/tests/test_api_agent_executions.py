@@ -74,3 +74,20 @@ def test_agent_execution_not_found_404(api_client: TestClient) -> None:
     response = api_client.get(f"/api/v1/agent-executions/{uuid4()}")
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "AGENT_EXECUTION_NOT_FOUND"
+
+
+def test_plan_agent_execution_without_running_handler(api_client: TestClient) -> None:
+    project_id = _create_project(api_client)
+    response = api_client.post(
+        "/api/v1/agent-executions/plan",
+        json={
+            "project_id": project_id,
+            "user_request": "Prepare a seismic load assessment",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["selected_agent_type"] == EngineeringAgentType.SEISMIC_AGENT.value
+    assert body["user_intent"]
+    assert body["execution_plan"]
+    assert body["generated_prompt"]

@@ -1,5 +1,6 @@
 import { ExecutionProgressStepper } from "@/components/agents/ExecutionProgressStepper";
 import { ApprovalReviewPanel } from "@/components/agents/ApprovalReviewPanel";
+import { RequestPlanPanel } from "@/components/agents/RequestPlanPanel";
 import {
   formatDate,
   getProgressLabel,
@@ -69,6 +70,10 @@ export function ExecutionHistoryList({
             </div>
 
             <ExecutionProgressStepper progress={execution.user_view.progress} />
+
+            {execution.prompt_generation ? (
+              <RequestPlanPanel plan={execution.prompt_generation} />
+            ) : null}
 
             {showReview && execution.user_view.approval_request_id ? (
               <ApprovalReviewPanel

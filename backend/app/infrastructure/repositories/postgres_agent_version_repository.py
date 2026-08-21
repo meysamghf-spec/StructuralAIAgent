@@ -222,3 +222,71 @@ class PostgresAgentVersionRepository:
                         AgentVersionStatus.ACTIVE.value,
                     ),
                 )
+
+    def update_draft(
+        self,
+        version_id: UUID,
+        *,
+        instructions: str | None = None,
+        configuration_metadata: dict | None = None,
+    ) -> AgentVersion | None:
+        existing = self.get_by_id(version_id)
+        if existing is None or existing.status != AgentVersionStatus.DRAFT:
+            return None
+
+        updated_instructions = instructions if instructions is not None else existing.instructions
+        updated_metadata = (
+            configuration_metadata
+            if configuration_metadata is not None
+            else existing.configuration_metadata
+        )
+
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE agent_versions
+                    SET instructions = %s, configuration_metadata = %s::jsonb
+                    WHERE id = %s AND status = %s
+                    RETURNING
+                        id,
+                        agent_definition_id,
+                        version,
+                        instructions,
+                        configuration_metadata,
+                        status,
+                        created_at,
+                        created_by
+                    """,
+                    (
+                        updated_instructions,
+                        json.dumps(updated_metadata),
+                        version_id,
+                        AgentVersionStatus.DRAFT.value,
+                    ),
+                )
+                row = cur.fetchone()
+        if not row:
+            return None
+        row["status"] = AgentVersionStatus(row["status"])
+        return AgentVersion.model_validate(row)
+
+    def replace_capabilities(self, agent_version_id: UUID, capability_ids: list[UUID]) -> None:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    DELETE FROM agent_version_capabilities
+                    WHERE agent_version_id = %s
+                    """,
+                    (agent_version_id,),
+                )
+                for capability_id in capability_ids:
+                    cur.execute(
+                        """
+                        INSERT INTO agent_version_capabilities (agent_version_id, capability_id)
+                        VALUES (%s, %s)
+                        ON CONFLICT DO NOTHING
+                        """,
+                        (agent_version_id, capability_id),
+                    )

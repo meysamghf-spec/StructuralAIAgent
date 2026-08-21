@@ -1,10 +1,5 @@
-import WorkspacePlaceholder from "@/components/WorkspacePlaceholder";
+import AnalysisWorkspaceClient from "./AnalysisWorkspaceClient";
 
 export default function AnalysisWorkspacePage() {
-  return (
-    <WorkspacePlaceholder
-      title="Analysis"
-      description="Structural analysis workflows, load combinations, and integration with ETABS, SAP2000, and SAFE."
-    />
-  );
+  return <AnalysisWorkspaceClient />;
 }

@@ -21,6 +21,33 @@ class IntegrationService:
     def list_adapters(self) -> list[IntegrationResult]:
         return [adapter.get_status() for adapter in self._adapters.values()]
 
+    def detect_capabilities(self) -> list:
+        reports = []
+        for adapter in self._adapters.values():
+            if hasattr(adapter, "detect_capability"):
+                reports.append(adapter.detect_capability())
+            else:
+                status = adapter.get_status()
+                reports.append(status)
+        return reports
+
+    def get_adapter(self, software: IntegrationSoftware) -> Any:
+        return self._get_adapter(software)
+
+    @staticmethod
+    def build_request(
+        project_id: UUID,
+        software: IntegrationSoftware,
+        operation: IntegrationOperation,
+        parameters: dict[str, Any],
+    ) -> IntegrationRequest:
+        return IntegrationRequest(
+            project_id=project_id,
+            software=software,
+            operation=operation,
+            parameters=parameters,
+        )
+
     def execute(self, request: IntegrationRequest) -> IntegrationResult:
         adapter = self._get_adapter(request.software)
         if not adapter.supports_operation(request.operation):
@@ -34,6 +61,32 @@ class IntegrationService:
 
         if request.operation == IntegrationOperation.STATUS:
             return adapter.get_status()
+        if request.operation == IntegrationOperation.DETECT:
+            if hasattr(adapter, "detect_capability"):
+                report = adapter.detect_capability()
+                from app.domain.models.integration import IntegrationOperationStatus
+
+                status = IntegrationOperationStatus.REQUIRES_LOCAL_SOFTWARE
+                if report.availability.value == "AVAILABLE":
+                    status = IntegrationOperationStatus.SUCCESS
+                elif report.availability.value == "NOT_INSTALLED":
+                    status = IntegrationOperationStatus.NOT_INSTALLED
+                elif report.availability.value == "VERSION_MISMATCH":
+                    status = IntegrationOperationStatus.VERSION_MISMATCH
+                elif report.availability.value == "NOT_ACCESSIBLE":
+                    status = IntegrationOperationStatus.NOT_ACCESSIBLE
+                return IntegrationResult(
+                    software=request.software,
+                    operation=request.operation,
+                    status=status,
+                    message=report.message,
+                    metadata=report.model_dump(mode="json"),
+                )
+            return adapter.get_status()
+        if request.operation == IntegrationOperation.CONNECT:
+            return adapter.connect(project_id)
+        if request.operation == IntegrationOperation.DISCONNECT:
+            return adapter.disconnect(project_id)
         if request.operation == IntegrationOperation.IMPORT_MODEL:
             return adapter.import_model(project_id, source_path=params.get("source_path", ""))
         if request.operation == IntegrationOperation.EXPORT_MODEL:

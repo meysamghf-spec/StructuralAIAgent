@@ -9,6 +9,8 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
 
+from app.domain.models.pem_structural import StructuralModel, create_empty_structural_model
+
 
 class Jurisdiction(StrEnum):
     US = "US"
@@ -149,6 +151,7 @@ class ProjectEngineeringModel(BaseModel):
     validation_results: list[Any] = Field(default_factory=list)
     decisions: list[Any] = Field(default_factory=list)
     assumptions: list[Any] = Field(default_factory=list)
+    structural_model: StructuralModel = Field(default_factory=create_empty_structural_model)
 
 
 def create_software_default_code_configuration() -> CodeConfiguration:

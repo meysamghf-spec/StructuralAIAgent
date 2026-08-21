@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     max_upload_bytes: int = 10 * 1024 * 1024
     auto_index_files: bool = False
 
+    crypto_payment_gateway: str = "mock"
+    crypto_payment_allow_mock_in_production: bool = False
+    crypto_payment_webhook_secret: SecretStr | None = None
+
     @field_validator("database_url")
     @classmethod
     def validate_database_url(cls, value: str) -> str:

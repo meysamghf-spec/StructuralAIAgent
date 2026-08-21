@@ -46,6 +46,15 @@ def db_session(database_ready: str, monkeypatch: pytest.MonkeyPatch) -> Generato
             cur.execute(
                 """
                 TRUNCATE TABLE
+                    payment_audit_events,
+                    upgrade_entitlements,
+                    crypto_payments,
+                    cad_drawings,
+                    engineering_result_sets,
+                    integration_executions,
+                    optimization_runs,
+                    design_runs,
+                    analysis_runs,
                     agent_executions,
                     report_versions,
                     reports,
@@ -76,7 +85,7 @@ def project_service(db_session: str) -> ProjectService:
 @pytest.fixture
 def api_client(db_session: str, tmp_path, monkeypatch: pytest.MonkeyPatch) -> Generator:
     storage_root = tmp_path / "file_storage"
-    storage_root.mkdir()
+    storage_root.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("FILE_STORAGE_ROOT", str(storage_root))
     get_settings.cache_clear()
 
@@ -91,7 +100,7 @@ def api_client(db_session: str, tmp_path, monkeypatch: pytest.MonkeyPatch) -> Ge
 @pytest.fixture
 def file_storage_root(tmp_path, monkeypatch: pytest.MonkeyPatch) -> Path:
     storage_root = tmp_path / "file_storage"
-    storage_root.mkdir()
+    storage_root.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("FILE_STORAGE_ROOT", str(storage_root))
     get_settings.cache_clear()
     return storage_root

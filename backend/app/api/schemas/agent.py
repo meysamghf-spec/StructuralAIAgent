@@ -23,6 +23,7 @@ class CreateAgentRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: str | None = None
     agent_type: EngineeringAgentType | None = None
+    project_id: UUID | None = None
     configuration: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -32,6 +33,7 @@ class AgentDefinitionResponse(BaseModel):
     name: str
     description: str | None = None
     agent_type: EngineeringAgentType | None = None
+    project_id: UUID | None = None
     status: AgentDefinitionStatus
     current_version: int | None = None
     configuration: dict[str, Any] = Field(default_factory=dict)

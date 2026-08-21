@@ -51,6 +51,72 @@ class PemNotFoundError(ApplicationError):
             )
 
 
+class PemValidationError(ApplicationError):
+    def __init__(self, project_id: UUID, validation_report) -> None:
+        super().__init__(
+            "PEM_VALIDATION_FAILED",
+            "Project engineering model failed validation",
+            status_code=400,
+            details={
+                "project_id": str(project_id),
+                "overall_status": validation_report.overall_status.value,
+                "findings": [finding.model_dump(mode="json") for finding in validation_report.findings],
+            },
+        )
+
+
+class AnalysisRunNotFoundError(ApplicationError):
+    def __init__(self, project_id: UUID, run_id: UUID) -> None:
+        super().__init__(
+            "ANALYSIS_RUN_NOT_FOUND",
+            "Analysis run not found",
+            status_code=404,
+            details={
+                "project_id": str(project_id),
+                "run_id": str(run_id),
+            },
+        )
+
+
+class DesignRunNotFoundError(ApplicationError):
+    def __init__(self, project_id: UUID, run_id: UUID) -> None:
+        super().__init__(
+            "DESIGN_RUN_NOT_FOUND",
+            "Design run not found",
+            status_code=404,
+            details={
+                "project_id": str(project_id),
+                "run_id": str(run_id),
+            },
+        )
+
+
+class IntegrationExecutionNotFoundError(ApplicationError):
+    def __init__(self, project_id: UUID, execution_id: UUID) -> None:
+        super().__init__(
+            "INTEGRATION_EXECUTION_NOT_FOUND",
+            "Integration execution not found",
+            status_code=404,
+            details={
+                "project_id": str(project_id),
+                "execution_id": str(execution_id),
+            },
+        )
+
+
+class OptimizationRunNotFoundError(ApplicationError):
+    def __init__(self, project_id: UUID, run_id: UUID) -> None:
+        super().__init__(
+            "OPTIMIZATION_RUN_NOT_FOUND",
+            "Optimization run not found",
+            status_code=404,
+            details={
+                "project_id": str(project_id),
+                "run_id": str(run_id),
+            },
+        )
+
+
 class RevisionNotFoundError(ApplicationError):
     def __init__(self, project_id: UUID, revision_number: int) -> None:
         super().__init__(
@@ -181,6 +247,40 @@ class CapabilityNotFoundError(ApplicationError):
         )
 
 
+class AgentBuilderInvalidStateError(ApplicationError):
+    def __init__(self, message: str, *, details: dict | None = None) -> None:
+        super().__init__(
+            "AGENT_BUILDER_INVALID_STATE",
+            message,
+            status_code=400,
+            details=details or {},
+        )
+
+
+class AgentBuilderValidationFailedError(ApplicationError):
+    def __init__(self, agent_id: UUID, version: int, validation) -> None:
+        super().__init__(
+            "AGENT_BUILDER_VALIDATION_FAILED",
+            "Agent version failed validation",
+            status_code=400,
+            details={
+                "agent_id": str(agent_id),
+                "version": version,
+                "issues": [issue.model_dump() for issue in validation.issues],
+            },
+        )
+
+
+class ProjectAgentScopeError(ApplicationError):
+    def __init__(self, agent_id: UUID, project_id: UUID) -> None:
+        super().__init__(
+            "PROJECT_AGENT_SCOPE_MISMATCH",
+            "Assistant does not belong to the selected project",
+            status_code=403,
+            details={"agent_id": str(agent_id), "project_id": str(project_id)},
+        )
+
+
 class ProjectMemoryNotFoundError(ApplicationError):
     def __init__(self, project_id: UUID, memory_id: UUID) -> None:
         super().__init__(
@@ -307,6 +407,32 @@ class IntegrationAdapterNotFoundError(ApplicationError):
         )
 
 
+class EngineeringResultNotFoundError(ApplicationError):
+    def __init__(self, project_id: UUID, result_set_id: UUID) -> None:
+        super().__init__(
+            "ENGINEERING_RESULT_NOT_FOUND",
+            "Engineering result set was not found",
+            status_code=404,
+            details={
+                "project_id": str(project_id),
+                "result_set_id": str(result_set_id),
+            },
+        )
+
+
+class CadDrawingNotFoundError(ApplicationError):
+    def __init__(self, project_id: UUID, drawing_id: UUID) -> None:
+        super().__init__(
+            "CAD_DRAWING_NOT_FOUND",
+            "CAD drawing was not found",
+            status_code=404,
+            details={
+                "project_id": str(project_id),
+                "drawing_id": str(drawing_id),
+            },
+        )
+
+
 class IntegrationOperationNotSupportedError(ApplicationError):
     def __init__(self, *, software: str, operation: str) -> None:
         super().__init__(
@@ -393,4 +519,92 @@ class ReportNotFoundError(ApplicationError):
             "Report not found",
             status_code=404,
             details=details,
+        )
+
+
+class UpgradeProductNotFoundError(ApplicationError):
+    def __init__(self, product_id: str) -> None:
+        super().__init__(
+            "UPGRADE_PRODUCT_NOT_FOUND",
+            "Upgrade product not found",
+            status_code=404,
+            details={"upgrade_product_id": product_id},
+        )
+
+
+class PaymentNotFoundError(ApplicationError):
+    def __init__(self, payment_id: UUID) -> None:
+        super().__init__(
+            "PAYMENT_NOT_FOUND",
+            "Payment not found",
+            status_code=404,
+            details={"payment_id": str(payment_id)},
+        )
+
+
+class PaymentAuthorizationError(ApplicationError):
+    def __init__(self, payment_id: UUID) -> None:
+        super().__init__(
+            "PAYMENT_FORBIDDEN",
+            "You are not authorized to access this payment",
+            status_code=403,
+            details={"payment_id": str(payment_id)},
+        )
+
+
+class UnsupportedPaymentCurrencyError(ApplicationError):
+    def __init__(self, currency: str) -> None:
+        super().__init__(
+            "UNSUPPORTED_PAYMENT_CURRENCY",
+            "Payment currency is not supported",
+            status_code=400,
+            details={"currency": currency},
+        )
+
+
+class UnsupportedPaymentNetworkError(ApplicationError):
+    def __init__(self, currency: str, network: str) -> None:
+        super().__init__(
+            "UNSUPPORTED_PAYMENT_NETWORK",
+            "Payment network is not supported for the selected currency",
+            status_code=400,
+            details={"currency": currency, "network": network},
+        )
+
+
+class DuplicatePaymentTransactionError(ApplicationError):
+    def __init__(self, transaction_hash: str, network: str) -> None:
+        super().__init__(
+            "DUPLICATE_PAYMENT_TRANSACTION",
+            "Transaction hash has already been used for a payment",
+            status_code=409,
+            details={"transaction_hash": transaction_hash, "network": network},
+        )
+
+
+class InvalidWebhookSignatureError(ApplicationError):
+    def __init__(self) -> None:
+        super().__init__(
+            "INVALID_WEBHOOK_SIGNATURE",
+            "Webhook signature verification failed",
+            status_code=401,
+        )
+
+
+class PaymentStateError(ApplicationError):
+    def __init__(self, message: str, *, payment_id: UUID, status: str) -> None:
+        super().__init__(
+            "INVALID_PAYMENT_STATE",
+            message,
+            status_code=409,
+            details={"payment_id": str(payment_id), "status": status},
+        )
+
+
+class PaymentConfigurationError(ApplicationError):
+    def __init__(self, message: str) -> None:
+        super().__init__(
+            "PAYMENT_CONFIGURATION_ERROR",
+            message,
+            status_code=503,
         )

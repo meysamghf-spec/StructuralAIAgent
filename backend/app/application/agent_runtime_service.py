@@ -103,7 +103,7 @@ class AgentRuntimeService:
             )
             agent_definition = self._resolve_agent_by_type(prompt_result.selected_agent_type)
 
-        agent_version = self._resolve_agent_version(agent_definition)
+        agent_version = self._resolve_agent_version(agent_definition, request)
         handler = self._resolve_handler(agent_definition)
 
         input_request = {
@@ -225,6 +225,14 @@ class AgentRuntimeService:
     def list_executions(self, project_id: UUID, *, limit: int = 100) -> list[AgentExecutionRecord]:
         return self._executions.list_for_project(project_id, limit=limit)
 
+    def plan_request(self, *, project_id: UUID, user_request: str) -> PromptGenerationResult:
+        context_assembly = self._context.assemble(project_id)
+        context_snapshot = self._build_scoped_context(context_assembly)
+        return self._prompt_generation.generate(
+            user_request=user_request,
+            context_summary=context_snapshot,
+        )
+
     def _resolve_agent_by_type(self, agent_type: EngineeringAgentType) -> AgentDefinition:
         definition = self._definitions.get_by_agent_type(agent_type)
         if definition is not None:
@@ -237,7 +245,17 @@ class AgentRuntimeService:
             configuration={"auto_provisioned": True},
         )
 
-    def _resolve_agent_version(self, definition: AgentDefinition) -> int:
+    def _resolve_agent_version(
+        self,
+        definition: AgentDefinition,
+        request: AgentExecutionRequest,
+    ) -> int:
+        override = request.parameters.get("agent_version_override")
+        if request.parameters.get("builder_test_mode") and isinstance(override, int):
+            return override
+        if request.parameters.get("builder_test_mode") and isinstance(override, str) and override.isdigit():
+            return int(override)
+
         if definition.current_version is not None:
             return definition.current_version
         active = self._versions.get_active_for_definition(definition.id)
@@ -259,6 +277,23 @@ class AgentRuntimeService:
             return AgentValidationStatus.ERROR
         if orchestration_status in {"WARNING", "WARN"}:
             return AgentValidationStatus.WARNING
+
+        capability_status = str(agent_result.validation_information.get("capability_status", "")).upper()
+        if capability_status in {"NOT_IMPLEMENTED", "NOT_AVAILABLE", "REQUIRES_LOCAL_SOFTWARE", "FAILED"}:
+            return AgentValidationStatus.REQUIRES_ENGINEER_REVIEW
+        if capability_status in {"ERROR", "FAIL"}:
+            return AgentValidationStatus.ERROR
+        if capability_status in {"WARNING", "WARN"}:
+            return AgentValidationStatus.WARNING
+
+        validation_status = agent_result.validation_information.get("validation_status")
+        if validation_status == "ERROR":
+            return AgentValidationStatus.ERROR
+        if validation_status in {"WARNING", "REQUIRES_ENGINEER_REVIEW"}:
+            return AgentValidationStatus.WARNING
+        if validation_status == "PASS":
+            return AgentValidationStatus.PASS
+
         if agent_result.validation_information.get("stub"):
             return AgentValidationStatus.REQUIRES_ENGINEER_REVIEW
         if agent_result.confidence is not None and agent_result.confidence < 0.5:

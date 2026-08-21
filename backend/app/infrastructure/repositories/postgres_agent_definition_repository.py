@@ -9,7 +9,7 @@ from app.domain.models.agent import AgentDefinition, AgentDefinitionStatus, Engi
 from app.infrastructure.database.connection import get_connection
 
 _DEFINITION_COLUMNS = """
-    id, key, name, description, agent_type, status,
+    id, key, name, description, agent_type, project_id, status,
     current_version, configuration, created_at, updated_at
 """
 
@@ -31,6 +31,7 @@ class PostgresAgentDefinitionRepository:
         description: str | None = None,
         agent_type: EngineeringAgentType | None = None,
         configuration: dict | None = None,
+        project_id: UUID | None = None,
     ) -> AgentDefinition:
         config_payload = configuration or {}
         with get_connection() as conn:
@@ -38,9 +39,9 @@ class PostgresAgentDefinitionRepository:
                 cur.execute(
                     f"""
                     INSERT INTO agent_definitions (
-                        key, name, description, agent_type, status, configuration
+                        key, name, description, agent_type, project_id, status, configuration
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s::jsonb)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb)
                     RETURNING {_DEFINITION_COLUMNS}
                     """,
                     (
@@ -48,6 +49,7 @@ class PostgresAgentDefinitionRepository:
                         name,
                         description,
                         agent_type.value if agent_type else None,
+                        project_id,
                         AgentDefinitionStatus.DRAFT.value,
                         json.dumps(config_payload),
                     ),
@@ -55,6 +57,80 @@ class PostgresAgentDefinitionRepository:
                 row = cur.fetchone()
         assert row is not None
         return _row_to_definition(row)
+
+    def update(
+        self,
+        agent_id: UUID,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        agent_type: EngineeringAgentType | None = None,
+        configuration: dict | None = None,
+    ) -> AgentDefinition | None:
+        existing = self.get_by_id(agent_id)
+        if existing is None:
+            return None
+
+        updated_name = name if name is not None else existing.name
+        updated_description = description if description is not None else existing.description
+        updated_agent_type = agent_type if agent_type is not None else existing.agent_type
+        updated_configuration = configuration if configuration is not None else existing.configuration
+
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    UPDATE agent_definitions
+                    SET
+                        name = %s,
+                        description = %s,
+                        agent_type = %s,
+                        configuration = %s::jsonb,
+                        updated_at = NOW()
+                    WHERE id = %s
+                    RETURNING {_DEFINITION_COLUMNS}
+                    """,
+                    (
+                        updated_name,
+                        updated_description,
+                        updated_agent_type.value if updated_agent_type else None,
+                        json.dumps(updated_configuration),
+                        agent_id,
+                    ),
+                )
+                row = cur.fetchone()
+        if not row:
+            return None
+        return _row_to_definition(row)
+
+    def list_for_project(self, project_id: UUID) -> list[AgentDefinition]:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT {_DEFINITION_COLUMNS}
+                    FROM agent_definitions
+                    WHERE project_id = %s
+                    ORDER BY created_at ASC
+                    """,
+                    (project_id,),
+                )
+                rows = cur.fetchall()
+        return [_row_to_definition(row) for row in rows]
+
+    def list_global(self) -> list[AgentDefinition]:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT {_DEFINITION_COLUMNS}
+                    FROM agent_definitions
+                    WHERE project_id IS NULL
+                    ORDER BY created_at ASC
+                    """
+                )
+                rows = cur.fetchall()
+        return [_row_to_definition(row) for row in rows]
 
     def get_by_id(self, agent_id: UUID) -> AgentDefinition | None:
         with get_connection() as conn:

@@ -28,7 +28,12 @@ def test_execute_etabs_status(db_session) -> None:
             operation=IntegrationOperation.STATUS,
         )
     )
-    assert result.status.value == "REQUIRES_LOCAL_SOFTWARE"
+    assert result.status.value in {
+        "REQUIRES_LOCAL_SOFTWARE",
+        "NOT_INSTALLED",
+        "NOT_ACCESSIBLE",
+        "VERSION_MISMATCH",
+    }
 
 
 def test_stub_ai_gateway_complete() -> None:

@@ -77,6 +77,14 @@ class PromptGenerationResult(BaseModel):
     context_requirements: list[str] = Field(default_factory=list)
     constraints: dict[str, Any] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    user_intent: str = ""
+    engineering_objectives: list[str] = Field(default_factory=list)
+    required_inputs: list[str] = Field(default_factory=list)
+    missing_information: list[str] = Field(default_factory=list)
+    relevant_context: dict[str, Any] = Field(default_factory=dict)
+    deterministic_services: list[str] = Field(default_factory=list)
+    execution_plan: list[dict[str, Any]] = Field(default_factory=list)
+    preserved_constraints: list[str] = Field(default_factory=list)
 
 
 # Backward-compatible contract alias used by earlier milestones.

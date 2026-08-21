@@ -418,6 +418,118 @@ a {
   font-size: 0.95rem;
 }
 
+.workspace-list,
+.trace-list {
+  list-style: none;
+  display: grid;
+  gap: 1rem;
+}
+
+.workspace-list-item {
+  display: grid;
+  gap: 0.85rem;
+  padding: 0.85rem 0;
+  border-bottom: 1px solid #334155;
+}
+
+.workspace-list-item.compact {
+  gap: 0.35rem;
+}
+
+.trace-item {
+  padding: 0.85rem 0;
+  border-bottom: 1px solid #334155;
+}
+
+.trace-flow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+  color: #e2e8f0;
+}
+
+.trace-arrow {
+  color: #64748b;
+}
+
+.plan-panel {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #334155;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.plan-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.plan-list.numbered {
+  list-style: decimal;
+}
+
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.button.secondary {
+  background: #1e293b;
+  border: 1px solid #475569;
+}
+
+.alert.success {
+  background: #14532d;
+  border: 1px solid #166534;
+  color: #dcfce7;
+}
+
+.builder-form,
+.builder-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.builder-grid {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  margin-top: 1rem;
+}
+
+.checkbox-grid {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.checkbox-line {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: #93c5fd;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.form-actions.align-end {
+  align-items: end;
+}
+
+.progress-badge.progress-tested,
+.progress-badge.progress-review,
+.progress-badge.progress-inactive {
+  background: #334155;
+}
+
 @media (max-width: 960px) {
   .shell {
     grid-template-columns: 1fr;

@@ -26,7 +26,9 @@ _TO_SI: dict[EngineeringQuantityType, dict[str, float]] = {
     },
     EngineeringQuantityType.MOMENT: {
         "n·m": 1.0,
+        "n-m": 1.0,
         "kn·m": 1000.0,
+        "kn-m": 1000.0,
         "kip-ft": 1355.8179483,
         "kip-in": 112.984829025,
     },

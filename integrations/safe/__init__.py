@@ -1,1 +1,5 @@
-"""SAFE adapter boundary (AG-40: SAFE 23) — not connected in M1."""
+"""SAFE adapter boundary (SAFE 23)."""
+
+from app.infrastructure.integrations.csi_structural_adapter import SafeAdapter
+
+__all__ = ["SafeAdapter"]

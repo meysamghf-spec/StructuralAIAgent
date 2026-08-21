@@ -8,9 +8,12 @@ import {
   createAgentExecution,
   listAgentExecutions,
   listAgents,
+  planAgentExecution,
   type AgentExecutionSummary,
   type ProjectListResponse,
+  type PromptGenerationResult,
 } from "@/lib/api";
+import { RequestPlanPanel } from "@/components/agents/RequestPlanPanel";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
@@ -25,6 +28,8 @@ export default function AgentsWorkspaceClient() {
   const [requestText, setRequestText] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [planning, setPlanning] = useState(false);
+  const [requestPlan, setRequestPlan] = useState<PromptGenerationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [assistants, setAssistants] = useState(buildAssistantProfiles([]));
 
@@ -78,6 +83,22 @@ export default function AgentsWorkspaceClient() {
     }
   }
 
+  async function handlePreviewPlan() {
+    if (!selectedProjectId || !requestText.trim()) {
+      return;
+    }
+    setPlanning(true);
+    setError(null);
+    try {
+      const plan = await planAgentExecution(selectedProjectId, requestText.trim());
+      setRequestPlan(plan);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to preview request plan");
+    } finally {
+      setPlanning(false);
+    }
+  }
+
   async function handleSubmitRequest(event: FormEvent) {
     event.preventDefault();
     if (!selectedProjectId || !requestText.trim()) {
@@ -91,6 +112,7 @@ export default function AgentsWorkspaceClient() {
         user_request: requestText.trim(),
       });
       setRequestText("");
+      setRequestPlan(null);
       await refreshExecutions(selectedProjectId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to submit request");
@@ -145,14 +167,28 @@ export default function AgentsWorkspaceClient() {
             className="input request-input"
             placeholder="Example: Review the lateral load assumptions for the steel moment frame."
             value={requestText}
-            onChange={(event) => setRequestText(event.target.value)}
+            onChange={(event) => {
+              setRequestText(event.target.value);
+              setRequestPlan(null);
+            }}
             rows={4}
             disabled={!selectedProjectId || submitting}
           />
-          <button className="button" type="submit" disabled={!selectedProjectId || submitting}>
-            {submitting ? "Submitting…" : "Send request"}
-          </button>
+          <div className="form-actions">
+            <button
+              className="button secondary"
+              type="button"
+              disabled={!selectedProjectId || planning || submitting}
+              onClick={() => void handlePreviewPlan()}
+            >
+              {planning ? "Understanding…" : "Preview understanding"}
+            </button>
+            <button className="button" type="submit" disabled={!selectedProjectId || submitting}>
+              {submitting ? "Submitting…" : "Send request"}
+            </button>
+          </div>
         </form>
+        {requestPlan ? <RequestPlanPanel plan={requestPlan} /> : null}
       </section>
 
       {error ? <div className="alert error">{error}</div> : null}

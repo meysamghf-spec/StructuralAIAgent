@@ -7,6 +7,7 @@ from typing import Any
 from uuid import UUID
 
 from app.application.exceptions import ProjectNotFoundError, ReportNotFoundError
+from app.application.engineering_result_service import EngineeringResultService
 from app.application.human_approval_service import HumanApprovalService
 from app.application.project_context_assembly_service import ProjectContextAssemblyService
 from app.application.traceability_service import TraceabilityService
@@ -27,7 +28,13 @@ from app.domain.models.reporting import (
 )
 from app.domain.models.traceability import TraceObjectType, TraceabilityRelationshipType
 from app.domain.report_templates import get_report_template
-from app.domain.repositories.protocols import ProjectRepository, ReportRepository
+from app.domain.repositories.protocols import (
+    AnalysisRepository,
+    DesignRepository,
+    OptimizationRepository,
+    ProjectRepository,
+    ReportRepository,
+)
 
 
 class ReportGenerationService:
@@ -41,6 +48,10 @@ class ReportGenerationService:
         approval_service: HumanApprovalService,
         validation_service: ValidationEngineService,
         pem_service: PemService,
+        analysis_repository: AnalysisRepository | None = None,
+        design_repository: DesignRepository | None = None,
+        optimization_repository: OptimizationRepository | None = None,
+        engineering_result_service: EngineeringResultService | None = None,
     ) -> None:
         self._projects = project_repository
         self._reports = report_repository
@@ -49,6 +60,10 @@ class ReportGenerationService:
         self._approvals = approval_service
         self._validation = validation_service
         self._pem = pem_service
+        self._analysis = analysis_repository
+        self._design = design_repository
+        self._optimization = optimization_repository
+        self._engineering_results = engineering_result_service
 
     def create_report(
         self,
@@ -215,6 +230,9 @@ class ReportGenerationService:
             approvals=[item.model_dump(mode="json") for item in approvals],
             validation=validation.model_dump(mode="json"),
             pem=pem.model_dump(mode="json") if pem is not None else None,
+            analysis_runs=self._list_analysis_runs(request.project_id),
+            design_runs=self._list_design_runs(request.project_id),
+            optimization_runs=self._list_optimization_runs(request.project_id),
         )
 
         return GeneratedReportData(
@@ -235,6 +253,9 @@ class ReportGenerationService:
         approvals: list[dict[str, Any]],
         validation: dict[str, Any],
         pem: dict[str, Any] | None,
+        analysis_runs: list[dict[str, Any]] | None = None,
+        design_runs: list[dict[str, Any]] | None = None,
+        optimization_runs: list[dict[str, Any]] | None = None,
     ) -> list[ReportSection]:
         template = get_report_template(report_type)
         sections: list[ReportSection] = []
@@ -338,11 +359,24 @@ class ReportGenerationService:
                     )
                 )
             elif key == "analysis_results":
+                engineering_results = self._list_engineering_results(request.project_id)
                 sections.append(
                     ReportSection(
                         key=key,
                         title="Analysis Results",
-                        content={"analysis_models": pem.get("analysis_models", []) if pem else []},
+                        content={
+                            "analysis_runs": analysis_runs or [],
+                            "validated_engineering_results": engineering_results,
+                            "real_solver_results_available": any(
+                                item.get("engineering_results_available") for item in engineering_results
+                            ),
+                            "legacy_pem_analysis_models": pem.get("analysis_models", []) if pem else [],
+                            "solver_unavailable_message": (
+                                None
+                                if any(item.get("engineering_results_available") for item in engineering_results)
+                                else "Real solver results are not available"
+                            ),
+                        },
                     )
                 )
             elif key == "design_results":
@@ -350,7 +384,20 @@ class ReportGenerationService:
                     ReportSection(
                         key=key,
                         title="Design Results",
-                        content={"design_results": pem.get("design_results", []) if pem else []},
+                        content={
+                            "design_runs": design_runs or [],
+                            "legacy_pem_design_results": pem.get("design_results", []) if pem else [],
+                        },
+                    )
+                )
+            elif key == "optimization_results":
+                sections.append(
+                    ReportSection(
+                        key=key,
+                        title="Optimization Results",
+                        content={
+                            "optimization_runs": optimization_runs or [],
+                        },
                     )
                 )
             elif key == "validation_results":
@@ -385,6 +432,10 @@ class ReportGenerationService:
             TraceabilityRelationshipType.APPROVAL_TO_MODEL.value,
             TraceabilityRelationshipType.MODEL_TO_ANALYSIS.value,
             TraceabilityRelationshipType.ANALYSIS_TO_DESIGN.value,
+            TraceabilityRelationshipType.DESIGN_TO_OPTIMIZATION.value,
+            TraceabilityRelationshipType.ANALYSIS_TO_OPTIMIZATION.value,
+            TraceabilityRelationshipType.MODEL_TO_OPTIMIZATION.value,
+            TraceabilityRelationshipType.OPTIMIZATION_TO_REPORT.value,
             TraceabilityRelationshipType.DESIGN_TO_REPORT.value,
         ]
         present = {link.get("relationship_type") for link in graph.get("links", [])}
@@ -396,6 +447,32 @@ class ReportGenerationService:
             summary.append("VALIDATION_TO_REPORT")
         summary.append("REPORT")
         return summary
+
+    def _list_engineering_results(self, project_id: UUID) -> list[dict[str, Any]]:
+        if self._engineering_results is None:
+            return []
+        return [
+            item.model_dump(mode="json")
+            for item in self._engineering_results.list_result_sets(project_id, limit=20)
+        ]
+
+    def _list_analysis_runs(self, project_id: UUID) -> list[dict[str, Any]]:
+        if self._analysis is None:
+            return []
+        runs = self._analysis.list_runs(project_id, limit=20)
+        return [run.model_dump(mode="json") for run in runs]
+
+    def _list_design_runs(self, project_id: UUID) -> list[dict[str, Any]]:
+        if self._design is None:
+            return []
+        runs = self._design.list_runs(project_id, limit=20)
+        return [run.model_dump(mode="json") for run in runs]
+
+    def _list_optimization_runs(self, project_id: UUID) -> list[dict[str, Any]]:
+        if self._optimization is None:
+            return []
+        runs = self._optimization.list_runs(project_id, limit=20)
+        return [run.model_dump(mode="json") for run in runs]
 
     def _ensure_project_exists(self, project_id: UUID) -> None:
         if self._projects.get_by_id(project_id) is None:

@@ -14,6 +14,7 @@ REPORT_TEMPLATES: dict[ReportType, ReportTemplate] = {
             "code_configuration",
             "engineering_model",
             "design_results",
+            "optimization_results",
             "traceability_chain",
         ],
     ),

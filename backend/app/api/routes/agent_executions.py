@@ -13,10 +13,23 @@ from app.api.schemas.agent_execution import (
     AgentExecutionResponse,
     CreateAgentExecutionRequest,
 )
+from app.api.schemas.prompt_generation import PlanAgentExecutionRequest, PromptGenerationResponse
 from app.application.agent_runtime_service import AgentRuntimeService
 from app.domain.models.agent_runtime import AgentExecutionRequest
 
 router = APIRouter(prefix="/agent-executions", tags=["agent-executions"])
+
+
+@router.post("/plan", response_model=PromptGenerationResponse)
+def plan_agent_execution(
+    body: PlanAgentExecutionRequest,
+    runtime_service: Annotated[AgentRuntimeService, Depends(get_agent_runtime_service)],
+) -> PromptGenerationResponse:
+    result = runtime_service.plan_request(
+        project_id=body.project_id,
+        user_request=body.user_request,
+    )
+    return PromptGenerationResponse.from_domain(result)
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=AgentExecutionResponse)

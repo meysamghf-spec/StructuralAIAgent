@@ -1,10 +1,10 @@
 """Default integration adapter registry."""
 
-from app.infrastructure.integrations.autocad_stub_adapter import AutocadStubAdapter
-from app.infrastructure.integrations.structural_stub_adapters import (
-    EtabsStubAdapter,
-    SafeStubAdapter,
-    Sap2000StubAdapter,
+from app.infrastructure.integrations.autocad_adapter import AutocadAdapter
+from app.infrastructure.integrations.csi_structural_adapter import (
+    EtabsAdapter,
+    SafeAdapter,
+    Sap2000Adapter,
 )
 
 __all__ = ["build_integration_adapters"]
@@ -12,9 +12,9 @@ __all__ = ["build_integration_adapters"]
 
 def build_integration_adapters() -> dict[str, object]:
     adapters = [
-        EtabsStubAdapter(),
-        Sap2000StubAdapter(),
-        SafeStubAdapter(),
-        AutocadStubAdapter(),
+        EtabsAdapter(),
+        Sap2000Adapter(),
+        SafeAdapter(),
+        AutocadAdapter(),
     ]
     return {adapter.software_name: adapter for adapter in adapters}

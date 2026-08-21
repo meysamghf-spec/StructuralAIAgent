@@ -29,6 +29,9 @@ from app.domain.models.reporting import (
     ReportVersion,
     ReportVersionStatus,
 )
+from app.domain.models.analysis import AnalysisRun, AnalysisStatus
+from app.domain.models.design import DesignRun, DesignStatus
+from app.domain.models.optimization import OptimizationRun
 from app.domain.models.revision import Revision, RevisionChangeType
 
 
@@ -288,3 +291,100 @@ class ReportRepository(Protocol):
         project_id: UUID,
         report_id: UUID,
     ) -> list[ReportVersion]: ...
+
+
+class AnalysisRepository(Protocol):
+    def create_run(
+        self,
+        project_id: UUID,
+        *,
+        pem_snapshot_id: UUID,
+        pem_version: int,
+        analysis_type: str,
+        status: AnalysisStatus,
+        capability_status: str,
+        message: str,
+        inputs: dict | None = None,
+        outputs: dict | None = None,
+        model_summary: dict | None = None,
+        validation_summary: dict | None = None,
+        metadata: dict | None = None,
+        created_by: str | None = None,
+    ) -> AnalysisRun: ...
+
+    def update_run(
+        self,
+        project_id: UUID,
+        run_id: UUID,
+        *,
+        status: AnalysisStatus,
+        capability_status: str,
+        message: str,
+        outputs: dict | None = None,
+        validation_summary: dict | None = None,
+        metadata: dict | None = None,
+        completed_at: datetime | None = None,
+    ) -> AnalysisRun | None: ...
+
+    def get_run(self, project_id: UUID, run_id: UUID) -> AnalysisRun | None: ...
+
+    def list_runs(
+        self,
+        project_id: UUID,
+        *,
+        limit: int = 50,
+    ) -> list[AnalysisRun]: ...
+
+
+class DesignRepository(Protocol):
+    def create_run(
+        self,
+        project_id: UUID,
+        *,
+        pem_snapshot_id: UUID,
+        pem_version: int,
+        analysis_run_id: UUID | None,
+        design_type: str,
+        status: DesignStatus,
+        capability_status: str,
+        message: str,
+        code_edition: str | None = None,
+        inputs: dict | None = None,
+        outputs: dict | None = None,
+        model_summary: dict | None = None,
+        validation_summary: dict | None = None,
+        metadata: dict | None = None,
+        created_by: str | None = None,
+    ) -> DesignRun: ...
+
+    def update_run(
+        self,
+        project_id: UUID,
+        run_id: UUID,
+        *,
+        status: DesignStatus,
+        capability_status: str,
+        message: str,
+        outputs: dict | None = None,
+        validation_summary: dict | None = None,
+        metadata: dict | None = None,
+        completed_at: datetime | None = None,
+    ) -> DesignRun | None: ...
+
+    def get_run(self, project_id: UUID, run_id: UUID) -> DesignRun | None: ...
+
+    def list_runs(
+        self,
+        project_id: UUID,
+        *,
+        limit: int = 50,
+    ) -> list[DesignRun]: ...
+
+
+class OptimizationRepository(Protocol):
+    def list_runs(
+        self,
+        project_id: UUID,
+        *,
+        limit: int = 50,
+    ) -> list[OptimizationRun]: ...

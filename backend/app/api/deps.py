@@ -6,6 +6,7 @@ from typing import Annotated
 
 from fastapi import Header
 
+from app.application.agent_builder_service import AgentBuilderService
 from app.application.agent_registry_service import AgentRegistryService
 from app.application.agent_runtime_service import AgentRuntimeService
 from app.application.agent_version_service import AgentVersionService
@@ -13,12 +14,16 @@ from app.application.ai_gateway_service import AIGatewayService
 from app.application.analysis_engine_service import AnalysisEngineService
 from app.application.code_engine_service import CodeEngineService
 from app.application.design_engine_service import DesignEngineService
-from app.application.document_indexing_service import DocumentIndexingService
+from app.application.cad_generation_service import CadGenerationService
+from app.application.engineering_result_service import EngineeringResultService
+from app.application.optimization_engine_service import OptimizationEngineService
+from app.application.digital_payment_agent import DigitalPaymentAgent
 from app.application.file_ingestion_service import FileIngestionService
 from app.application.file_registry_service import FileRegistryService
 from app.application.human_approval_service import HumanApprovalService
 from app.application.hybrid_orchestration_service import HybridOrchestrationService
 from app.application.integration_service import IntegrationService
+from app.application.pem_model_service import PemModelService
 from app.application.pem_revision_service import PemRevisionService
 from app.application.project_context_assembly_service import ProjectContextAssemblyService
 from app.application.project_memory_service import ProjectMemoryService
@@ -28,27 +33,35 @@ from app.application.revision_service import RevisionService
 from app.application.unit_conversion_service import UnitConversionService
 from app.application.validation_engine_service import ValidationEngineService
 from app.application.traceability_service import TraceabilityService
+from app.application.structural_solver_integration_service import StructuralSolverIntegrationService
 from app.application.report_generation_service import ReportGenerationService
 from app.application.service_factory import (
+    build_agent_builder_service,
     build_agent_registry_service,
     build_agent_runtime_service,
     build_agent_version_service,
     build_ai_gateway_service,
     build_analysis_engine_service,
     build_code_engine_service,
+    build_cad_generation_service,
     build_design_engine_service,
+    build_engineering_result_service,
+    build_optimization_engine_service,
+    build_digital_payment_agent,
     build_document_indexing_service,
     build_file_ingestion_service,
     build_file_registry_service,
     build_hybrid_orchestration_service,
     build_human_approval_service,
     build_integration_service,
+    build_pem_model_service,
     build_pem_revision_service,
     build_pem_service,
     build_project_context_assembly_service,
     build_project_memory_service,
     build_project_service,
     build_prompt_template_service,
+    build_structural_solver_integration_service,
     build_report_generation_service,
     build_traceability_service,
     build_unit_conversion_service,
@@ -67,6 +80,10 @@ def get_pem_service() -> PemService:
 
 def get_pem_revision_service() -> PemRevisionService:
     return build_pem_revision_service()
+
+
+def get_pem_model_service() -> PemModelService:
+    return build_pem_model_service()
 
 
 def get_revision_service() -> RevisionService:
@@ -97,6 +114,10 @@ def get_agent_runtime_service() -> AgentRuntimeService:
 
 def get_agent_version_service() -> AgentVersionService:
     return build_agent_version_service()
+
+
+def get_agent_builder_service() -> AgentBuilderService:
+    return build_agent_builder_service()
 
 
 def get_prompt_template_service() -> PromptTemplateService:
@@ -131,6 +152,10 @@ def get_integration_service() -> IntegrationService:
     return build_integration_service()
 
 
+def get_structural_solver_integration_service() -> StructuralSolverIntegrationService:
+    return build_structural_solver_integration_service()
+
+
 def get_ai_gateway_service() -> AIGatewayService:
     return build_ai_gateway_service()
 
@@ -147,6 +172,18 @@ def get_design_engine_service() -> DesignEngineService:
     return build_design_engine_service()
 
 
+def get_optimization_engine_service() -> OptimizationEngineService:
+    return build_optimization_engine_service()
+
+
+def get_engineering_result_service() -> EngineeringResultService:
+    return build_engineering_result_service()
+
+
+def get_cad_generation_service() -> CadGenerationService:
+    return build_cad_generation_service()
+
+
 def get_human_approval_service() -> HumanApprovalService:
     return build_human_approval_service()
 
@@ -157,3 +194,7 @@ def get_traceability_service() -> TraceabilityService:
 
 def get_report_generation_service() -> ReportGenerationService:
     return build_report_generation_service()
+
+
+def get_digital_payment_agent() -> DigitalPaymentAgent:
+    return build_digital_payment_agent()

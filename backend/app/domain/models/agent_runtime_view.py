@@ -73,6 +73,12 @@ def _resolve_final_result(record: AgentExecutionRecord) -> str | None:
 
 
 def _resolve_summary(record: AgentExecutionRecord) -> str | None:
+    prompt_generation = record.prompt_generation or record.input_request.get("prompt_generation")
+    if isinstance(prompt_generation, dict):
+        user_intent = prompt_generation.get("user_intent")
+        if isinstance(user_intent, str) and user_intent.strip():
+            return user_intent.strip()
+
     user_request = record.input_request.get("user_request")
     if isinstance(user_request, str) and user_request.strip():
         return user_request.strip()

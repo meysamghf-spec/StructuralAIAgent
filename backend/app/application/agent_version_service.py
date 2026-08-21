@@ -158,3 +158,73 @@ class AgentVersionService:
         agent_version = self._require_version(agent_id, version)
         if agent_version.status == AgentVersionStatus.ACTIVE:
             raise AgentVersionImmutableError(agent_id, version)
+
+    def update_draft_version(
+        self,
+        agent_id: UUID,
+        version: int,
+        *,
+        instructions: str | None = None,
+        configuration_metadata: dict | None = None,
+    ) -> AgentVersionDetail:
+        agent_version = self._require_version(agent_id, version)
+        if agent_version.status != AgentVersionStatus.DRAFT:
+            raise AgentVersionImmutableError(agent_id, version)
+
+        updated = self._versions.update_draft(
+            agent_version.id,
+            instructions=instructions,
+            configuration_metadata=configuration_metadata,
+        )
+        if updated is None:
+            raise AgentVersionImmutableError(agent_id, version)
+        return self.get_version(agent_id, version)
+
+    def replace_version_capabilities(
+        self,
+        agent_version_id: UUID,
+        capability_ids: list[UUID],
+    ) -> None:
+        self._versions.replace_capabilities(agent_version_id, capability_ids)
+
+    def deactivate_version(self, agent_id: UUID, version: int) -> AgentVersionDetail:
+        definition = self._require_definition(agent_id)
+        agent_version = self._require_version(agent_id, version)
+        if agent_version.status != AgentVersionStatus.ACTIVE:
+            raise InvalidLifecycleTransitionError(
+                "Only active versions can be deactivated",
+                details={"agent_id": str(agent_id), "version": version},
+            )
+
+        updated = self._versions.update_status(agent_version.id, AgentVersionStatus.INACTIVE)
+        assert updated is not None
+        if definition.current_version == version:
+            self._definitions.set_current_version(agent_id, None)
+        return self.get_version(agent_id, version)
+
+    def rollback_to_version(
+        self,
+        agent_id: UUID,
+        version: int,
+        *,
+        created_by: str | None = None,
+    ) -> AgentVersionDetail:
+        definition = self._require_definition(agent_id)
+        agent_version = self._require_version(agent_id, version)
+        if agent_version.status not in {
+            AgentVersionStatus.ARCHIVED,
+            AgentVersionStatus.INACTIVE,
+        }:
+            raise InvalidLifecycleTransitionError(
+                "Rollback target must be an inactive or archived version",
+                details={"agent_id": str(agent_id), "version": version},
+            )
+
+        self._versions.archive_active_for_definition(agent_id)
+        updated = self._versions.update_status(agent_version.id, AgentVersionStatus.ACTIVE)
+        assert updated is not None
+
+        if definition.status != AgentDefinitionStatus.ACTIVE:
+            self._definitions.update_status(agent_id, AgentDefinitionStatus.ACTIVE)
+        self._definitions.set_current_version(agent_id, version)
+        return self.get_version(agent_id, version)

@@ -18,6 +18,14 @@ def test_migrations_directory_contains_bootstrap_and_pem_foundation() -> None:
         "007_traceability_foundation.sql",
         "008_engineering_reporting_foundation.sql",
         "009_agent_runtime_foundation.sql",
+        "010_agent_builder_foundation.sql",
+        "011_analysis_engine_foundation.sql",
+        "012_design_engine_foundation.sql",
+        "013_optimization_engine_foundation.sql",
+        "014_external_solver_integration_foundation.sql",
+        "015_engineering_result_ingestion_foundation.sql",
+        "016_cad_drawing_foundation.sql",
+        "017_crypto_payment_foundation.sql",
     ]
 
 
@@ -94,3 +102,68 @@ def test_agent_runtime_migration_defines_core_tables() -> None:
     assert "agent_type VARCHAR(64)" in sql
     assert "REFERENCES projects(id) ON DELETE CASCADE" in sql
     assert "('009', 'agent_runtime_foundation')" in sql
+
+
+def test_agent_builder_migration_defines_builder_tables() -> None:
+    sql = (get_migrations_dir() / "010_agent_builder_foundation.sql").read_text(encoding="utf-8")
+    assert "CREATE TABLE IF NOT EXISTS agent_version_tests" in sql
+    assert "CREATE TABLE IF NOT EXISTS agent_builder_publications" in sql
+    assert "project_id UUID" in sql
+    assert "('010', 'agent_builder_foundation')" in sql
+
+
+def test_analysis_engine_migration_defines_analysis_runs_table() -> None:
+    sql = (get_migrations_dir() / "011_analysis_engine_foundation.sql").read_text(encoding="utf-8")
+    assert "CREATE TABLE IF NOT EXISTS analysis_runs" in sql
+    assert "REFERENCES projects(id) ON DELETE CASCADE" in sql
+    assert "('011', 'analysis_engine_foundation')" in sql
+
+
+def test_design_engine_migration_defines_design_runs_table() -> None:
+    sql = (get_migrations_dir() / "012_design_engine_foundation.sql").read_text(encoding="utf-8")
+    assert "CREATE TABLE IF NOT EXISTS design_runs" in sql
+    assert "REFERENCES analysis_runs(id)" in sql
+    assert "('012', 'design_engine_foundation')" in sql
+
+
+def test_optimization_engine_migration_defines_optimization_runs_table() -> None:
+    sql = (get_migrations_dir() / "013_optimization_engine_foundation.sql").read_text(encoding="utf-8")
+    assert "CREATE TABLE IF NOT EXISTS optimization_runs" in sql
+    assert "REFERENCES design_runs(id)" in sql
+    assert "REFERENCES analysis_runs(id)" in sql
+    assert "('013', 'optimization_engine_foundation')" in sql
+
+
+def test_external_solver_integration_migration_defines_integration_executions() -> None:
+    sql = (get_migrations_dir() / "014_external_solver_integration_foundation.sql").read_text(
+        encoding="utf-8"
+    )
+    assert "CREATE TABLE IF NOT EXISTS integration_executions" in sql
+    assert "REQUIRES_LOCAL_SOFTWARE" in sql
+    assert "('014', 'external_solver_integration_foundation')" in sql
+
+
+def test_engineering_result_ingestion_migration_defines_result_sets() -> None:
+    sql = (get_migrations_dir() / "015_engineering_result_ingestion_foundation.sql").read_text(
+        encoding="utf-8"
+    )
+    assert "CREATE TABLE IF NOT EXISTS engineering_result_sets" in sql
+    assert "engineering_results_available" in sql
+    assert "('015', 'engineering_result_ingestion_foundation')" in sql
+
+
+def test_cad_drawing_migration_defines_cad_drawings() -> None:
+    sql = (get_migrations_dir() / "016_cad_drawing_foundation.sql").read_text(
+        encoding="utf-8"
+    )
+    assert "CREATE TABLE IF NOT EXISTS cad_drawings" in sql
+    assert "validation_status" in sql
+    assert "('016', 'cad_drawing_foundation')" in sql
+
+
+def test_crypto_payment_migration_defines_payment_tables() -> None:
+    sql = (get_migrations_dir() / "017_crypto_payment_foundation.sql").read_text(encoding="utf-8")
+    assert "CREATE TABLE IF NOT EXISTS crypto_payments" in sql
+    assert "CREATE TABLE IF NOT EXISTS upgrade_entitlements" in sql
+    assert "CREATE TABLE IF NOT EXISTS payment_audit_events" in sql
+    assert "('017', 'crypto_payment_foundation')" in sql

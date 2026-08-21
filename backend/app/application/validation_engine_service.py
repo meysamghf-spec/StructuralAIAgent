@@ -7,6 +7,7 @@ from uuid import UUID
 from app.application.code_engine_service import CodeEngineService
 from app.application.exceptions import ProjectNotFoundError
 from app.application.project_service import PemService, ProjectService
+from app.domain.pem_validation import validate_structural_model
 from app.domain.models.validation import (
     ValidationCategory,
     ValidationFinding,
@@ -93,6 +94,8 @@ class ValidationEngineService:
                     message="PEM metadata name is empty",
                 )
             )
+
+        findings.extend(validate_structural_model(pem))
 
         return self._build_report(project_id, findings)
 

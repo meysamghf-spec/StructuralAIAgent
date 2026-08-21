@@ -1,3 +1,5 @@
+import pytest
+
 from app.infrastructure.config import Settings, get_settings
 
 
@@ -52,3 +54,22 @@ def test_settings_never_embeds_hardcoded_secrets_in_code() -> None:
     user_part = settings.database_url.split("//", 1)[1].split("@", 1)[0]
     assert user_part == "postgres"
     assert settings.postgres_password is None
+
+
+def test_production_rejects_mock_payment_gateway_without_explicit_opt_in(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("CRYPTO_PAYMENT_GATEWAY", "mock")
+    monkeypatch.delenv("CRYPTO_PAYMENT_ALLOW_MOCK_IN_PRODUCTION", raising=False)
+    get_settings.cache_clear()
+    from app.application.exceptions import PaymentConfigurationError
+    from app.application.service_factory import get_crypto_payment_gateway
+
+    import app.application.service_factory as factory
+
+    factory._payment_gateway_instance = None
+    try:
+        with pytest.raises(PaymentConfigurationError):
+            get_crypto_payment_gateway()
+    finally:
+        factory._payment_gateway_instance = None
+        get_settings.cache_clear()

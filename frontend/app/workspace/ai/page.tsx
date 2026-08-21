@@ -1,10 +1,5 @@
-import WorkspacePlaceholder from "@/components/WorkspacePlaceholder";
+import AiWorkspaceClient from "./AiWorkspaceClient";
 
 export default function AiWorkspacePage() {
-  return (
-    <WorkspacePlaceholder
-      title="AI Assistant"
-      description="Provider-agnostic AI Gateway and hybrid orchestration for engineering tasks."
-    />
-  );
+  return <AiWorkspaceClient />;
 }

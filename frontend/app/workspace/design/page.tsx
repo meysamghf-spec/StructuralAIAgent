@@ -1,10 +1,5 @@
-import WorkspacePlaceholder from "@/components/WorkspacePlaceholder";
+import DesignWorkspaceClient from "./DesignWorkspaceClient";
 
 export default function DesignWorkspacePage() {
-  return (
-    <WorkspacePlaceholder
-      title="Design"
-      description="Concrete and steel design checks driven by the project CodeConfiguration."
-    />
-  );
+  return <DesignWorkspaceClient />;
 }

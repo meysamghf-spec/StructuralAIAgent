@@ -22,6 +22,7 @@ class EngineeringAgentType(StrEnum):
     ANALYSIS_AGENT = "ANALYSIS_AGENT"
     CONCRETE_DESIGN_AGENT = "CONCRETE_DESIGN_AGENT"
     STEEL_DESIGN_AGENT = "STEEL_DESIGN_AGENT"
+    OPTIMIZATION_AGENT = "OPTIMIZATION_AGENT"
     SEISMIC_AGENT = "SEISMIC_AGENT"
     VALIDATION_AGENT = "VALIDATION_AGENT"
     CAD_AGENT = "CAD_AGENT"
@@ -33,6 +34,7 @@ class EngineeringAgentType(StrEnum):
 class AgentVersionStatus(StrEnum):
     DRAFT = "DRAFT"
     ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
     ARCHIVED = "ARCHIVED"
 
 
@@ -51,6 +53,7 @@ class AgentDefinition(BaseModel):
     name: str
     description: str | None = None
     agent_type: EngineeringAgentType | None = None
+    project_id: UUID | None = None
     status: AgentDefinitionStatus = AgentDefinitionStatus.DRAFT
     current_version: int | None = None
     configuration: dict[str, Any] = Field(default_factory=dict)

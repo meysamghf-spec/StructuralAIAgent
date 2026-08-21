@@ -42,7 +42,7 @@ def test_api_run_analysis(api_client: TestClient) -> None:
         json={"project_id": project_id, "analysis_type": "linear_static"},
     )
     assert response.status_code == 200
-    assert response.json()["status"] == "NOT_IMPLEMENTED"
+    assert response.json()["status"] == "MODEL_NOT_READY"
 
 
 def test_api_run_design(api_client: TestClient) -> None:
@@ -68,7 +68,13 @@ def test_api_integration_execute(api_client: TestClient) -> None:
         },
     )
     assert response.status_code == 200
-    assert response.json()["status"] == "REQUIRES_LOCAL_SOFTWARE"
+    assert response.json()["status"] in {
+        "REQUIRES_LOCAL_SOFTWARE",
+        "NOT_INSTALLED",
+        "NOT_ACCESSIBLE",
+        "VERSION_MISMATCH",
+        "SUCCESS",
+    }
 
 
 def test_api_analysis_unknown_project(api_client: TestClient) -> None:

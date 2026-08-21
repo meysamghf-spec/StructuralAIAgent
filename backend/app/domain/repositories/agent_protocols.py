@@ -14,6 +14,7 @@ from app.domain.models.agent import (
     EngineeringAgentType,
 )
 from app.domain.models.agent_runtime import AgentExecutionRecord, AgentExecutionStatus
+from app.domain.models.agent_builder import AgentBuilderPublicationRecord, AgentVersionTestRecord
 from app.domain.models.prompt_template import PromptTemplate, PromptTemplateStatus
 
 
@@ -26,7 +27,22 @@ class AgentDefinitionRepository(Protocol):
         description: str | None = None,
         agent_type: EngineeringAgentType | None = None,
         configuration: dict | None = None,
+        project_id: UUID | None = None,
     ) -> AgentDefinition: ...
+
+    def update(
+        self,
+        agent_id: UUID,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        agent_type: EngineeringAgentType | None = None,
+        configuration: dict | None = None,
+    ) -> AgentDefinition | None: ...
+
+    def list_for_project(self, project_id: UUID) -> list[AgentDefinition]: ...
+
+    def list_global(self) -> list[AgentDefinition]: ...
 
     def get_by_id(self, agent_id: UUID) -> AgentDefinition | None: ...
 
@@ -76,6 +92,16 @@ class AgentVersionRepository(Protocol):
     ) -> AgentVersion | None: ...
 
     def archive_active_for_definition(self, agent_definition_id: UUID) -> None: ...
+
+    def update_draft(
+        self,
+        version_id: UUID,
+        *,
+        instructions: str | None = None,
+        configuration_metadata: dict | None = None,
+    ) -> AgentVersion | None: ...
+
+    def replace_capabilities(self, agent_version_id: UUID, capability_ids: list[UUID]) -> None: ...
 
 
 class AgentCapabilityRepository(Protocol):
@@ -148,3 +174,62 @@ class AgentExecutionRepository(Protocol):
         self,
         approval_request_id: UUID,
     ) -> AgentExecutionRecord | None: ...
+
+
+class AgentVersionTestRepository(Protocol):
+    def create(
+        self,
+        *,
+        agent_definition_id: UUID,
+        agent_version: int,
+        project_id: UUID,
+        test_input: dict,
+        result: dict,
+        validation_status: str | None = None,
+        errors: list[str] | None = None,
+        execution_metadata: dict | None = None,
+        created_by: str | None = None,
+    ) -> AgentVersionTestRecord: ...
+
+    def list_for_version(
+        self,
+        agent_definition_id: UUID,
+        agent_version: int,
+        *,
+        limit: int = 50,
+    ) -> list[AgentVersionTestRecord]: ...
+
+
+class AgentBuilderPublicationRepository(Protocol):
+    def create(
+        self,
+        *,
+        agent_definition_id: UUID,
+        agent_version: int,
+        action: str,
+        status: str,
+        project_id: UUID | None = None,
+        approval_request_id: UUID | None = None,
+        metadata: dict | None = None,
+        created_by: str | None = None,
+    ) -> AgentBuilderPublicationRecord: ...
+
+    def update_status(
+        self,
+        publication_id: UUID,
+        *,
+        status: str,
+        metadata: dict | None = None,
+    ) -> AgentBuilderPublicationRecord | None: ...
+
+    def get_by_approval_request_id(
+        self,
+        approval_request_id: UUID,
+    ) -> AgentBuilderPublicationRecord | None: ...
+
+    def list_for_definition(
+        self,
+        agent_definition_id: UUID,
+        *,
+        limit: int = 50,
+    ) -> list[AgentBuilderPublicationRecord]: ...

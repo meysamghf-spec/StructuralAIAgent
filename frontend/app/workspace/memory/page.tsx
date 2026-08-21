@@ -1,10 +1,5 @@
-import WorkspacePlaceholder from "@/components/WorkspacePlaceholder";
+import MemoryWorkspaceClient from "./MemoryWorkspaceClient";
 
 export default function MemoryWorkspacePage() {
-  return (
-    <WorkspacePlaceholder
-      title="Project Memory"
-      description="Persistent requirements, assumptions, decisions, and file-linked extracted information."
-    />
-  );
+  return <MemoryWorkspaceClient />;
 }
