@@ -46,6 +46,7 @@ def test_production_requires_btcpay_configuration(monkeypatch: pytest.MonkeyPatc
         auth_allow_legacy_actor=False,
         entitlement_enforcement_enabled=True,
         auth_jwt_secret="production-test-secret-value",
+        file_storage_root="/tmp/structuralai-test-storage",
         crypto_payment_webhook_secret="webhook-secret",
     )
     with pytest.raises(PaymentConfigurationError) as exc_info:

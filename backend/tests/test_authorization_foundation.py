@@ -121,6 +121,7 @@ def test_production_requires_explicit_secure_auth_configuration(
     assert "AUTH_ALLOW_LEGACY_ACTOR must be false in production" in issues
     assert "AUTH_JWT_SECRET must be configured in production" in issues
     assert "ENTITLEMENT_ENFORCEMENT_ENABLED must be true in production" in issues
+    assert "FILE_STORAGE_ROOT must be configured in production" in issues
 
 
 def test_production_requires_entitlement_enforcement(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -129,6 +130,7 @@ def test_production_requires_entitlement_enforcement(monkeypatch: pytest.MonkeyP
     monkeypatch.setenv("PROJECT_ACCESS_ENFORCED", "true")
     monkeypatch.setenv("AUTH_ALLOW_LEGACY_ACTOR", "false")
     monkeypatch.setenv("AUTH_JWT_SECRET", "production-test-secret-value")
+    monkeypatch.setenv("FILE_STORAGE_ROOT", "/tmp/structuralai-test-storage")
     monkeypatch.setenv("ENTITLEMENT_ENFORCEMENT_ENABLED", "false")
     with pytest.raises(SecurityConfigurationError) as exc_info:
         Settings().validate_security_configuration()
@@ -141,6 +143,7 @@ def test_production_rejects_development_jwt_secret(monkeypatch: pytest.MonkeyPat
     monkeypatch.setenv("PROJECT_ACCESS_ENFORCED", "true")
     monkeypatch.setenv("AUTH_ALLOW_LEGACY_ACTOR", "false")
     monkeypatch.setenv("ENTITLEMENT_ENFORCEMENT_ENABLED", "true")
+    monkeypatch.setenv("FILE_STORAGE_ROOT", "/tmp/structuralai-test-storage")
     monkeypatch.setenv("AUTH_JWT_SECRET", "dev-only-auth-secret-change-me")
     with pytest.raises(SecurityConfigurationError):
         Settings().validate_security_configuration()

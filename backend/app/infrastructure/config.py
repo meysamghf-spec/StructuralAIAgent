@@ -78,6 +78,8 @@ class Settings(BaseSettings):
         dev_secret = "dev-only-auth-secret-change-me"
         if self.auth_jwt_secret is not None and self.auth_jwt_secret.get_secret_value() == dev_secret:
             issues.append("AUTH_JWT_SECRET must not use the development default in production")
+        if not self.file_storage_root.strip():
+            issues.append("FILE_STORAGE_ROOT must be configured in production")
         if issues:
             from app.application.exceptions import SecurityConfigurationError
 

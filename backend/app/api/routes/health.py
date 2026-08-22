@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Response, status
 
 from app.application.health_service import get_health_status, get_readiness_status
 
@@ -11,5 +11,8 @@ def health_check() -> dict[str, str]:
 
 
 @router.get("/ready")
-def readiness_check() -> dict[str, object]:
-    return get_readiness_status()
+def readiness_check(response: Response) -> dict[str, object]:
+    body = get_readiness_status()
+    if body["status"] != "ready":
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    return body

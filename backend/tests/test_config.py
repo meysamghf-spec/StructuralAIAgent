@@ -56,6 +56,23 @@ def test_settings_never_embeds_hardcoded_secrets_in_code() -> None:
     assert settings.postgres_password is None
 
 
+def test_production_requires_file_storage_root(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("AUTH_REQUIRED", "true")
+    monkeypatch.setenv("PROJECT_ACCESS_ENFORCED", "true")
+    monkeypatch.setenv("AUTH_ALLOW_LEGACY_ACTOR", "false")
+    monkeypatch.setenv("AUTH_JWT_SECRET", "production-test-secret-value")
+    monkeypatch.setenv("ENTITLEMENT_ENFORCEMENT_ENABLED", "true")
+    monkeypatch.delenv("FILE_STORAGE_ROOT", raising=False)
+    get_settings.cache_clear()
+    from app.application.exceptions import SecurityConfigurationError
+
+    with pytest.raises(SecurityConfigurationError) as exc_info:
+        get_settings()
+    assert "FILE_STORAGE_ROOT must be configured in production" in exc_info.value.details["issues"]
+    get_settings.cache_clear()
+
+
 def test_production_rejects_mock_payment_gateway_without_explicit_opt_in(monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "production")
     monkeypatch.setenv("AUTH_REQUIRED", "true")
@@ -63,6 +80,7 @@ def test_production_rejects_mock_payment_gateway_without_explicit_opt_in(monkeyp
     monkeypatch.setenv("AUTH_ALLOW_LEGACY_ACTOR", "false")
     monkeypatch.setenv("AUTH_JWT_SECRET", "production-test-secret-value")
     monkeypatch.setenv("ENTITLEMENT_ENFORCEMENT_ENABLED", "true")
+    monkeypatch.setenv("FILE_STORAGE_ROOT", "/tmp/structuralai-test-storage")
     monkeypatch.setenv("CRYPTO_PAYMENT_GATEWAY", "mock")
     monkeypatch.delenv("CRYPTO_PAYMENT_ALLOW_MOCK_IN_PRODUCTION", raising=False)
     get_settings.cache_clear()
