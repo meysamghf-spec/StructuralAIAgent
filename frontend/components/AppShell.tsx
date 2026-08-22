@@ -1,7 +1,8 @@
 "use client";
 
+import { useAuth } from "@/hooks/useAuth";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 
 const NAV_ITEMS = [
@@ -26,8 +27,26 @@ const NAV_ITEMS = [
   { href: "/workspace/ai", label: "AI Assistant" },
 ];
 
+const AUTH_PATHS = new Set(["/login", "/register"]);
+
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { user, isAuthenticated, logout } = useAuth();
+  const isAuthPage = AUTH_PATHS.has(pathname);
+
+  function handleLogout() {
+    logout();
+    router.replace("/login");
+  }
+
+  if (isAuthPage) {
+    return (
+      <div className="auth-shell">
+        <main className="content auth-content">{children}</main>
+      </div>
+    );
+  }
 
   return (
     <div className="shell">
@@ -53,6 +72,22 @@ export function AppShell({ children }: { children: ReactNode }) {
             );
           })}
         </nav>
+        <div className="sidebar-auth">
+          {isAuthenticated && user ? (
+            <>
+              <p className="sidebar-auth-label">Signed in</p>
+              <p className="sidebar-auth-user">{user.display_name ?? user.email}</p>
+              <p className="muted sidebar-auth-email">{user.email}</p>
+              <button className="button secondary sidebar-logout" type="button" onClick={handleLogout}>
+                Sign out
+              </button>
+            </>
+          ) : (
+            <p className="muted">
+              <Link href="/login">Sign in</Link>
+            </p>
+          )}
+        </div>
       </aside>
       <main className="content">{children}</main>
     </div>

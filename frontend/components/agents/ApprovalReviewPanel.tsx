@@ -1,5 +1,6 @@
 "use client";
 
+import { useAuth } from "@/hooks/useAuth";
 import { approveAgentRequest, rejectAgentRequest } from "@/lib/api";
 import { getApprovalReviewPath } from "@/lib/agent-workspace";
 import Link from "next/link";
@@ -14,7 +15,7 @@ export function ApprovalReviewPanel({
   approvalRequestId: string;
   onResolved: () => void;
 }) {
-  const [approver, setApprover] = useState("lead-engineer");
+  const { user } = useAuth();
   const [note, setNote] = useState("");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -25,7 +26,7 @@ export function ApprovalReviewPanel({
     setBusy(true);
     setError(null);
     try {
-      await approveAgentRequest(projectId, approvalRequestId, approver, note || undefined);
+      await approveAgentRequest(projectId, approvalRequestId, note || undefined);
       onResolved();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Approval failed");
@@ -43,7 +44,7 @@ export function ApprovalReviewPanel({
     setBusy(true);
     setError(null);
     try {
-      await rejectAgentRequest(projectId, approvalRequestId, approver, reason.trim());
+      await rejectAgentRequest(projectId, approvalRequestId, reason.trim());
       onResolved();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Rejection failed");
@@ -57,8 +58,9 @@ export function ApprovalReviewPanel({
       <div className="approval-panel-header">
         <strong>Review required</strong>
         <p className="muted">
-          This work needs engineer approval before results are finalized. Use the existing approval
-          workflow below.
+          This work needs engineer approval before results are finalized. Decisions are recorded
+          under your authenticated account
+          {user ? ` (${user.email})` : ""}.
         </p>
         <Link className="text-link" href={getApprovalReviewPath(projectId, approvalRequestId)}>
           Open review link
@@ -72,12 +74,6 @@ export function ApprovalReviewPanel({
           <h4>Approve</h4>
           <input
             className="input"
-            placeholder="Your name"
-            value={approver}
-            onChange={(event) => setApprover(event.target.value)}
-          />
-          <input
-            className="input"
             placeholder="Optional note"
             value={note}
             onChange={(event) => setNote(event.target.value)}
@@ -89,12 +85,6 @@ export function ApprovalReviewPanel({
 
         <form className="approval-form" onSubmit={handleReject}>
           <h4>Reject</h4>
-          <input
-            className="input"
-            placeholder="Your name"
-            value={approver}
-            onChange={(event) => setApprover(event.target.value)}
-          />
           <input
             className="input"
             placeholder="Rejection reason"

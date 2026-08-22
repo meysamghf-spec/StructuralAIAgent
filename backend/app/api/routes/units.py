@@ -6,9 +6,10 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from app.api.deps import get_unit_conversion_service
+from app.api.deps import get_current_account, get_unit_conversion_service
 from app.api.schemas.units import UnitConversionRequest, UnitConversionResponse
 from app.application.unit_conversion_service import UnitConversionService
+from app.domain.models.user import AuthenticatedAccount
 
 router = APIRouter(prefix="/units", tags=["units"])
 
@@ -17,6 +18,7 @@ router = APIRouter(prefix="/units", tags=["units"])
 def convert_units(
     body: UnitConversionRequest,
     conversion_service: Annotated[UnitConversionService, Depends(get_unit_conversion_service)],
+    _: Annotated[AuthenticatedAccount, Depends(get_current_account)],
 ) -> UnitConversionResponse:
     result = conversion_service.convert(
         body.value,

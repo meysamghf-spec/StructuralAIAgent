@@ -33,14 +33,19 @@ export function clearAuthSession(): void {
   window.localStorage.removeItem(AUTH_ACCOUNT_KEY);
 }
 
+export function hasStoredAuthToken(): boolean {
+  return getStoredAuthToken() !== null;
+}
+
 export function getAuthHeaders(): Record<string, string> {
   const headers: Record<string, string> = {};
   const token = getStoredAuthToken();
-  const accountId = getStoredAccountId();
   if (token) {
     headers.Authorization = `Bearer ${token}`;
-  } else if (accountId) {
-    headers["X-Actor-Id"] = accountId;
   }
   return headers;
+}
+
+export function getUploadAuthHeaders(): Record<string, string> {
+  return getAuthHeaders();
 }

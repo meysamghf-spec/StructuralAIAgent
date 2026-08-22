@@ -200,3 +200,55 @@ def test_owner_can_access_project_memory(
         headers=_auth_headers(token),
     )
     assert response.status_code == 200
+
+
+def test_approval_decision_uses_authenticated_account_not_request_body(
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AUTH_REQUIRED", "true")
+    get_settings.cache_clear()
+
+    token, account_id = _register(api_client, "approver@example.com")
+    project_id = _create_owned_project(api_client, token)
+
+    request_id = api_client.post(
+        "/api/v1/approvals",
+        json={
+            "project_id": project_id,
+            "requester": "spoofed-requester",
+            "target_type": "AGENT_ACTION",
+            "target_action": "agent.activate",
+            "summary": "Activate validation agent",
+        },
+        headers=_auth_headers(token),
+    ).json()["id"]
+
+    approve_response = api_client.post(
+        f"/api/v1/approvals/{request_id}/approve",
+        params={"project_id": project_id},
+        json={"approver": "spoofed-reviewer", "decision_note": "Approved"},
+        headers=_auth_headers(token),
+    )
+    assert approve_response.status_code == 200
+    body = approve_response.json()
+    assert body["requester"] == account_id
+    assert body["approver"] == account_id
+    get_settings.cache_clear()
+
+
+def test_codes_and_units_require_authentication_when_auth_required(
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AUTH_REQUIRED", "true")
+    get_settings.cache_clear()
+
+    codes_response = api_client.get("/api/v1/codes/standards")
+    units_response = api_client.post(
+        "/api/v1/units/convert",
+        json={"value": 1.0, "from_unit": "m", "to_unit": "ft", "quantity_type": "length"},
+    )
+    assert codes_response.status_code == 401
+    assert units_response.status_code == 401
+    get_settings.cache_clear()

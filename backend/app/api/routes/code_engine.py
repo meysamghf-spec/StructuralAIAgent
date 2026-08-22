@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
-from app.api.deps import get_code_engine_service
+from app.api.deps import get_code_engine_service, get_current_account
 from app.api.schemas.code_engine import (
     CodeCheckResponse,
     CodeConfigurationValidationResponse,
@@ -17,6 +17,7 @@ from app.api.schemas.code_engine import (
 )
 from app.application.code_engine_service import CodeEngineService
 from app.domain.models.pem import Jurisdiction
+from app.domain.models.user import AuthenticatedAccount
 
 router = APIRouter(prefix="/codes", tags=["codes"])
 
@@ -24,6 +25,7 @@ router = APIRouter(prefix="/codes", tags=["codes"])
 @router.get("/standards", response_model=list[StandardInfoResponse])
 def list_standards(
     code_engine: Annotated[CodeEngineService, Depends(get_code_engine_service)],
+    _: Annotated[AuthenticatedAccount, Depends(get_current_account)],
 ) -> list[StandardInfoResponse]:
     return [
         StandardInfoResponse.from_domain(item)
@@ -34,6 +36,7 @@ def list_standards(
 @router.get("/defaults", response_model=CodeDefaultsEnvelopeResponse)
 def get_code_defaults(
     code_engine: Annotated[CodeEngineService, Depends(get_code_engine_service)],
+    _: Annotated[AuthenticatedAccount, Depends(get_current_account)],
     jurisdiction: Jurisdiction = Query(default=Jurisdiction.US),
 ) -> CodeDefaultsEnvelopeResponse:
     return CodeDefaultsEnvelopeResponse.from_domain(code_engine.get_defaults(jurisdiction))
@@ -43,6 +46,7 @@ def get_code_defaults(
 def validate_code_configuration(
     body: ValidateCodeConfigurationRequest,
     code_engine: Annotated[CodeEngineService, Depends(get_code_engine_service)],
+    _: Annotated[AuthenticatedAccount, Depends(get_current_account)],
 ) -> CodeConfigurationValidationResponse:
     result = code_engine.validate_configuration(body.configuration)
     return CodeConfigurationValidationResponse.from_domain(result)
@@ -52,6 +56,7 @@ def validate_code_configuration(
 def run_code_check(
     body: RunCodeCheckRequest,
     code_engine: Annotated[CodeEngineService, Depends(get_code_engine_service)],
+    _: Annotated[AuthenticatedAccount, Depends(get_current_account)],
 ) -> CodeCheckResponse:
     result = code_engine.run_check(
         body.plugin_id,

@@ -72,6 +72,7 @@ def test_builder_create_validate_test_flow(api_client: TestClient) -> None:
     approve_response = api_client.post(
         f"/api/v1/approvals/{approval_id}/approve?project_id={project_id}",
         json={"approver": "lead-engineer"},
+        headers={"X-Actor-Id": "lead-engineer"},
     )
     assert approve_response.status_code == 200
 

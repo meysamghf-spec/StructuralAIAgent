@@ -50,9 +50,11 @@ def test_api_approve_and_history(api_client: TestClient) -> None:
         f"/api/v1/approvals/{request_id}/approve",
         params={"project_id": project_id},
         json={"approver": "reviewer-1", "decision_note": "Approved for pilot use"},
+        headers={"X-Actor-Id": "reviewer-1"},
     )
     assert approve_response.status_code == 200
     assert approve_response.json()["status"] == "APPROVED"
+    assert approve_response.json()["approver"] == "reviewer-1"
 
     history_response = api_client.get(
         "/api/v1/approvals/history",
@@ -85,6 +87,7 @@ def test_api_reject_approval(api_client: TestClient) -> None:
             "approver": "reviewer-1",
             "rejection_reason": "Exceeds client criteria",
         },
+        headers={"X-Actor-Id": "reviewer-1"},
     )
     assert reject_response.status_code == 200
     assert reject_response.json()["status"] == "REJECTED"
@@ -109,6 +112,7 @@ def test_api_cancel_approval(api_client: TestClient) -> None:
         f"/api/v1/approvals/{request_id}/cancel",
         params={"project_id": project_id},
         json={"actor": "engineer-1", "reason": "Superseded by new request"},
+        headers={"X-Actor-Id": "engineer-1"},
     )
     assert cancel_response.status_code == 200
     assert cancel_response.json()["status"] == "CANCELLED"

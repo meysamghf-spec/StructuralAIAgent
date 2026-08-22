@@ -1,4 +1,4 @@
-import { AppShell } from "@/components/AppShell";
+import { AppProviders } from "@/components/AppProviders";
 import type { Metadata } from "next";
 import "./globals.css";
 
@@ -15,7 +15,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <AppShell>{children}</AppShell>
+        <AppProviders>{children}</AppProviders>
       </body>
     </html>
   );

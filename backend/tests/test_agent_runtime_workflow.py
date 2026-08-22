@@ -33,6 +33,7 @@ def test_api_workflow_approve_agent_execution(api_client: TestClient) -> None:
         f"/api/v1/approvals/{approval_id}/approve",
         params={"project_id": project_id},
         json={"approver": "reviewer-1", "decision_note": "Approved"},
+        headers={"X-Actor-Id": "reviewer-1"},
     )
     assert approve_response.status_code == 200
 
@@ -66,6 +67,7 @@ def test_api_workflow_reject_agent_execution(api_client: TestClient) -> None:
             "approver": "reviewer-1",
             "rejection_reason": "Needs peer review first",
         },
+        headers={"X-Actor-Id": "reviewer-1"},
     )
     assert reject_response.status_code == 200
 

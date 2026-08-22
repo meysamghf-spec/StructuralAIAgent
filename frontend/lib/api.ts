@@ -1,4 +1,4 @@
-import { getAuthHeaders } from "./auth-session";
+import { getAuthHeaders, getUploadAuthHeaders } from "./auth-session";
 
 const DEFAULT_API_BASE = "http://127.0.0.1:8000";
 
@@ -6,14 +6,18 @@ export function getApiBaseUrl(): string {
   return process.env.NEXT_PUBLIC_API_URL ?? DEFAULT_API_BASE;
 }
 
+function buildJsonHeaders(extra?: HeadersInit): Record<string, string> {
+  return {
+    "Content-Type": "application/json",
+    ...getAuthHeaders(),
+    ...(extra ? (Object.fromEntries(new Headers(extra).entries()) as Record<string, string>) : {}),
+  };
+}
+
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${getApiBaseUrl()}${path}`, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...getAuthHeaders(),
-      ...(init?.headers ?? {}),
-    },
+    headers: buildJsonHeaders(init?.headers),
     cache: "no-store",
   });
 
@@ -157,7 +161,6 @@ export async function createAgentExecution(
   return apiFetch<AgentExecutionSummary>("/api/v1/agent-executions", {
     method: "POST",
     body: JSON.stringify(body),
-    headers: { "X-Actor-Id": "workspace-user" },
   });
 }
 
@@ -174,24 +177,28 @@ export async function planAgentExecution(
 export async function approveAgentRequest(
   projectId: string,
   approvalRequestId: string,
-  approver: string,
   decisionNote?: string,
 ): Promise<void> {
   await apiFetch(`/api/v1/approvals/${approvalRequestId}/approve?project_id=${projectId}`, {
     method: "POST",
-    body: JSON.stringify({ approver, decision_note: decisionNote ?? null }),
+    body: JSON.stringify({
+      approver: "authenticated-user",
+      decision_note: decisionNote ?? null,
+    }),
   });
 }
 
 export async function rejectAgentRequest(
   projectId: string,
   approvalRequestId: string,
-  approver: string,
   rejectionReason: string,
 ): Promise<void> {
   await apiFetch(`/api/v1/approvals/${approvalRequestId}/reject?project_id=${projectId}`, {
     method: "POST",
-    body: JSON.stringify({ approver, rejection_reason: rejectionReason }),
+    body: JSON.stringify({
+      approver: "authenticated-user",
+      rejection_reason: rejectionReason,
+    }),
   });
 }
 
@@ -268,7 +275,6 @@ export async function createReport(
       project_id: projectId,
       report_type: reportType,
       title,
-      created_by: "workspace-user",
     }),
   });
 }
@@ -285,7 +291,6 @@ export async function generateReportVersion(
       body: JSON.stringify({
         report_type: reportType,
         output_format: "STRUCTURED",
-        requested_by: "workspace-user",
       }),
     },
   );
@@ -316,7 +321,7 @@ export async function uploadProjectFile(projectId: string, file: File): Promise<
   const response = await fetch(`${getApiBaseUrl()}/api/v1/projects/${projectId}/files`, {
     method: "POST",
     body: formData,
-    headers: { "X-Actor-Id": "workspace-user" },
+    headers: getUploadAuthHeaders(),
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
@@ -550,7 +555,6 @@ export async function createBuilderAgent(body: {
   return apiFetch<AgentBuilderDetail>("/api/v1/agents/builder", {
     method: "POST",
     body: JSON.stringify(body),
-    headers: { "X-Actor-Id": "workspace-user" },
   });
 }
 
@@ -566,7 +570,6 @@ export async function updateBuilderDraft(
   return apiFetch<AgentBuilderDetail>(`/api/v1/agents/${agentId}/versions/${version}/draft`, {
     method: "PUT",
     body: JSON.stringify(body),
-    headers: { "X-Actor-Id": "workspace-user" },
   });
 }
 
@@ -588,7 +591,6 @@ export async function testBuilderVersion(
   return apiFetch<AgentVersionTestSummary>(`/api/v1/agents/${agentId}/versions/${version}/test`, {
     method: "POST",
     body: JSON.stringify({ project_id: projectId, user_request: userRequest }),
-    headers: { "X-Actor-Id": "workspace-user" },
   });
 }
 
@@ -602,7 +604,6 @@ export async function publishBuilderVersion(
     {
       method: "POST",
       body: JSON.stringify({ project_id: projectId }),
-      headers: { "X-Actor-Id": "workspace-user" },
     },
   );
 }
@@ -615,7 +616,6 @@ export async function rollbackBuilderAgent(
   return apiFetch<AgentBuilderPublicationSummary>(`/api/v1/agents/${agentId}/rollback`, {
     method: "POST",
     body: JSON.stringify({ project_id: projectId, target_version: targetVersion }),
-    headers: { "X-Actor-Id": "workspace-user" },
   });
 }
 

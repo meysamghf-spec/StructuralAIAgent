@@ -42,7 +42,7 @@ def create_approval_request(
     access.require_project(body.project_id, account)
     request = approval_service.create_request(
         body.project_id,
-        requester=body.requester,
+        requester=account.account_id,
         target_type=body.target_type,
         target_action=body.target_action,
         summary=body.summary,
@@ -107,11 +107,12 @@ def approve_request(
     body: ApprovalDecisionRequest,
     approval_service: Annotated[HumanApprovalService, Depends(get_human_approval_service)],
     project: Annotated[Project, Depends(get_accessible_project_from_query)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
 ) -> HumanApprovalResponse:
     request = approval_service.approve_request(
         project.id,
         request_id,
-        approver=body.approver,
+        approver=account.account_id,
         decision_note=body.decision_note,
     )
     return HumanApprovalResponse.from_domain(request)
@@ -123,11 +124,12 @@ def reject_request(
     body: ApprovalRejectRequest,
     approval_service: Annotated[HumanApprovalService, Depends(get_human_approval_service)],
     project: Annotated[Project, Depends(get_accessible_project_from_query)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
 ) -> HumanApprovalResponse:
     request = approval_service.reject_request(
         project.id,
         request_id,
-        approver=body.approver,
+        approver=account.account_id,
         rejection_reason=body.rejection_reason,
     )
     return HumanApprovalResponse.from_domain(request)
@@ -139,11 +141,12 @@ def cancel_request(
     body: ApprovalCancelRequest,
     approval_service: Annotated[HumanApprovalService, Depends(get_human_approval_service)],
     project: Annotated[Project, Depends(get_accessible_project_from_query)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
 ) -> HumanApprovalResponse:
     request = approval_service.cancel_request(
         project.id,
         request_id,
-        actor=body.actor,
+        actor=account.account_id,
         reason=body.reason,
     )
     return HumanApprovalResponse.from_domain(request)

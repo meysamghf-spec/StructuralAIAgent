@@ -17,6 +17,7 @@ import {
   getPaymentProgressMessage,
   getPaymentStatusLabel,
 } from "@/lib/upgrades-workspace";
+import { useAuth } from "@/hooks/useAuth";
 import { useCallback, useEffect, useState } from "react";
 
 function badgeClass(status: string): string {
@@ -27,6 +28,7 @@ function badgeClass(status: string): string {
 }
 
 export default function UpgradesWorkspaceClient() {
+  const { features } = useAuth();
   const [catalog, setCatalog] = useState<UpgradeCatalog | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<UpgradeProduct | null>(null);
   const [currency, setCurrency] = useState("BTC");
@@ -118,6 +120,22 @@ export default function UpgradesWorkspaceClient() {
       </section>
 
       {error ? <p className="workspace-error">{error}</p> : null}
+
+      {features ? (
+        <section className="workspace-card">
+          <h2>Your feature access</h2>
+          <p className="workspace-help">
+            Feature availability is determined by the backend entitlement service.
+          </p>
+          <ul className="workspace-list">
+            {Object.entries(features.features).map(([key, entry]) => (
+              <li key={key}>
+                <strong>{key}</strong>: {entry.available ? "Available" : entry.reason}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section className="workspace-card-grid">
         {catalog?.products.map((product) => (
