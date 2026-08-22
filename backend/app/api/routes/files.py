@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, File, UploadFile, status
 from fastapi.responses import Response
 
 from app.api.deps import (
+    get_accessible_project,
     get_actor_id,
     get_document_indexing_service,
     get_file_ingestion_service,
@@ -20,7 +21,11 @@ from app.application.document_indexing_service import DocumentIndexingService
 from app.application.file_ingestion_service import FileIngestionService
 from app.application.file_registry_service import FileRegistryService
 
-router = APIRouter(prefix="/projects/{project_id}/files", tags=["files"])
+router = APIRouter(
+    prefix="/projects/{project_id}/files",
+    tags=["files"],
+    dependencies=[Depends(get_accessible_project)],
+)
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=ProjectFileResponse)

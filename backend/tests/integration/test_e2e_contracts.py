@@ -18,7 +18,7 @@ def test_migration_017_foreign_keys_and_indexes() -> None:
 
 def test_migration_order_includes_all_foundation_files() -> None:
     files = sorted(path.name for path in get_migrations_dir().glob("*.sql"))
-    assert files[-1] == "017_crypto_payment_foundation.sql"
+    assert files[-1] == "019_agent_execution_lifecycle.sql"
     assert "001_bootstrap.sql" in files
 
 

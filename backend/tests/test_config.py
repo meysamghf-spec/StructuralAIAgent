@@ -58,6 +58,11 @@ def test_settings_never_embeds_hardcoded_secrets_in_code() -> None:
 
 def test_production_rejects_mock_payment_gateway_without_explicit_opt_in(monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("AUTH_REQUIRED", "true")
+    monkeypatch.setenv("PROJECT_ACCESS_ENFORCED", "true")
+    monkeypatch.setenv("AUTH_ALLOW_LEGACY_ACTOR", "false")
+    monkeypatch.setenv("AUTH_JWT_SECRET", "production-test-secret-value")
+    monkeypatch.setenv("ENTITLEMENT_ENFORCEMENT_ENABLED", "true")
     monkeypatch.setenv("CRYPTO_PAYMENT_GATEWAY", "mock")
     monkeypatch.delenv("CRYPTO_PAYMENT_ALLOW_MOCK_IN_PRODUCTION", raising=False)
     get_settings.cache_clear()

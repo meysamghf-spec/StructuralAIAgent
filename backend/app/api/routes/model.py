@@ -7,7 +7,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends
 
-from app.api.deps import get_actor_id, get_pem_model_service, get_project_service
+from app.api.deps import get_accessible_project, get_actor_id, get_pem_model_service
 from app.api.schemas.model import (
     AnalysisModelUpdateRequest,
     DesignParametersUpdateRequest,
@@ -23,25 +23,20 @@ from app.api.schemas.model import (
     SectionsUpdateRequest,
     SupportsUpdateRequest,
 )
-from app.application.exceptions import ProjectNotFoundError
 from app.application.pem_model_service import PemModelService
-from app.application.project_service import ProjectService
 
-router = APIRouter(prefix="/projects/{project_id}/model", tags=["model"])
-
-
-def _ensure_project(project_service: ProjectService, project_id: UUID) -> None:
-    if project_service.get_project(project_id) is None:
-        raise ProjectNotFoundError(project_id)
+router = APIRouter(
+    prefix="/projects/{project_id}/model",
+    tags=["model"],
+    dependencies=[Depends(get_accessible_project)],
+)
 
 
 @router.get("", response_model=ModelEnvelopeResponse)
 def get_current_model(
     project_id: UUID,
-    project_service: Annotated[ProjectService, Depends(get_project_service)],
     model_service: Annotated[PemModelService, Depends(get_pem_model_service)],
 ) -> ModelEnvelopeResponse:
-    _ensure_project(project_service, project_id)
     pem, version, snapshot_id = model_service.get_current_model(project_id)
     return ModelEnvelopeResponse(
         project_id=project_id,
@@ -56,20 +51,16 @@ def get_current_model(
 @router.get("/summary", response_model=ModelSummaryResponse)
 def get_model_summary(
     project_id: UUID,
-    project_service: Annotated[ProjectService, Depends(get_project_service)],
     model_service: Annotated[PemModelService, Depends(get_pem_model_service)],
 ) -> ModelSummaryResponse:
-    _ensure_project(project_service, project_id)
     return ModelSummaryResponse.from_domain(model_service.get_model_summary(project_id))
 
 
 @router.post("/validate", response_model=ModelValidationResponse)
 def validate_model(
     project_id: UUID,
-    project_service: Annotated[ProjectService, Depends(get_project_service)],
     model_service: Annotated[PemModelService, Depends(get_pem_model_service)],
 ) -> ModelValidationResponse:
-    _ensure_project(project_service, project_id)
     return ModelValidationResponse.from_domain(model_service.validate_model(project_id))
 
 
@@ -77,11 +68,9 @@ def validate_model(
 def update_geometry(
     project_id: UUID,
     body: GeometryUpdateRequest,
-    project_service: Annotated[ProjectService, Depends(get_project_service)],
     model_service: Annotated[PemModelService, Depends(get_pem_model_service)],
     actor_id: Annotated[str, Depends(get_actor_id)],
 ) -> ModelUpdateResponse:
-    _ensure_project(project_service, project_id)
     result = model_service.update_geometry(
         project_id,
         body.geometry,
@@ -96,11 +85,9 @@ def update_geometry(
 def update_materials(
     project_id: UUID,
     body: MaterialsUpdateRequest,
-    project_service: Annotated[ProjectService, Depends(get_project_service)],
     model_service: Annotated[PemModelService, Depends(get_pem_model_service)],
     actor_id: Annotated[str, Depends(get_actor_id)],
 ) -> ModelUpdateResponse:
-    _ensure_project(project_service, project_id)
     result = model_service.update_materials(
         project_id,
         body.materials,
@@ -115,11 +102,9 @@ def update_materials(
 def update_sections(
     project_id: UUID,
     body: SectionsUpdateRequest,
-    project_service: Annotated[ProjectService, Depends(get_project_service)],
     model_service: Annotated[PemModelService, Depends(get_pem_model_service)],
     actor_id: Annotated[str, Depends(get_actor_id)],
 ) -> ModelUpdateResponse:
-    _ensure_project(project_service, project_id)
     result = model_service.update_sections(
         project_id,
         body.sections,
@@ -134,11 +119,9 @@ def update_sections(
 def update_members(
     project_id: UUID,
     body: MembersUpdateRequest,
-    project_service: Annotated[ProjectService, Depends(get_project_service)],
     model_service: Annotated[PemModelService, Depends(get_pem_model_service)],
     actor_id: Annotated[str, Depends(get_actor_id)],
 ) -> ModelUpdateResponse:
-    _ensure_project(project_service, project_id)
     result = model_service.update_members(
         project_id,
         body.members,
@@ -153,11 +136,9 @@ def update_members(
 def update_supports(
     project_id: UUID,
     body: SupportsUpdateRequest,
-    project_service: Annotated[ProjectService, Depends(get_project_service)],
     model_service: Annotated[PemModelService, Depends(get_pem_model_service)],
     actor_id: Annotated[str, Depends(get_actor_id)],
 ) -> ModelUpdateResponse:
-    _ensure_project(project_service, project_id)
     result = model_service.update_supports(
         project_id,
         body.supports,
@@ -172,11 +153,9 @@ def update_supports(
 def update_load_cases(
     project_id: UUID,
     body: LoadCasesUpdateRequest,
-    project_service: Annotated[ProjectService, Depends(get_project_service)],
     model_service: Annotated[PemModelService, Depends(get_pem_model_service)],
     actor_id: Annotated[str, Depends(get_actor_id)],
 ) -> ModelUpdateResponse:
-    _ensure_project(project_service, project_id)
     result = model_service.update_load_cases(
         project_id,
         body.load_cases,
@@ -191,11 +170,9 @@ def update_load_cases(
 def update_load_combinations(
     project_id: UUID,
     body: LoadCombinationsUpdateRequest,
-    project_service: Annotated[ProjectService, Depends(get_project_service)],
     model_service: Annotated[PemModelService, Depends(get_pem_model_service)],
     actor_id: Annotated[str, Depends(get_actor_id)],
 ) -> ModelUpdateResponse:
-    _ensure_project(project_service, project_id)
     result = model_service.update_load_combinations(
         project_id,
         body.load_combinations,
@@ -210,11 +187,9 @@ def update_load_combinations(
 def update_analysis_model(
     project_id: UUID,
     body: AnalysisModelUpdateRequest,
-    project_service: Annotated[ProjectService, Depends(get_project_service)],
     model_service: Annotated[PemModelService, Depends(get_pem_model_service)],
     actor_id: Annotated[str, Depends(get_actor_id)],
 ) -> ModelUpdateResponse:
-    _ensure_project(project_service, project_id)
     result = model_service.update_analysis_model(
         project_id,
         body.analysis_model,
@@ -229,11 +204,9 @@ def update_analysis_model(
 def update_design_parameters(
     project_id: UUID,
     body: DesignParametersUpdateRequest,
-    project_service: Annotated[ProjectService, Depends(get_project_service)],
     model_service: Annotated[PemModelService, Depends(get_pem_model_service)],
     actor_id: Annotated[str, Depends(get_actor_id)],
 ) -> ModelUpdateResponse:
-    _ensure_project(project_service, project_id)
     result = model_service.update_design_parameters(
         project_id,
         body.design_parameters,

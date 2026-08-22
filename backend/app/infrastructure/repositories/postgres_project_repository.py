@@ -9,16 +9,22 @@ from app.infrastructure.database.connection import get_connection
 
 
 class PostgresProjectRepository:
-    def create(self, name: str, description: str | None = None) -> Project:
+    def create(
+        self,
+        name: str,
+        description: str | None = None,
+        *,
+        owner_account_id: str = "legacy",
+    ) -> Project:
         with get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    INSERT INTO projects (name, description)
-                    VALUES (%s, %s)
-                    RETURNING id, name, description, created_at, updated_at
+                    INSERT INTO projects (name, description, owner_account_id)
+                    VALUES (%s, %s, %s)
+                    RETURNING id, name, description, owner_account_id, created_at, updated_at
                     """,
-                    (name, description),
+                    (name, description, owner_account_id),
                 )
                 row = cur.fetchone()
         assert row is not None
@@ -29,7 +35,7 @@ class PostgresProjectRepository:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT id, name, description, created_at, updated_at
+                    SELECT id, name, description, owner_account_id, created_at, updated_at
                     FROM projects
                     WHERE id = %s
                     """,
@@ -43,10 +49,25 @@ class PostgresProjectRepository:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT id, name, description, created_at, updated_at
+                    SELECT id, name, description, owner_account_id, created_at, updated_at
                     FROM projects
                     ORDER BY created_at ASC
                     """
+                )
+                rows = cur.fetchall()
+        return [Project.model_validate(row) for row in rows]
+
+    def list_for_owner(self, owner_account_id: str) -> list[Project]:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT id, name, description, owner_account_id, created_at, updated_at
+                    FROM projects
+                    WHERE owner_account_id = %s
+                    ORDER BY created_at ASC
+                    """,
+                    (owner_account_id,),
                 )
                 rows = cur.fetchall()
         return [Project.model_validate(row) for row in rows]

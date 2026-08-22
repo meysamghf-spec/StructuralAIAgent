@@ -90,6 +90,12 @@ class PaymentService:
             )
         )
 
+        payment_metadata: dict[str, Any] = {"product_name": product.name}
+        if gateway_result.get("provider_invoice_id"):
+            payment_metadata["provider_invoice_id"] = gateway_result["provider_invoice_id"]
+        if gateway_result.get("checkout_link"):
+            payment_metadata["checkout_link"] = gateway_result["checkout_link"]
+
         payment = self._repo.create_payment(
             account_id=account_id,
             upgrade_product_id=upgrade_product_id,
@@ -108,7 +114,7 @@ class PaymentService:
             required_confirmations=option.required_confirmations,
             expires_at=expires_at,
             idempotency_key=idempotency_key,
-            metadata={"product_name": product.name},
+            metadata=payment_metadata,
         )
         self._audit(payment.id, "INVOICE_CREATED", "Upgrade invoice created", {"invoice_id": invoice_id})
         return payment
@@ -192,9 +198,17 @@ class PaymentService:
         data = json.loads(payload.decode())
         gateway_status = self._gateway.parse_webhook(data)
         invoice_id = data.get("invoice_id")
+        metadata = data.get("metadata")
+        if invoice_id is None and isinstance(metadata, dict):
+            order_id = metadata.get("orderId")
+            if isinstance(order_id, str):
+                invoice_id = order_id
         payment = None
         if isinstance(invoice_id, str):
             payment = self._repo.get_payment_by_invoice(invoice_id)
+        provider_invoice_id = data.get("invoiceId")
+        if payment is None and isinstance(provider_invoice_id, str):
+            payment = self._repo.get_payment_by_provider_invoice(provider_invoice_id)
         if payment is None and gateway_status.transaction_hash:
             payment = self._repo.find_by_transaction(
                 gateway_status.transaction_hash,

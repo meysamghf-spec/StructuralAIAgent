@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 from typing import Annotated
+from uuid import UUID
 
-from fastapi import Header
+from fastapi import Depends, Header, Query
 
 from app.application.agent_builder_service import AgentBuilderService
+from app.application.auth_service import AuthService
+from app.application.entitlement_authorization_service import EntitlementAuthorizationService
+from app.application.agent_access_service import AgentAccessService
+from app.application.project_access_service import ProjectAccessService
 from app.application.agent_registry_service import AgentRegistryService
 from app.application.agent_runtime_service import AgentRuntimeService
 from app.application.agent_version_service import AgentVersionService
@@ -42,6 +47,7 @@ from app.application.service_factory import (
     build_agent_version_service,
     build_ai_gateway_service,
     build_analysis_engine_service,
+    build_auth_service,
     build_code_engine_service,
     build_cad_generation_service,
     build_design_engine_service,
@@ -57,6 +63,9 @@ from app.application.service_factory import (
     build_pem_model_service,
     build_pem_revision_service,
     build_pem_service,
+    build_entitlement_authorization_service,
+    build_agent_access_service,
+    build_project_access_service,
     build_project_context_assembly_service,
     build_project_memory_service,
     build_project_service,
@@ -68,6 +77,11 @@ from app.application.service_factory import (
     build_validation_engine_service,
     build_revision_service,
 )
+from app.application.exceptions import AuthenticationError
+from app.domain.models.platform_features import PlatformFeature
+from app.domain.models.project import Project
+from app.domain.models.user import AuthenticatedAccount
+from app.infrastructure.config import get_settings
 
 
 def get_project_service() -> ProjectService:
@@ -98,10 +112,84 @@ def get_project_context_assembly_service() -> ProjectContextAssemblyService:
     return build_project_context_assembly_service()
 
 
-def get_actor_id(
+def get_auth_service() -> AuthService:
+    return build_auth_service()
+
+
+def get_project_access_service() -> ProjectAccessService:
+    return build_project_access_service()
+
+
+def get_current_account(
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+    authorization: Annotated[str | None, Header()] = None,
     x_actor_id: Annotated[str | None, Header(alias="X-Actor-Id")] = None,
+) -> AuthenticatedAccount:
+    settings = get_settings()
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+        return auth_service.authenticate_bearer(token)
+    if x_actor_id:
+        if not settings.auth_allow_legacy_actor:
+            raise AuthenticationError("Legacy X-Actor-Id authentication is disabled")
+        return auth_service.resolve_legacy_actor(x_actor_id)
+    if settings.auth_required:
+        raise AuthenticationError()
+    return auth_service.resolve_legacy_actor("api-client")
+
+
+def get_actor_id(
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
 ) -> str:
-    return x_actor_id or "api-client"
+    return account.account_id
+
+
+def get_accessible_project(
+    project_id: UUID,
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    access: Annotated[ProjectAccessService, Depends(get_project_access_service)],
+) -> Project:
+    return access.require_project(project_id, account)
+
+
+def get_accessible_project_from_query(
+    project_id: Annotated[UUID, Query()],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    access: Annotated[ProjectAccessService, Depends(get_project_access_service)],
+) -> Project:
+    return access.require_project(project_id, account)
+
+
+def get_optional_accessible_project_from_query(
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    access: Annotated[ProjectAccessService, Depends(get_project_access_service)],
+    project_id: Annotated[UUID | None, Query()] = None,
+) -> Project | None:
+    if project_id is None:
+        return None
+    return access.require_project(project_id, account)
+
+
+def get_entitlement_authorization_service() -> EntitlementAuthorizationService:
+    return build_entitlement_authorization_service()
+
+
+def get_agent_access_service() -> AgentAccessService:
+    from app.application.agent_access_service import AgentAccessService
+
+    return build_agent_access_service()
+
+
+def require_platform_feature(feature: PlatformFeature):
+    def _dependency(
+        account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+        entitlements: Annotated[
+            EntitlementAuthorizationService, Depends(get_entitlement_authorization_service)
+        ],
+    ) -> None:
+        entitlements.require_feature(account.account_id, feature)
+
+    return _dependency
 
 
 def get_agent_registry_service() -> AgentRegistryService:

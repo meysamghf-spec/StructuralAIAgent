@@ -19,6 +19,7 @@ from app.domain.models.design import DesignRequest
 from app.domain.models.optimization import OptimizationRequest
 from app.domain.models.cad import CadDrawingRequest, CadOutputFormat
 from app.application.engineering_agent_services import EngineeringAgentServices
+from app.domain.models.reporting import ReportGenerationRequest, ReportType
 
 
 class EngineeringAgentHandler(Protocol):
@@ -604,7 +605,19 @@ class CadAgentHandler:
                 },
             ),
             confidence=0.0,
-            generated_artifacts=[drawing.file_path] if drawing.file_path else [],
+            generated_artifacts=(
+                [
+                    {
+                        "type": "cad_drawing",
+                        "format": drawing.output_format.value,
+                        "path": drawing.file_path,
+                        "drawing_id": str(drawing.id),
+                        "drawing_type": drawing.drawing_type,
+                    }
+                ]
+                if drawing.file_path
+                else []
+            ),
             recommendations=[
                 "Use DXF drawings when AutoCAD is not installed locally.",
             ],
@@ -630,16 +643,49 @@ class ReportingAgentHandler:
         parameters: dict[str, Any],
         context: dict[str, Any],
     ) -> AgentResult:
-        sections = [
-            "Project information",
-            "Requirements and assumptions",
-            "Approvals and decisions",
-            "Validation summary",
-        ]
-        if context.get("pem_version"):
-            sections.append("Engineering model snapshot")
-        if context.get("files"):
-            sections.append("Referenced source files")
+        project_id = _project_id(context)
+        report_service = self._services.report_generation_service
+        if report_service is None:
+            return AgentResult(
+                structured_output=_base_output(
+                    agent_type=self.agent_type,
+                    action="reporting",
+                    user_request=user_request,
+                    parameters=parameters,
+                    context=context,
+                    capability_status="UNAVAILABLE",
+                    status_message="Report generation service is not configured.",
+                    payload={"missing_capability": "report_generation_service"},
+                ),
+                confidence=0.0,
+                validation_information={"capability_status": "UNAVAILABLE"},
+            )
+
+        report_type_name = str(parameters.get("report_type", "PROJECT_SUMMARY")).upper()
+        try:
+            report_type = ReportType(report_type_name)
+        except ValueError:
+            report_type = ReportType.PROJECT_SUMMARY
+
+        report = report_service.create_report(
+            project_id,
+            report_type=report_type,
+            created_by=str(context.get("actor_id") or "agent"),
+        )
+        version = report_service.generate_version(
+            ReportGenerationRequest(
+                project_id=project_id,
+                report_id=report.id,
+                report_type=report_type,
+                requested_by=str(context.get("actor_id") or "agent"),
+            )
+        )
+        missing_data = version.traceability_metadata.get("missing_data", [])
+        status_message = "Engineering report generated from persisted platform data."
+        if missing_data:
+            status_message = (
+                "Engineering report generated; missing data explicitly recorded in report metadata."
+            )
 
         return AgentResult(
             structured_output=_base_output(
@@ -648,13 +694,39 @@ class ReportingAgentHandler:
                 user_request=user_request,
                 parameters=parameters,
                 context=context,
-                capability_status="READY_FOR_REPORT_GENERATION",
-                status_message="Report scope identified from project context.",
-                payload={"proposed_sections": sections},
+                capability_status="COMPLETED",
+                status_message=status_message,
+                payload={
+                    "report_id": str(report.id),
+                    "report_type": report_type.value,
+                    "version": version.version,
+                    "missing_data": missing_data,
+                    "section_keys": [
+                        section.get("key")
+                        for section in version.content.get("sections", [])
+                        if isinstance(section, dict)
+                    ],
+                },
             ),
-            confidence=0.6,
-            recommendations=["Use the Reports workspace to generate a versioned engineering report."],
-            validation_information={"capability_status": "READY_FOR_REPORT_GENERATION"},
+            confidence=0.85 if not missing_data else 0.6,
+            generated_artifacts=[
+                {
+                    "type": "engineering_report",
+                    "report_id": str(report.id),
+                    "version": version.version,
+                    "report_type": report_type.value,
+                }
+            ],
+            recommendations=[
+                "Review missing_data entries before issuing the report externally.",
+            ]
+            if missing_data
+            else ["Open the Reports workspace to review the generated version."],
+            validation_information={
+                "capability_status": "COMPLETED",
+                "report_id": str(report.id),
+                "version": version.version,
+            },
         )
 
 

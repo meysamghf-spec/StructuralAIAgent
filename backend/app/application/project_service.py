@@ -41,8 +41,13 @@ class ProjectService:
         description: str | None = None,
         *,
         created_by: str | None = None,
+        owner_account_id: str | None = None,
     ) -> ProjectBootstrapResult:
-        project = self._projects.create(name=name, description=description)
+        project = self._projects.create(
+            name=name,
+            description=description,
+            owner_account_id=owner_account_id or created_by or "legacy",
+        )
         pem = create_initial_pem(project.id, name=name, description=description)
         snapshot_id, snapshot_version = self._pem.save_snapshot(project.id, pem, version=1)
         revision = self._revisions.create(

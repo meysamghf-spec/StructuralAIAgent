@@ -7,12 +7,16 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends
 
-from app.api.deps import get_revision_service
+from app.api.deps import get_revision_service, get_accessible_project
 from app.api.schemas.common import RevisionResponse
 from app.api.schemas.revision import RevisionListResponse
 from app.application.revision_service import RevisionService
 
-router = APIRouter(prefix="/projects/{project_id}/revisions", tags=["revisions"])
+router = APIRouter(
+    prefix="/projects/{project_id}/revisions",
+    tags=["revisions"],
+    dependencies=[Depends(get_accessible_project)],
+)
 
 
 @router.get("", response_model=RevisionListResponse)

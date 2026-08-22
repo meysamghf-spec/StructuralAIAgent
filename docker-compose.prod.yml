@@ -1,0 +1,60 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: structuralaiaagent
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgresql://postgres@${POSTGRES_PASSWORD:-postgres}@db:5432/structuralaiaagent
+      AUTH_REQUIRED: "true"
+      PROJECT_ACCESS_ENFORCED: "true"
+      AUTH_ALLOW_LEGACY_ACTOR: "false"
+      ENTITLEMENT_ENFORCEMENT_ENABLED: "true"
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET}
+      CRYPTO_PAYMENT_GATEWAY: ${CRYPTO_PAYMENT_GATEWAY:-btcpay}
+      CRYPTO_PAYMENT_WEBHOOK_SECRET: ${CRYPTO_PAYMENT_WEBHOOK_SECRET}
+      BTCPAY_SERVER_URL: ${BTCPAY_SERVER_URL}
+      BTCPAY_API_KEY: ${BTCPAY_API_KEY}
+      BTCPAY_STORE_ID: ${BTCPAY_STORE_ID}
+      BTCPAY_WEBHOOK_SECRET: ${BTCPAY_WEBHOOK_SECRET}
+      EXCHANGE_RATE_PROVIDER: ${EXCHANGE_RATE_PROVIDER:-coingecko}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      RUN_MIGRATIONS_ON_STARTUP: "true"
+      TRUST_PROXY_HEADERS: "true"
+      FILE_STORAGE_ROOT: /data/files
+    volumes:
+      - file_storage:/data/files
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  file_storage:

@@ -4,6 +4,8 @@ from uuid import uuid4
 
 from app.application.engineering_agent_handlers import (
     AnalysisAgentHandler,
+    CadAgentHandler,
+    ReportingAgentHandler,
     ValidationAgentHandler,
     build_engineering_agent_handlers,
 )
@@ -12,6 +14,8 @@ from app.application.service_factory import (
     build_project_service,
 )
 from app.domain.models.agent import EngineeringAgentType
+from app.domain.models.cad import CadDrawingType, CadOutputFormat
+from tests.integration.helpers import populate_standard_pem
 
 
 def _context(project_id) -> dict:
@@ -79,3 +83,39 @@ def test_build_handlers_registers_all_specialized_agents() -> None:
         EngineeringAgentType.DOCUMENT_INTERPRETATION_AGENT,
     }
     assert expected.issubset(set(handlers.keys()))
+
+
+def test_cad_agent_generated_artifacts_are_structured_dicts(db_session: str) -> None:
+    project = build_project_service().create_project(name="CAD Handler Project")
+    populate_standard_pem(project.project.id)
+    services = build_engineering_agent_services()
+    handler = CadAgentHandler(services)
+
+    result = handler.execute(
+        user_request="Generate framing plan",
+        parameters={"drawing_type": CadDrawingType.FRAMING_PLAN.value, "output_format": "DXF"},
+        context=_context(project.project.id),
+    )
+
+    assert result.generated_artifacts
+    artifact = result.generated_artifacts[0]
+    assert isinstance(artifact, dict)
+    assert artifact["type"] == "cad_drawing"
+    assert artifact["format"] == CadOutputFormat.DXF.value
+    assert isinstance(artifact["path"], str)
+
+
+def test_reporting_agent_generates_persisted_report(db_session: str) -> None:
+    project = build_project_service().create_project(name="Reporting Handler Project")
+    handler = ReportingAgentHandler(build_engineering_agent_services())
+
+    result = handler.execute(
+        user_request="Generate project summary report",
+        parameters={"report_type": "PROJECT_SUMMARY"},
+        context=_context(project.project.id),
+    )
+
+    assert result.structured_output["capability_status"] == "COMPLETED"
+    assert result.generated_artifacts
+    assert result.generated_artifacts[0]["type"] == "engineering_report"
+    assert result.structured_output["report_id"]

@@ -26,6 +26,8 @@ def test_migrations_directory_contains_bootstrap_and_pem_foundation() -> None:
         "015_engineering_result_ingestion_foundation.sql",
         "016_cad_drawing_foundation.sql",
         "017_crypto_payment_foundation.sql",
+        "018_user_identity_foundation.sql",
+        "019_agent_execution_lifecycle.sql",
     ]
 
 
@@ -167,3 +169,11 @@ def test_crypto_payment_migration_defines_payment_tables() -> None:
     assert "CREATE TABLE IF NOT EXISTS upgrade_entitlements" in sql
     assert "CREATE TABLE IF NOT EXISTS payment_audit_events" in sql
     assert "('017', 'crypto_payment_foundation')" in sql
+
+
+def test_user_identity_migration_defines_users_and_project_ownership() -> None:
+    sql = (get_migrations_dir() / "018_user_identity_foundation.sql").read_text(encoding="utf-8")
+    assert "CREATE TABLE IF NOT EXISTS users" in sql
+    assert "owner_account_id" in sql
+    assert "('018', 'user_identity_foundation')" in sql
+

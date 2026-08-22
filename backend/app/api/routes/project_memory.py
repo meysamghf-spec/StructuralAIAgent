@@ -7,7 +7,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Response, status
 
-from app.api.deps import get_project_memory_service
+from app.api.deps import get_project_memory_service, get_accessible_project
 from app.api.schemas.project_memory import (
     ProjectMemoryCreateRequest,
     ProjectMemoryContextResponse,
@@ -21,6 +21,7 @@ from app.domain.models.project_memory import MemoryType
 router = APIRouter(
     prefix="/projects/{project_id}/memory",
     tags=["project-memory"],
+    dependencies=[Depends(get_accessible_project)],
 )
 
 

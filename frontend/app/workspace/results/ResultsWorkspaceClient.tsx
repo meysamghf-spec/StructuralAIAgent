@@ -250,6 +250,9 @@ export default function ResultsWorkspaceClient() {
               <Link className="workspace-link-button" href={projectLink("/workspace/reports", selectedProjectId)}>
                 Open Reports
               </Link>
+              <Link className="workspace-link-button" href={projectLink("/workspace/cad", selectedProjectId)}>
+                Open CAD
+              </Link>
               <Link
                 className="workspace-link-button"
                 href={projectLink("/workspace/traceability", selectedProjectId)}

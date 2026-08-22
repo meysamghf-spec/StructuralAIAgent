@@ -8,6 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Request
 
 from app.api.deps import get_actor_id, get_digital_payment_agent
+from app.infrastructure.config import get_settings
 from app.api.schemas.payments import (
     CreateInvoiceRequest,
     CryptoPaymentResponse,
@@ -126,6 +127,12 @@ async def payment_provider_webhook(
     agent: Annotated[DigitalPaymentAgent, Depends(get_digital_payment_agent)],
 ) -> dict:
     payload = await request.body()
-    signature = request.headers.get("X-Payment-Signature")
+    signature = (
+        request.headers.get("X-Payment-Signature")
+        or request.headers.get("BTCPay-Sig")
+    )
+    configured = get_settings().crypto_payment_gateway.strip().lower()
+    if provider.strip().lower() not in {configured, "mock-gateway", "btcpay"}:
+        return {"provider": provider, "processed": False, "reason": "provider_mismatch"}
     result = agent.process_provider_webhook(payload, signature)
     return {"provider": provider, **result}

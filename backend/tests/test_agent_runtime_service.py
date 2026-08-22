@@ -64,7 +64,10 @@ def test_agent_runtime_high_impact_agent_waits_for_approval(db_session: str) -> 
         actor_id="engineer-1",
     )
 
-    assert record.execution_status == AgentExecutionStatus.WAITING_APPROVAL
+    assert record.execution_status in {
+        AgentExecutionStatus.REQUIRES_HUMAN_APPROVAL,
+        AgentExecutionStatus.WAITING_APPROVAL,
+    }
     assert record.approval_request_id is not None
 
 

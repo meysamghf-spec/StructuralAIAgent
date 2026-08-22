@@ -26,7 +26,7 @@ def test_api_workflow_approve_agent_execution(api_client: TestClient) -> None:
     assert execution_response.status_code == 201
     execution = execution_response.json()
     assert execution["user_view"]["progress"] == "awaiting_approval"
-    assert execution["execution_status"] == "WAITING_APPROVAL"
+    assert execution["execution_status"] in {"WAITING_APPROVAL", "REQUIRES_HUMAN_APPROVAL"}
 
     approval_id = execution["approval_request_id"]
     approve_response = api_client.post(

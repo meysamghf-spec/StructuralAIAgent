@@ -92,6 +92,20 @@ class PostgresPaymentRepository:
                 row = cur.fetchone()
         return _payment_from_row(row) if row else None
 
+    def get_payment_by_provider_invoice(self, provider_invoice_id: str) -> CryptoPayment | None:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT * FROM crypto_payments
+                    WHERE metadata->>'provider_invoice_id' = %s
+                    LIMIT 1
+                    """,
+                    (provider_invoice_id,),
+                )
+                row = cur.fetchone()
+        return _payment_from_row(row) if row else None
+
     def get_payment_by_idempotency_key(self, idempotency_key: str) -> CryptoPayment | None:
         with get_connection() as conn:
             with conn.cursor() as cur:

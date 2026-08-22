@@ -4,9 +4,11 @@ import { getValidationStatusLabel, getResultsAvailabilityMessage } from "../lib/
 import {
   formatValidationFindings,
   getResultReadinessMessage,
+  getResultSourceLabel,
   getResultTypeLabels,
   summarizeResultLineage,
 } from "../lib/results-workspace";
+import type { EngineeringResultSet } from "../lib/engineering-results";
 
 describe("results workspace helpers", () => {
   it("describes readiness from validation and availability", () => {
@@ -46,5 +48,31 @@ describe("results workspace helpers", () => {
         findings: [{ message: "Missing modal periods" }],
       }),
     ).toEqual(["Missing modal periods"]);
+  });
+
+  it("labels result provenance explicitly", () => {
+    const base = {
+      id: "1",
+      project_id: "p1",
+      validation_status: "VALIDATED",
+      engineering_results_available: true,
+      result_types: [],
+      provenance: { execution_mode: "vendor", software: "ETABS", version: "21" },
+    } satisfies EngineeringResultSet;
+
+    expect(getResultSourceLabel(base)).toContain("Real CSI");
+    expect(
+      getResultSourceLabel({
+        ...base,
+        provenance: { execution_mode: "mock", software: "ETABS", version: "21" },
+      }),
+    ).toContain("Rejected");
+    expect(
+      getResultSourceLabel({
+        ...base,
+        validation_status: "INVALID",
+        engineering_results_available: false,
+      }),
+    ).toContain("Invalid");
   });
 });

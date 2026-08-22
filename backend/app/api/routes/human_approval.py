@@ -7,7 +7,12 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
 
-from app.api.deps import get_human_approval_service
+from app.api.deps import (
+    get_accessible_project_from_query,
+    get_current_account,
+    get_human_approval_service,
+    get_project_access_service,
+)
 from app.api.schemas.human_approval import (
     ApprovalCancelRequest,
     ApprovalCreateRequest,
@@ -19,7 +24,10 @@ from app.api.schemas.human_approval import (
     HumanApprovalResponse,
 )
 from app.application.human_approval_service import HumanApprovalService
+from app.application.project_access_service import ProjectAccessService
 from app.domain.models.human_approval import ApprovalStatus
+from app.domain.models.project import Project
+from app.domain.models.user import AuthenticatedAccount
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
 
@@ -28,7 +36,10 @@ router = APIRouter(prefix="/approvals", tags=["approvals"])
 def create_approval_request(
     body: ApprovalCreateRequest,
     approval_service: Annotated[HumanApprovalService, Depends(get_human_approval_service)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    access: Annotated[ProjectAccessService, Depends(get_project_access_service)],
 ) -> HumanApprovalResponse:
+    access.require_project(body.project_id, account)
     request = approval_service.create_request(
         body.project_id,
         requester=body.requester,
@@ -45,10 +56,10 @@ def create_approval_request(
 @router.get("", response_model=ApprovalListResponse)
 def list_approval_requests(
     approval_service: Annotated[HumanApprovalService, Depends(get_human_approval_service)],
-    project_id: UUID = Query(...),
+    project: Annotated[Project, Depends(get_accessible_project_from_query)],
     status_filter: ApprovalStatus | None = Query(default=None, alias="status"),
 ) -> ApprovalListResponse:
-    requests = approval_service.list_requests(project_id, status=status_filter)
+    requests = approval_service.list_requests(project.id, status=status_filter)
     return ApprovalListResponse(
         requests=[HumanApprovalResponse.from_domain(item) for item in requests]
     )
@@ -57,9 +68,9 @@ def list_approval_requests(
 @router.get("/pending", response_model=ApprovalListResponse)
 def list_pending_approvals(
     approval_service: Annotated[HumanApprovalService, Depends(get_human_approval_service)],
-    project_id: UUID = Query(...),
+    project: Annotated[Project, Depends(get_accessible_project_from_query)],
 ) -> ApprovalListResponse:
-    requests = approval_service.list_pending(project_id)
+    requests = approval_service.list_pending(project.id)
     return ApprovalListResponse(
         requests=[HumanApprovalResponse.from_domain(item) for item in requests]
     )
@@ -68,11 +79,11 @@ def list_pending_approvals(
 @router.get("/history", response_model=ApprovalHistoryResponse)
 def get_approval_history(
     approval_service: Annotated[HumanApprovalService, Depends(get_human_approval_service)],
-    project_id: UUID = Query(...),
+    project: Annotated[Project, Depends(get_accessible_project_from_query)],
     approval_request_id: UUID | None = Query(default=None),
 ) -> ApprovalHistoryResponse:
     events = approval_service.get_history(
-        project_id,
+        project.id,
         approval_request_id=approval_request_id,
     )
     return ApprovalHistoryResponse(
@@ -84,9 +95,9 @@ def get_approval_history(
 def get_approval_request(
     request_id: UUID,
     approval_service: Annotated[HumanApprovalService, Depends(get_human_approval_service)],
-    project_id: UUID = Query(...),
+    project: Annotated[Project, Depends(get_accessible_project_from_query)],
 ) -> HumanApprovalResponse:
-    request = approval_service.get_request(project_id, request_id)
+    request = approval_service.get_request(project.id, request_id)
     return HumanApprovalResponse.from_domain(request)
 
 
@@ -95,10 +106,10 @@ def approve_request(
     request_id: UUID,
     body: ApprovalDecisionRequest,
     approval_service: Annotated[HumanApprovalService, Depends(get_human_approval_service)],
-    project_id: UUID = Query(...),
+    project: Annotated[Project, Depends(get_accessible_project_from_query)],
 ) -> HumanApprovalResponse:
     request = approval_service.approve_request(
-        project_id,
+        project.id,
         request_id,
         approver=body.approver,
         decision_note=body.decision_note,
@@ -111,10 +122,10 @@ def reject_request(
     request_id: UUID,
     body: ApprovalRejectRequest,
     approval_service: Annotated[HumanApprovalService, Depends(get_human_approval_service)],
-    project_id: UUID = Query(...),
+    project: Annotated[Project, Depends(get_accessible_project_from_query)],
 ) -> HumanApprovalResponse:
     request = approval_service.reject_request(
-        project_id,
+        project.id,
         request_id,
         approver=body.approver,
         rejection_reason=body.rejection_reason,
@@ -127,10 +138,10 @@ def cancel_request(
     request_id: UUID,
     body: ApprovalCancelRequest,
     approval_service: Annotated[HumanApprovalService, Depends(get_human_approval_service)],
-    project_id: UUID = Query(...),
+    project: Annotated[Project, Depends(get_accessible_project_from_query)],
 ) -> HumanApprovalResponse:
     request = approval_service.cancel_request(
-        project_id,
+        project.id,
         request_id,
         actor=body.actor,
         reason=body.reason,

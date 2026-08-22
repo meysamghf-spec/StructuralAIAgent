@@ -36,11 +36,19 @@ from app.domain.models.revision import Revision, RevisionChangeType
 
 
 class ProjectRepository(Protocol):
-    def create(self, name: str, description: str | None = None) -> Project: ...
+    def create(
+        self,
+        name: str,
+        description: str | None = None,
+        *,
+        owner_account_id: str = "legacy",
+    ) -> Project: ...
 
     def get_by_id(self, project_id: UUID) -> Project | None: ...
 
     def list_all(self) -> list[Project]: ...
+
+    def list_for_owner(self, owner_account_id: str) -> list[Project]: ...
 
 
 class PemRepository(Protocol):

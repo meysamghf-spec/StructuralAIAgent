@@ -381,3 +381,32 @@ def test_api_contract_engineering_result_scoped_to_project(api_client: TestClien
     result_id = api_client.get(f"/api/v1/engineering/results/{project_a}").json()["results"][0]["id"]
     cross = api_client.get(f"/api/v1/engineering/results/{project_b}/{result_id}")
     assert cross.status_code == 404
+
+
+def test_scenario_f_report_workflow_from_persisted_data(api_client: TestClient) -> None:
+    """Project → PEM → report with explicit missing-data markers."""
+    project_id = api_client.post("/api/v1/projects", json={"name": "Report Workflow"}).json()["project"]["id"]
+    populate_standard_pem(UUID(project_id))
+
+    report = api_client.post(
+        "/api/v1/reports",
+        json={
+            "project_id": project_id,
+            "report_type": "STRUCTURAL_DESIGN",
+            "title": "Workflow Report",
+        },
+    )
+    assert report.status_code == 201
+    report_id = report.json()["id"]
+
+    generated = api_client.post(
+        f"/api/v1/reports/{report_id}/generate",
+        params={"project_id": project_id},
+        json={"report_type": "STRUCTURAL_DESIGN"},
+    )
+    assert generated.status_code == 200
+    content = generated.json()["content"]
+    section_keys = [section["key"] for section in content["sections"]]
+    assert "analysis_results" in section_keys
+    assert "cad_outputs" in section_keys
+    assert generated.json()["traceability_metadata"].get("missing_data")

@@ -7,18 +7,34 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends
 
-from app.api.deps import get_integration_service, get_structural_solver_integration_service
+from app.api.deps import (
+    get_accessible_project,
+    get_current_account,
+    get_entitlement_authorization_service,
+    get_integration_service,
+    get_project_access_service,
+    get_structural_solver_integration_service,
+)
 from app.api.schemas.integration import (
     IntegrationExecutionResponse,
     IntegrationRequestBody,
     IntegrationResultResponse,
     SoftwareCapabilityResponse,
 )
+from app.application.entitlement_authorization_service import EntitlementAuthorizationService
 from app.application.integration_service import IntegrationService
+from app.application.project_access_service import ProjectAccessService
 from app.application.structural_solver_integration_service import StructuralSolverIntegrationService
 from app.domain.models.integration import IntegrationSoftware
+from app.domain.models.platform_features import PlatformFeature
+from app.domain.models.user import AuthenticatedAccount
 
 router = APIRouter(prefix="/integrations", tags=["integrations"])
+
+project_integrations_router = APIRouter(
+    prefix="/{project_id}",
+    dependencies=[Depends(get_accessible_project)],
+)
 
 
 @router.get("/adapters", response_model=list[IntegrationResultResponse])
@@ -53,7 +69,7 @@ def get_solver_capability(
     return SoftwareCapabilityResponse.from_domain(solver_service.get_capability(software))
 
 
-@router.get("/{project_id}/executions", response_model=list[IntegrationExecutionResponse])
+@project_integrations_router.get("/executions", response_model=list[IntegrationExecutionResponse])
 def list_project_integration_executions(
     project_id: UUID,
     solver_service: Annotated[
@@ -65,7 +81,10 @@ def list_project_integration_executions(
     return [IntegrationExecutionResponse.from_domain(item) for item in executions]
 
 
-@router.get("/{project_id}/executions/{execution_id}", response_model=IntegrationExecutionResponse)
+@project_integrations_router.get(
+    "/executions/{execution_id}",
+    response_model=IntegrationExecutionResponse,
+)
 def get_project_integration_execution(
     project_id: UUID,
     execution_id: UUID,
@@ -81,7 +100,10 @@ def get_project_integration_execution(
     return IntegrationExecutionResponse.from_domain(execution)
 
 
-@router.post("/{project_id}/connect/{software}", response_model=IntegrationExecutionResponse)
+@project_integrations_router.post(
+    "/connect/{software}",
+    response_model=IntegrationExecutionResponse,
+)
 def connect_solver_software(
     project_id: UUID,
     software: IntegrationSoftware,
@@ -93,7 +115,10 @@ def connect_solver_software(
     return IntegrationExecutionResponse.from_domain(execution)
 
 
-@router.post("/{project_id}/disconnect/{software}", response_model=IntegrationExecutionResponse)
+@project_integrations_router.post(
+    "/disconnect/{software}",
+    response_model=IntegrationExecutionResponse,
+)
 def disconnect_solver_software(
     project_id: UUID,
     software: IntegrationSoftware,
@@ -105,7 +130,10 @@ def disconnect_solver_software(
     return IntegrationExecutionResponse.from_domain(execution)
 
 
-@router.post("/{project_id}/export/{software}", response_model=IntegrationExecutionResponse)
+@project_integrations_router.post(
+    "/export/{software}",
+    response_model=IntegrationExecutionResponse,
+)
 def export_project_model_to_solver(
     project_id: UUID,
     software: IntegrationSoftware,
@@ -118,17 +146,22 @@ def export_project_model_to_solver(
     return IntegrationExecutionResponse.from_domain(execution)
 
 
-@router.post("/{project_id}/extract/{software}")
+@project_integrations_router.post("/extract/{software}")
 def extract_solver_results(
     project_id: UUID,
     software: IntegrationSoftware,
     solver_service: Annotated[
         StructuralSolverIntegrationService, Depends(get_structural_solver_integration_service)
     ],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    entitlements: Annotated[
+        EntitlementAuthorizationService, Depends(get_entitlement_authorization_service)
+    ],
     pem_version: int | None = None,
     analysis_run_id: UUID | None = None,
     external_model_identity: str | None = None,
 ) -> dict:
+    entitlements.require_feature(account.account_id, PlatformFeature.CSI_DEEP_EXTRACTION)
     return solver_service.extract_solver_results(
         project_id,
         software,
@@ -138,10 +171,16 @@ def extract_solver_results(
     )
 
 
+router.include_router(project_integrations_router)
+
+
 @router.post("/execute", response_model=IntegrationResultResponse)
 def execute_integration(
     body: IntegrationRequestBody,
     integration_service: Annotated[IntegrationService, Depends(get_integration_service)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    access: Annotated[ProjectAccessService, Depends(get_project_access_service)],
 ) -> IntegrationResultResponse:
+    access.require_project(body.project_id, account)
     result = integration_service.execute(body.to_domain())
     return IntegrationResultResponse.from_domain(result)

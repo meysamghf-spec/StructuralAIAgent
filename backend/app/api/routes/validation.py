@@ -7,14 +7,18 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends
 
-from app.api.deps import get_validation_engine_service
+from app.api.deps import get_validation_engine_service, get_accessible_project
 from app.api.schemas.validation import ValidationReportResponse
 from app.application.validation_engine_service import ValidationEngineService
 
 router = APIRouter(prefix="/projects", tags=["validation"])
 
 
-@router.post("/{project_id}/validate", response_model=ValidationReportResponse)
+@router.post(
+    "/{project_id}/validate",
+    response_model=ValidationReportResponse,
+    dependencies=[Depends(get_accessible_project)],
+)
 def validate_project(
     project_id: UUID,
     validation_service: Annotated[ValidationEngineService, Depends(get_validation_engine_service)],

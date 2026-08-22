@@ -1,11 +1,17 @@
+"""Readiness endpoint tests."""
+
 from fastapi.testclient import TestClient
 
-from app.main import app
 
-client = TestClient(app)
-
-
-def test_health_returns_ok() -> None:
-    response = client.get("/health")
+def test_health_endpoint(api_client: TestClient) -> None:
+    response = api_client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json()["status"] == "ok"
+
+
+def test_readiness_endpoint(api_client: TestClient) -> None:
+    response = api_client.get("/ready")
+    assert response.status_code == 200
+    body = response.json()
+    assert "status" in body
+    assert body["checks"]["database"] == "ok"

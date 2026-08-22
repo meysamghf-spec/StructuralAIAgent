@@ -138,20 +138,50 @@ class PromptGenerationService:
         *,
         user_request: str,
         context_summary: dict[str, Any],
+        selected_agent_type: EngineeringAgentType | None = None,
+        capability_profile: Any | None = None,
     ) -> PromptGenerationResult:
+        from app.application.agent_capability_catalog import (
+            AgentCapabilityProfile,
+            get_agent_capability_profile,
+        )
+
         intent = self._analyze_intent(user_request)
-        relevant_context = self._collect_relevant_context(context_summary, intent.agent_type)
+        agent_type = selected_agent_type or intent.agent_type
+        profile = capability_profile or get_agent_capability_profile(agent_type)
+        if not isinstance(profile, AgentCapabilityProfile):
+            profile = get_agent_capability_profile(agent_type)
+        if selected_agent_type is not None and selected_agent_type != intent.agent_type:
+            intent = _IntentProfile(
+                agent_type=agent_type,
+                intent_label=self._objectives_for_agent(agent_type, user_request)[0]
+                if self._objectives_for_agent(agent_type, user_request)
+                else agent_type.value.replace("_", " ").title(),
+                objectives=self._objectives_for_agent(agent_type, user_request),
+            )
+        relevant_context = self._collect_relevant_context(context_summary, agent_type)
         missing_information = self._detect_missing_information(
             user_request=user_request,
             context_summary=context_summary,
-            agent_type=intent.agent_type,
+            agent_type=agent_type,
             relevant_context=relevant_context,
         )
         preserved_constraints = self._extract_preserved_constraints(context_summary)
-        required_inputs = list(_BASE_REQUIRED_INPUTS.get(intent.agent_type, []))
-        deterministic_services = list(_AGENT_DETERMINISTIC_SERVICES.get(intent.agent_type, []))
+        required_inputs = list(_BASE_REQUIRED_INPUTS.get(agent_type, list(profile.input_contract)))
+        deterministic_services = list(_AGENT_DETERMINISTIC_SERVICES.get(agent_type, list(profile.available_tools)))
+        available_tools = list(profile.available_tools)
+        expected_output = list(profile.output_contract)
+        validation_requirements = [
+            "Do not fabricate CSI or analysis results",
+            "Use deterministic platform services for calculations",
+            "Preserve approved PEM and project decisions",
+            "Record traceability for consequential outputs",
+        ]
+        approval_requirements: list[str] = []
+        if profile.requires_human_approval:
+            approval_requirements.append("Human approval required before finalizing consequential changes")
         context_requirements = self._derive_context_requirements(
-            intent.agent_type,
+            agent_type,
             relevant_context,
             missing_information,
         )
@@ -187,7 +217,7 @@ class PromptGenerationService:
                         content=(
                             f"User request: {user_request.strip()}\n"
                             f"Intent: {intent.intent_label}\n"
-                            f"Selected assistant: {intent.agent_type.value}\n"
+                            f"Selected assistant: {agent_type.value}\n"
                             f"Objectives: {intent.objectives}\n"
                             f"Missing information: {missing_information}\n"
                             f"Preserved constraints: {preserved_constraints}\n"
@@ -210,7 +240,7 @@ class PromptGenerationService:
         )
 
         return PromptGenerationResult(
-            selected_agent_type=intent.agent_type,
+            selected_agent_type=agent_type,
             generated_prompt=generated_prompt,
             context_requirements=context_requirements,
             constraints=constraints,
@@ -227,6 +257,23 @@ class PromptGenerationService:
             deterministic_services=deterministic_services,
             execution_plan=execution_plan,
             preserved_constraints=preserved_constraints,
+            objective=user_request.strip(),
+            project_context_summary={
+                "project_id": context_summary.get("project_id"),
+                "project_name": context_summary.get("project_name"),
+                "pem_version": context_summary.get("pem_version"),
+            },
+            applicable_code_configuration=context_summary.get("code_configuration"),
+            available_tools=available_tools,
+            expected_output=expected_output,
+            validation_requirements=validation_requirements,
+            approval_requirements=approval_requirements,
+            capability_profile={
+                "name": profile.name,
+                "version": profile.version,
+                "capabilities": list(profile.capabilities),
+                "requires_human_approval": profile.requires_human_approval,
+            },
         )
 
     def _analyze_intent(self, user_request: str) -> _IntentProfile:

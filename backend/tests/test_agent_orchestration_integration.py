@@ -27,7 +27,7 @@ def test_agent_execution_delegates_validation_to_orchestration(db_session) -> No
     assert orchestration["route"] == "VALIDATION"
 
 
-def test_agent_execution_supports_explicit_orchestration_task(db_session) -> None:
+def test_agent_execution_ignores_client_orchestration_task(db_session) -> None:
     project = build_project_service().create_project("Orchestration Explicit").project
     runtime = build_agent_runtime_service()
 
@@ -47,5 +47,5 @@ def test_agent_execution_supports_explicit_orchestration_task(db_session) -> Non
 
     orchestration = execution.agent_result.validation_information.get("orchestration")
     assert orchestration is not None
-    assert orchestration["task_type"] == "code.defaults"
-    assert orchestration["route"] == "DETERMINISTIC"
+    assert orchestration["task_type"] == "project.validate"
+    assert orchestration["route"] == "VALIDATION"

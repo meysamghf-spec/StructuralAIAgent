@@ -6,9 +6,10 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from app.api.deps import get_ai_gateway_service
+from app.api.deps import get_ai_gateway_service, get_current_account
 from app.api.schemas.ai_gateway import AICompletionRequestBody, AICompletionResponseBody
 from app.application.ai_gateway_service import AIGatewayService
+from app.domain.models.user import AuthenticatedAccount
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
@@ -16,6 +17,7 @@ router = APIRouter(prefix="/ai", tags=["ai"])
 @router.get("/providers")
 def list_ai_providers(
     ai_gateway: Annotated[AIGatewayService, Depends(get_ai_gateway_service)],
+    _: Annotated[AuthenticatedAccount, Depends(get_current_account)],
 ) -> dict[str, list[str]]:
     return {"providers": ai_gateway.list_providers()}
 
@@ -24,6 +26,7 @@ def list_ai_providers(
 def complete_ai_request(
     body: AICompletionRequestBody,
     ai_gateway: Annotated[AIGatewayService, Depends(get_ai_gateway_service)],
+    _: Annotated[AuthenticatedAccount, Depends(get_current_account)],
 ) -> AICompletionResponseBody:
     response = ai_gateway.complete(body.to_domain(), provider_kind=body.provider)
     return AICompletionResponseBody.from_domain(response)

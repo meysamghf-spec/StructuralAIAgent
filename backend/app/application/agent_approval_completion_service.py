@@ -13,7 +13,12 @@ from app.application.traceability_integration import (
     record_approval_to_agent_result,
 )
 from app.application.traceability_service import TraceabilityService
-from app.domain.models.agent_runtime import AgentExecutionRecord, AgentExecutionStatus, AgentValidationStatus
+from app.domain.models.agent_runtime import (
+    AgentExecutionRecord,
+    AgentExecutionStatus,
+    AgentValidationStatus,
+    is_awaiting_human_approval,
+)
 from app.domain.models.agent_runtime_view import AGENT_EXECUTION_MEMORY_SOURCE_TYPE
 from app.domain.models.human_approval import ApprovalStatus, HumanApprovalRequest
 from app.domain.models.orchestration import OrchestrationTask
@@ -75,7 +80,7 @@ class AgentApprovalCompletionService:
         execution: AgentExecutionRecord,
         request: HumanApprovalRequest,
     ) -> AgentExecutionRecord:
-        if execution.execution_status != AgentExecutionStatus.WAITING_APPROVAL:
+        if not is_awaiting_human_approval(execution.execution_status):
             return execution
 
         orchestration_output = self._run_post_approval_orchestration(project_id)
@@ -143,7 +148,7 @@ class AgentApprovalCompletionService:
         *,
         rejection_reason: str,
     ) -> AgentExecutionRecord:
-        if execution.execution_status != AgentExecutionStatus.WAITING_APPROVAL:
+        if not is_awaiting_human_approval(execution.execution_status):
             return execution
 
         result_trace_id = self._result_trace_id(execution)
@@ -190,7 +195,7 @@ class AgentApprovalCompletionService:
         *,
         reason: str,
     ) -> AgentExecutionRecord:
-        if execution.execution_status != AgentExecutionStatus.WAITING_APPROVAL:
+        if not is_awaiting_human_approval(execution.execution_status):
             return execution
 
         execution.execution_status = AgentExecutionStatus.CANCELLED

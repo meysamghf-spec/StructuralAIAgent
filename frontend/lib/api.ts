@@ -1,3 +1,5 @@
+import { getAuthHeaders } from "./auth-session";
+
 const DEFAULT_API_BASE = "http://127.0.0.1:8000";
 
 export function getApiBaseUrl(): string {
@@ -9,6 +11,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...getAuthHeaders(),
       ...(init?.headers ?? {}),
     },
     cache: "no-store",

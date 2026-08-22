@@ -8,10 +8,14 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 
 from app.api.deps import (
+    get_accessible_project,
     get_actor_id,
     get_analysis_engine_service,
+    get_current_account,
     get_design_engine_service,
+    get_entitlement_authorization_service,
     get_optimization_engine_service,
+    get_project_access_service,
 )
 from app.api.schemas.engineering import (
     AnalysisReadinessResponse,
@@ -33,6 +37,12 @@ from app.api.schemas.engineering import (
 from app.application.analysis_engine_service import AnalysisEngineService
 from app.application.design_engine_service import DesignEngineService
 from app.application.optimization_engine_service import OptimizationEngineService
+from app.application.project_access_service import ProjectAccessService
+from app.application.entitlement_authorization_service import EntitlementAuthorizationService
+from app.application.feature_requirements import optimization_requires_paid_entitlement
+from app.domain.models.platform_features import PlatformFeature
+from app.domain.models.project import Project
+from app.domain.models.user import AuthenticatedAccount
 
 router = APIRouter(prefix="/engineering", tags=["engineering"])
 
@@ -42,7 +52,10 @@ def run_analysis(
     body: AnalysisRequestBody,
     analysis_service: Annotated[AnalysisEngineService, Depends(get_analysis_engine_service)],
     actor_id: Annotated[str, Depends(get_actor_id)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    access: Annotated[ProjectAccessService, Depends(get_project_access_service)],
 ) -> AnalysisResultResponse:
+    access.require_project(body.project_id, account)
     result = analysis_service.run_analysis(body.to_domain(), created_by=actor_id)
     return AnalysisResultResponse.from_domain(result)
 
@@ -50,6 +63,7 @@ def run_analysis(
 @router.get("/analysis/{project_id}/readiness", response_model=AnalysisReadinessResponse)
 def get_analysis_readiness(
     project_id: UUID,
+    _: Annotated[Project, Depends(get_accessible_project)],
     analysis_service: Annotated[AnalysisEngineService, Depends(get_analysis_engine_service)],
     pem_version: int | None = None,
 ) -> AnalysisReadinessResponse:
@@ -61,6 +75,7 @@ def get_analysis_readiness(
 @router.get("/analysis/{project_id}/runs", response_model=AnalysisRunListResponse)
 def list_analysis_runs(
     project_id: UUID,
+    _: Annotated[Project, Depends(get_accessible_project)],
     analysis_service: Annotated[AnalysisEngineService, Depends(get_analysis_engine_service)],
 ) -> AnalysisRunListResponse:
     runs = analysis_service.list_runs(project_id)
@@ -74,6 +89,7 @@ def list_analysis_runs(
 def get_analysis_run(
     project_id: UUID,
     run_id: UUID,
+    _: Annotated[Project, Depends(get_accessible_project)],
     analysis_service: Annotated[AnalysisEngineService, Depends(get_analysis_engine_service)],
 ) -> AnalysisRunResponse:
     return AnalysisRunResponse.from_domain(analysis_service.get_run(project_id, run_id))
@@ -82,6 +98,7 @@ def get_analysis_run(
 @router.get("/analysis/{project_id}/load-combinations")
 def get_load_combinations(
     project_id: UUID,
+    _: Annotated[Project, Depends(get_accessible_project)],
     analysis_service: Annotated[AnalysisEngineService, Depends(get_analysis_engine_service)],
 ) -> dict:
     return analysis_service.summarize_load_combinations(project_id)
@@ -92,7 +109,10 @@ def run_design(
     body: DesignRequestBody,
     design_service: Annotated[DesignEngineService, Depends(get_design_engine_service)],
     actor_id: Annotated[str, Depends(get_actor_id)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    access: Annotated[ProjectAccessService, Depends(get_project_access_service)],
 ) -> DesignResultResponse:
+    access.require_project(body.project_id, account)
     result = design_service.run_design(body.to_domain(), created_by=actor_id)
     return DesignResultResponse.from_domain(result)
 
@@ -100,6 +120,7 @@ def run_design(
 @router.get("/design/{project_id}/readiness", response_model=DesignReadinessResponse)
 def get_design_readiness(
     project_id: UUID,
+    _: Annotated[Project, Depends(get_accessible_project)],
     design_service: Annotated[DesignEngineService, Depends(get_design_engine_service)],
     pem_version: int | None = None,
 ) -> DesignReadinessResponse:
@@ -111,6 +132,7 @@ def get_design_readiness(
 @router.get("/design/{project_id}/runs", response_model=DesignRunListResponse)
 def list_design_runs(
     project_id: UUID,
+    _: Annotated[Project, Depends(get_accessible_project)],
     design_service: Annotated[DesignEngineService, Depends(get_design_engine_service)],
 ) -> DesignRunListResponse:
     runs = design_service.list_runs(project_id)
@@ -124,6 +146,7 @@ def list_design_runs(
 def get_design_run(
     project_id: UUID,
     run_id: UUID,
+    _: Annotated[Project, Depends(get_accessible_project)],
     design_service: Annotated[DesignEngineService, Depends(get_design_engine_service)],
 ) -> DesignRunResponse:
     return DesignRunResponse.from_domain(design_service.get_run(project_id, run_id))
@@ -132,6 +155,7 @@ def get_design_run(
 @router.get("/design/{project_id}/analysis-runs")
 def list_design_analysis_runs(
     project_id: UUID,
+    _: Annotated[Project, Depends(get_accessible_project)],
     design_service: Annotated[DesignEngineService, Depends(get_design_engine_service)],
 ) -> dict:
     return {
@@ -147,7 +171,15 @@ def run_optimization(
         OptimizationEngineService, Depends(get_optimization_engine_service)
     ],
     actor_id: Annotated[str, Depends(get_actor_id)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    access: Annotated[ProjectAccessService, Depends(get_project_access_service)],
+    entitlements: Annotated[
+        EntitlementAuthorizationService, Depends(get_entitlement_authorization_service)
+    ],
 ) -> OptimizationResultResponse:
+    access.require_project(body.project_id, account)
+    if optimization_requires_paid_entitlement(body.parameters):
+        entitlements.require_feature(account.account_id, PlatformFeature.MULTI_MEMBER_OPTIMIZATION)
     result = optimization_service.run_optimization(body.to_domain(), created_by=actor_id)
     return OptimizationResultResponse.from_domain(result)
 
@@ -155,6 +187,7 @@ def run_optimization(
 @router.get("/optimization/{project_id}/readiness", response_model=OptimizationReadinessResponse)
 def get_optimization_readiness(
     project_id: UUID,
+    _: Annotated[Project, Depends(get_accessible_project)],
     optimization_service: Annotated[
         OptimizationEngineService, Depends(get_optimization_engine_service)
     ],
@@ -168,6 +201,7 @@ def get_optimization_readiness(
 @router.get("/optimization/{project_id}/runs", response_model=OptimizationRunListResponse)
 def list_optimization_runs(
     project_id: UUID,
+    _: Annotated[Project, Depends(get_accessible_project)],
     optimization_service: Annotated[
         OptimizationEngineService, Depends(get_optimization_engine_service)
     ],
@@ -183,6 +217,7 @@ def list_optimization_runs(
 def get_optimization_run(
     project_id: UUID,
     run_id: UUID,
+    _: Annotated[Project, Depends(get_accessible_project)],
     optimization_service: Annotated[
         OptimizationEngineService, Depends(get_optimization_engine_service)
     ],
@@ -193,6 +228,7 @@ def get_optimization_run(
 @router.get("/optimization/{project_id}/analysis-runs")
 def list_optimization_analysis_runs(
     project_id: UUID,
+    _: Annotated[Project, Depends(get_accessible_project)],
     optimization_service: Annotated[
         OptimizationEngineService, Depends(get_optimization_engine_service)
     ],
@@ -206,6 +242,7 @@ def list_optimization_analysis_runs(
 @router.get("/optimization/{project_id}/design-runs")
 def list_optimization_design_runs(
     project_id: UUID,
+    _: Annotated[Project, Depends(get_accessible_project)],
     optimization_service: Annotated[
         OptimizationEngineService, Depends(get_optimization_engine_service)
     ],

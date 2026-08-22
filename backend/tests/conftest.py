@@ -46,6 +46,7 @@ def db_session(database_ready: str, monkeypatch: pytest.MonkeyPatch) -> Generato
             cur.execute(
                 """
                 TRUNCATE TABLE
+                    users,
                     payment_audit_events,
                     upgrade_entitlements,
                     crypto_payments,

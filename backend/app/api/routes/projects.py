@@ -7,7 +7,14 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
 
-from app.api.deps import get_actor_id, get_project_context_assembly_service, get_project_service
+from app.api.deps import (
+    get_accessible_project,
+    get_actor_id,
+    get_current_account,
+    get_project_access_service,
+    get_project_context_assembly_service,
+    get_project_service,
+)
 from app.api.schemas.common import ProjectResponse, RevisionResponse
 from app.api.schemas.project import (
     CreateProjectRequest,
@@ -15,9 +22,11 @@ from app.api.schemas.project import (
     ProjectListResponse,
 )
 from app.api.schemas.project_context import ProjectContextAssemblyResponse
-from app.application.exceptions import ProjectNotFoundError
+from app.application.project_access_service import ProjectAccessService
 from app.application.project_context_assembly_service import ProjectContextAssemblyService
 from app.application.project_service import ProjectService
+from app.domain.models.project import Project
+from app.domain.models.user import AuthenticatedAccount
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -26,12 +35,13 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 def create_project(
     body: CreateProjectRequest,
     project_service: Annotated[ProjectService, Depends(get_project_service)],
-    actor_id: Annotated[str, Depends(get_actor_id)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
 ) -> CreateProjectResponse:
     result = project_service.create_project(
         name=body.name,
         description=body.description,
-        created_by=actor_id,
+        created_by=account.account_id,
+        owner_account_id=account.account_id,
     )
 
     return CreateProjectResponse(
@@ -44,9 +54,10 @@ def create_project(
 
 @router.get("", response_model=ProjectListResponse)
 def list_projects(
-    project_service: Annotated[ProjectService, Depends(get_project_service)],
+    access_service: Annotated[ProjectAccessService, Depends(get_project_access_service)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
 ) -> ProjectListResponse:
-    projects = project_service.list_projects()
+    projects = access_service.list_accessible_projects(account)
     return ProjectListResponse(
         projects=[ProjectResponse.model_validate(p.model_dump()) for p in projects]
     )
@@ -55,6 +66,7 @@ def list_projects(
 @router.get("/{project_id}/context", response_model=ProjectContextAssemblyResponse)
 def get_project_context(
     project_id: UUID,
+    _: Annotated[Project, Depends(get_accessible_project)],
     context_service: Annotated[
         ProjectContextAssemblyService,
         Depends(get_project_context_assembly_service),
@@ -66,10 +78,6 @@ def get_project_context(
 
 @router.get("/{project_id}", response_model=ProjectResponse)
 def get_project(
-    project_id: UUID,
-    project_service: Annotated[ProjectService, Depends(get_project_service)],
+    project: Annotated[Project, Depends(get_accessible_project)],
 ) -> ProjectResponse:
-    project = project_service.get_project(project_id)
-    if project is None:
-        raise ProjectNotFoundError(project_id)
     return ProjectResponse.model_validate(project.model_dump())

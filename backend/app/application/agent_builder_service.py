@@ -213,6 +213,7 @@ class AgentBuilderService:
                 requires_approval=False,
             ),
             actor_id=actor_id,
+            account_id=actor_id,
         )
 
         errors: list[str] = []

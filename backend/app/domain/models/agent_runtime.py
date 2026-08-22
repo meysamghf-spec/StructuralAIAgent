@@ -14,13 +14,40 @@ from app.domain.models.agent import EngineeringAgentType
 
 
 class AgentExecutionStatus(StrEnum):
+    QUEUED = "QUEUED"
     CREATED = "CREATED"
     RUNNING = "RUNNING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
+    BLOCKED = "BLOCKED"
+    REQUIRES_HUMAN_APPROVAL = "REQUIRES_HUMAN_APPROVAL"
     WAITING_APPROVAL = "WAITING_APPROVAL"
     CANCELLED = "CANCELLED"
     PENDING = "PENDING"
+
+
+def normalize_execution_status(status: AgentExecutionStatus) -> AgentExecutionStatus:
+    if status == AgentExecutionStatus.CREATED:
+        return AgentExecutionStatus.QUEUED
+    if status == AgentExecutionStatus.WAITING_APPROVAL:
+        return AgentExecutionStatus.REQUIRES_HUMAN_APPROVAL
+    return status
+
+
+def is_awaiting_human_approval(status: AgentExecutionStatus) -> bool:
+    return status in {
+        AgentExecutionStatus.REQUIRES_HUMAN_APPROVAL,
+        AgentExecutionStatus.WAITING_APPROVAL,
+    }
+
+
+def is_terminal_execution_status(status: AgentExecutionStatus) -> bool:
+    return status in {
+        AgentExecutionStatus.COMPLETED,
+        AgentExecutionStatus.FAILED,
+        AgentExecutionStatus.BLOCKED,
+        AgentExecutionStatus.CANCELLED,
+    }
 
 
 class AgentValidationStatus(StrEnum):
@@ -85,6 +112,14 @@ class PromptGenerationResult(BaseModel):
     deterministic_services: list[str] = Field(default_factory=list)
     execution_plan: list[dict[str, Any]] = Field(default_factory=list)
     preserved_constraints: list[str] = Field(default_factory=list)
+    objective: str = ""
+    project_context_summary: dict[str, Any] = Field(default_factory=dict)
+    applicable_code_configuration: dict[str, Any] | None = None
+    available_tools: list[str] = Field(default_factory=list)
+    expected_output: list[str] = Field(default_factory=list)
+    validation_requirements: list[str] = Field(default_factory=list)
+    approval_requirements: list[str] = Field(default_factory=list)
+    capability_profile: dict[str, Any] = Field(default_factory=dict)
 
 
 # Backward-compatible contract alias used by earlier milestones.

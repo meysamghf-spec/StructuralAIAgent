@@ -7,7 +7,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends
 
-from app.api.deps import get_actor_id, get_engineering_result_service
+from app.api.deps import get_accessible_project, get_engineering_result_service
 from app.api.schemas.engineering_results import (
     EngineeringResultListResponse,
     EngineeringResultSetResponse,
@@ -15,7 +15,11 @@ from app.api.schemas.engineering_results import (
 )
 from app.application.engineering_result_service import EngineeringResultService
 
-router = APIRouter(prefix="/engineering/results", tags=["engineering-results"])
+router = APIRouter(
+    prefix="/engineering/results",
+    tags=["engineering-results"],
+    dependencies=[Depends(get_accessible_project)],
+)
 
 
 @router.get("/{project_id}", response_model=EngineeringResultListResponse)

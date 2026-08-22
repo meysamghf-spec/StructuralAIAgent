@@ -11,6 +11,7 @@ from app.application.design_engine_service import DesignEngineService
 from app.application.engineering_result_service import EngineeringResultService
 from app.application.optimization_engine_service import OptimizationEngineService
 from app.application.integration_service import IntegrationService
+from app.application.report_generation_service import ReportGenerationService
 from app.application.validation_engine_service import ValidationEngineService
 
 
@@ -24,3 +25,4 @@ class EngineeringAgentServices:
     code_engine: CodeEngineService
     engineering_result_service: EngineeringResultService
     cad_generation_service: CadGenerationService
+    report_generation_service: ReportGenerationService | None = None

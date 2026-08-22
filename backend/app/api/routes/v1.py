@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter
 
+from app.api.routes.auth import router as auth_router
 from app.api.routes.agent_executions import router as agent_executions_router
 from app.api.routes.agents import router as agents_router
 from app.api.routes.ai_gateway import router as ai_gateway_router
@@ -25,6 +26,7 @@ from app.api.routes.payments import router as payments_router
 from app.api.routes.validation import router as validation_router
 
 v1_router = APIRouter(prefix="/api/v1")
+v1_router.include_router(auth_router)
 v1_router.include_router(projects_router)
 v1_router.include_router(pem_router)
 v1_router.include_router(model_router)

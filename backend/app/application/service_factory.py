@@ -26,7 +26,6 @@ from app.application.hybrid_orchestration_service import HybridOrchestrationServ
 from app.application.integration_service import IntegrationService
 from app.application.traceability_service import TraceabilityService
 from app.application.digital_payment_agent import DigitalPaymentAgent
-from app.application.exceptions import PaymentConfigurationError
 from app.application.payment_service import PaymentService
 from app.application.pem_model_service import PemModelService
 from app.application.pem_revision_service import PemRevisionService
@@ -45,8 +44,6 @@ from app.infrastructure.integrations import build_integration_adapters
 from app.infrastructure.ai.stub_ai_provider import StubAIProvider
 from app.domain.contracts.crypto_payment_gateway import CryptoPaymentGateway
 from app.domain.models.ai_gateway import AIProviderKind
-from app.infrastructure.payments.mock_crypto_gateway import MockCryptoPaymentGateway
-from app.infrastructure.payments.stub_exchange_rate_provider import StubExchangeRateProvider
 from app.infrastructure.parsers.stub_parser import StubTextParser
 from app.infrastructure.repositories.postgres_payment_repository import PostgresPaymentRepository
 from app.application.prompt_template_service import PromptTemplateService
@@ -218,6 +215,28 @@ def build_project_service() -> ProjectService:
     )
 
 
+def build_auth_service() -> AuthService:
+    from app.application.auth_service import AuthService as AuthServiceImpl
+    from app.infrastructure.repositories.postgres_user_repository import PostgresUserRepository
+
+    return AuthServiceImpl(user_repository=PostgresUserRepository())
+
+
+def build_project_access_service() -> ProjectAccessService:
+    from app.application.project_access_service import ProjectAccessService as ProjectAccessServiceImpl
+
+    return ProjectAccessServiceImpl(project_repository=_project_repository())
+
+
+def build_entitlement_authorization_service() -> EntitlementAuthorizationService:
+    from app.application.entitlement_authorization_service import (
+        EntitlementAuthorizationService as EntitlementAuthorizationServiceImpl,
+    )
+    from app.infrastructure.repositories.postgres_payment_repository import PostgresPaymentRepository
+
+    return EntitlementAuthorizationServiceImpl(repository=PostgresPaymentRepository())
+
+
 def build_pem_service() -> PemService:
     return PemService(pem_repository=_pem_repository())
 
@@ -348,6 +367,7 @@ def build_report_generation_service() -> ReportGenerationService:
         design_repository=_design_repository(),
         optimization_repository=_optimization_repository(),
         engineering_result_service=build_engineering_result_service(),
+        cad_generation_service=build_cad_generation_service(),
     )
 
 
@@ -479,11 +499,14 @@ def build_engineering_agent_services() -> EngineeringAgentServices:
         code_engine=build_code_engine_service(),
         engineering_result_service=build_engineering_result_service(),
         cad_generation_service=build_cad_generation_service(),
+        report_generation_service=build_report_generation_service(),
     )
 
 
-def build_agent_runtime_service() -> AgentRuntimeService:
-    return AgentRuntimeService(
+def build_agent_orchestration_service() -> AgentOrchestrationService:
+    from app.application.agent_orchestration_service import AgentOrchestrationService as AgentOrchestrationServiceImpl
+
+    return AgentOrchestrationServiceImpl(
         definition_repository=_agent_definition_repository(),
         version_repository=_agent_version_repository(),
         execution_repository=_agent_execution_repository(),
@@ -491,8 +514,27 @@ def build_agent_runtime_service() -> AgentRuntimeService:
         prompt_generation_service=build_prompt_generation_service(),
         traceability_service=build_traceability_service(),
         approval_service=build_human_approval_service(),
+        entitlement_service=build_entitlement_authorization_service(),
         orchestration_service=build_hybrid_orchestration_service(),
         handlers=build_engineering_agent_handlers(build_engineering_agent_services()),
+    )
+
+
+def build_agent_access_service() -> AgentAccessService:
+    from app.application.agent_access_service import AgentAccessService as AgentAccessServiceImpl
+
+    return AgentAccessServiceImpl(
+        definition_repository=_agent_definition_repository(),
+        project_access_service=build_project_access_service(),
+    )
+
+
+def build_agent_runtime_service() -> AgentRuntimeService:
+    return AgentRuntimeService(
+        execution_repository=_agent_execution_repository(),
+        context_service=build_project_context_assembly_service(),
+        prompt_generation_service=build_prompt_generation_service(),
+        orchestration_service=build_agent_orchestration_service(),
     )
 
 
@@ -515,35 +557,20 @@ _payment_gateway_instance: CryptoPaymentGateway | None = None
 
 def get_crypto_payment_gateway() -> CryptoPaymentGateway:
     global _payment_gateway_instance
-    settings = get_settings()
-    gateway_name = settings.crypto_payment_gateway.strip().lower()
-    if gateway_name != "mock":
-        raise PaymentConfigurationError(
-            f"Unsupported crypto payment gateway '{settings.crypto_payment_gateway}'. "
-            "Configure CRYPTO_PAYMENT_GATEWAY=mock for development/CI or wire a live provider."
-        )
-    if (
-        settings.app_env.strip().lower() == "production"
-        and not settings.crypto_payment_allow_mock_in_production
-    ):
-        raise PaymentConfigurationError(
-            "Mock crypto payment gateway is not allowed in production. "
-            "Configure a live payment provider or set CRYPTO_PAYMENT_ALLOW_MOCK_IN_PRODUCTION=true "
-            "only for controlled non-production deployments."
-        )
     if _payment_gateway_instance is None:
-        webhook_secret = "test-webhook-secret"
-        if settings.crypto_payment_webhook_secret is not None:
-            webhook_secret = settings.crypto_payment_webhook_secret.get_secret_value()
-        _payment_gateway_instance = MockCryptoPaymentGateway(webhook_secret=webhook_secret)
+        from app.infrastructure.payments.payment_factory import create_crypto_payment_gateway
+
+        _payment_gateway_instance = create_crypto_payment_gateway()
     return _payment_gateway_instance
 
 
 def build_payment_service() -> PaymentService:
+    from app.infrastructure.payments.payment_factory import create_exchange_rate_provider
+
     return PaymentService(
         repository=PostgresPaymentRepository(),
         gateway=get_crypto_payment_gateway(),
-        exchange_rates=StubExchangeRateProvider(),
+        exchange_rates=create_exchange_rate_provider(),
     )
 
 

@@ -9,9 +9,13 @@ from fastapi import APIRouter, Depends, Query, status
 
 from app.api.deps import (
     get_actor_id,
+    get_agent_access_service,
     get_agent_builder_service,
     get_agent_registry_service,
     get_agent_version_service,
+    get_current_account,
+    get_optional_accessible_project_from_query,
+    get_project_access_service,
     get_prompt_template_service,
 )
 from app.api.schemas.agent import (
@@ -43,10 +47,14 @@ from app.api.schemas.prompt import (
     PromptTemplateListResponse,
     PromptTemplateResponse,
 )
+from app.application.agent_access_service import AgentAccessService
 from app.application.agent_builder_service import AgentBuilderService
 from app.application.agent_registry_service import AgentRegistryService
 from app.application.agent_version_service import AgentVersionService
+from app.application.project_access_service import ProjectAccessService
 from app.application.prompt_template_service import PromptTemplateService
+from app.domain.models.project import Project
+from app.domain.models.user import AuthenticatedAccount
 from app.domain.models.agent import EngineeringAgentType
 from app.infrastructure.repositories.postgres_agent_capability_repository import (
     PostgresAgentCapabilityRepository,
@@ -55,12 +63,32 @@ from app.infrastructure.repositories.postgres_agent_capability_repository import
 router = APIRouter(prefix="/agents", tags=["agents"])
 
 
+def _require_agent_access(
+    agent_id: UUID,
+    account: AuthenticatedAccount,
+    agent_access: AgentAccessService,
+) -> None:
+    agent_access.require_agent(agent_id, account)
+
+
+def _require_agent_mutation(
+    agent_id: UUID,
+    account: AuthenticatedAccount,
+    agent_access: AgentAccessService,
+) -> None:
+    agent_access.require_agent_mutation(agent_id, account)
+
+
 @router.post("/builder", status_code=status.HTTP_201_CREATED, response_model=AgentBuilderDetailResponse)
 def create_builder_agent(
     body: CreateBuilderAgentRequest,
     builder_service: Annotated[AgentBuilderService, Depends(get_agent_builder_service)],
     actor_id: Annotated[str, Depends(get_actor_id)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    access: Annotated[ProjectAccessService, Depends(get_project_access_service)],
 ) -> AgentBuilderDetailResponse:
+    if body.project_id is not None:
+        access.require_project(body.project_id, account)
     agent_type = EngineeringAgentType(body.agent_type) if body.agent_type else None
     detail = builder_service.create_agent(
         key=body.key,
@@ -86,7 +114,11 @@ def list_agent_capabilities() -> list[AgentCapabilityResponse]:
 def create_agent(
     body: CreateAgentRequest,
     registry_service: Annotated[AgentRegistryService, Depends(get_agent_registry_service)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    access: Annotated[ProjectAccessService, Depends(get_project_access_service)],
 ) -> AgentDefinitionResponse:
+    if body.project_id is not None:
+        access.require_project(body.project_id, account)
     definition = registry_service.create_agent(
         key=body.key,
         name=body.name,
@@ -100,13 +132,14 @@ def create_agent(
 
 @router.get("", response_model=AgentListResponse)
 def list_agents(
-    registry_service: Annotated[AgentRegistryService, Depends(get_agent_registry_service)],
-    project_id: Annotated[UUID | None, Query()] = None,
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    agent_access: Annotated[AgentAccessService, Depends(get_agent_access_service)],
+    project: Annotated[Project | None, Depends(get_optional_accessible_project_from_query)],
 ) -> AgentListResponse:
-    if project_id is not None:
-        agents = registry_service.list_agents_for_project(project_id)
-    else:
-        agents = registry_service.list_agents()
+    agents = agent_access.list_accessible_agents(
+        account,
+        project_id=project.id if project is not None else None,
+    )
     return AgentListResponse(
         agents=[AgentDefinitionResponse.from_domain(agent) for agent in agents]
     )
@@ -115,9 +148,10 @@ def list_agents(
 @router.get("/{agent_id}", response_model=AgentDefinitionResponse)
 def get_agent(
     agent_id: UUID,
-    registry_service: Annotated[AgentRegistryService, Depends(get_agent_registry_service)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    agent_access: Annotated[AgentAccessService, Depends(get_agent_access_service)],
 ) -> AgentDefinitionResponse:
-    definition = registry_service.get_agent(agent_id)
+    definition = agent_access.require_agent(agent_id, account)
     return AgentDefinitionResponse.from_domain(definition)
 
 
@@ -131,7 +165,10 @@ def create_agent_version(
     body: CreateAgentVersionRequest,
     version_service: Annotated[AgentVersionService, Depends(get_agent_version_service)],
     actor_id: Annotated[str, Depends(get_actor_id)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    agent_access: Annotated[AgentAccessService, Depends(get_agent_access_service)],
 ) -> AgentVersionResponse:
+    _require_agent_mutation(agent_id, account, agent_access)
     detail = version_service.create_version(
         agent_id,
         instructions=body.instructions,
@@ -146,7 +183,10 @@ def create_agent_version(
 def list_agent_versions(
     agent_id: UUID,
     version_service: Annotated[AgentVersionService, Depends(get_agent_version_service)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    agent_access: Annotated[AgentAccessService, Depends(get_agent_access_service)],
 ) -> AgentVersionListResponse:
+    _require_agent_access(agent_id, account, agent_access)
     versions = version_service.list_versions(agent_id)
     return AgentVersionListResponse(
         versions=[
@@ -161,7 +201,10 @@ def get_agent_version(
     agent_id: UUID,
     version: int,
     version_service: Annotated[AgentVersionService, Depends(get_agent_version_service)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    agent_access: Annotated[AgentAccessService, Depends(get_agent_access_service)],
 ) -> AgentVersionResponse:
+    _require_agent_access(agent_id, account, agent_access)
     detail = version_service.get_version(agent_id, version)
     return AgentVersionResponse.from_detail(detail.version, detail.capabilities)
 
@@ -171,7 +214,10 @@ def activate_agent_version(
     agent_id: UUID,
     version: int,
     version_service: Annotated[AgentVersionService, Depends(get_agent_version_service)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    agent_access: Annotated[AgentAccessService, Depends(get_agent_access_service)],
 ) -> AgentVersionResponse:
+    _require_agent_mutation(agent_id, account, agent_access)
     detail = version_service.activate_version(agent_id, version)
     return AgentVersionResponse.from_detail(detail.version, detail.capabilities)
 
@@ -181,7 +227,10 @@ def archive_agent_version(
     agent_id: UUID,
     version: int,
     version_service: Annotated[AgentVersionService, Depends(get_agent_version_service)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    agent_access: Annotated[AgentAccessService, Depends(get_agent_access_service)],
 ) -> AgentVersionResponse:
+    _require_agent_mutation(agent_id, account, agent_access)
     detail = version_service.archive_version(agent_id, version)
     return AgentVersionResponse.from_detail(detail.version, detail.capabilities)
 
@@ -197,7 +246,10 @@ def create_prompt_template(
     body: CreatePromptTemplateRequest,
     prompt_service: Annotated[PromptTemplateService, Depends(get_prompt_template_service)],
     actor_id: Annotated[str, Depends(get_actor_id)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    agent_access: Annotated[AgentAccessService, Depends(get_agent_access_service)],
 ) -> PromptTemplateResponse:
+    _require_agent_mutation(agent_id, account, agent_access)
     prompt = prompt_service.create_prompt(
         agent_id,
         version,
@@ -214,7 +266,10 @@ def list_prompt_templates(
     agent_id: UUID,
     version: int,
     prompt_service: Annotated[PromptTemplateService, Depends(get_prompt_template_service)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    agent_access: Annotated[AgentAccessService, Depends(get_agent_access_service)],
 ) -> PromptTemplateListResponse:
+    _require_agent_access(agent_id, account, agent_access)
     prompts = prompt_service.list_prompts(agent_id, version)
     return PromptTemplateListResponse(
         prompts=[PromptTemplateResponse.from_domain(prompt) for prompt in prompts]
@@ -226,7 +281,10 @@ def configure_agent(
     agent_id: UUID,
     body: ConfigureAgentRequest,
     builder_service: Annotated[AgentBuilderService, Depends(get_agent_builder_service)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    agent_access: Annotated[AgentAccessService, Depends(get_agent_access_service)],
 ) -> AgentDefinitionResponse:
+    _require_agent_mutation(agent_id, account, agent_access)
     agent_type = EngineeringAgentType(body.agent_type) if body.agent_type else None
     definition = builder_service.configure_agent(
         agent_id,
@@ -244,7 +302,10 @@ def update_draft_version(
     version: int,
     body: UpdateDraftVersionRequest,
     builder_service: Annotated[AgentBuilderService, Depends(get_agent_builder_service)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    agent_access: Annotated[AgentAccessService, Depends(get_agent_access_service)],
 ) -> AgentBuilderDetailResponse:
+    _require_agent_mutation(agent_id, account, agent_access)
     detail = builder_service.update_draft_version(
         agent_id,
         version,
@@ -260,7 +321,10 @@ def validate_agent_version(
     agent_id: UUID,
     version: int,
     builder_service: Annotated[AgentBuilderService, Depends(get_agent_builder_service)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    agent_access: Annotated[AgentAccessService, Depends(get_agent_access_service)],
 ) -> AgentBuilderValidationResponse:
+    _require_agent_mutation(agent_id, account, agent_access)
     result = builder_service.validate_version(agent_id, version)
     return AgentBuilderValidationResponse.from_domain(result)
 
@@ -272,7 +336,12 @@ def test_agent_version(
     body: TestAgentVersionRequest,
     builder_service: Annotated[AgentBuilderService, Depends(get_agent_builder_service)],
     actor_id: Annotated[str, Depends(get_actor_id)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    access: Annotated[ProjectAccessService, Depends(get_project_access_service)],
+    agent_access: Annotated[AgentAccessService, Depends(get_agent_access_service)],
 ) -> AgentVersionTestResponse:
+    _require_agent_mutation(agent_id, account, agent_access)
+    access.require_project(body.project_id, account)
     record = builder_service.test_version(
         agent_id,
         version,
@@ -290,7 +359,12 @@ def publish_agent_version(
     body: PublishAgentVersionRequest,
     builder_service: Annotated[AgentBuilderService, Depends(get_agent_builder_service)],
     actor_id: Annotated[str, Depends(get_actor_id)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    access: Annotated[ProjectAccessService, Depends(get_project_access_service)],
+    agent_access: Annotated[AgentAccessService, Depends(get_agent_access_service)],
 ) -> AgentBuilderPublicationResponse:
+    _require_agent_mutation(agent_id, account, agent_access)
+    access.require_project(body.project_id, account)
     publication = builder_service.request_publish(
         agent_id,
         version,
@@ -306,7 +380,12 @@ def rollback_agent_version(
     body: RollbackAgentRequest,
     builder_service: Annotated[AgentBuilderService, Depends(get_agent_builder_service)],
     actor_id: Annotated[str, Depends(get_actor_id)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    access: Annotated[ProjectAccessService, Depends(get_project_access_service)],
+    agent_access: Annotated[AgentAccessService, Depends(get_agent_access_service)],
 ) -> AgentBuilderPublicationResponse:
+    _require_agent_mutation(agent_id, account, agent_access)
+    access.require_project(body.project_id, account)
     publication = builder_service.request_rollback(
         agent_id,
         target_version=body.target_version,
@@ -322,7 +401,12 @@ def deactivate_agent(
     body: DeactivateAgentRequest,
     builder_service: Annotated[AgentBuilderService, Depends(get_agent_builder_service)],
     actor_id: Annotated[str, Depends(get_actor_id)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    access: Annotated[ProjectAccessService, Depends(get_project_access_service)],
+    agent_access: Annotated[AgentAccessService, Depends(get_agent_access_service)],
 ) -> AgentDefinitionResponse:
+    _require_agent_mutation(agent_id, account, agent_access)
+    access.require_project(body.project_id, account)
     definition = builder_service.deactivate_active_version(
         agent_id,
         project_id=body.project_id,
@@ -336,7 +420,10 @@ def get_builder_detail(
     agent_id: UUID,
     version: Annotated[int, Query(ge=1)],
     builder_service: Annotated[AgentBuilderService, Depends(get_agent_builder_service)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    agent_access: Annotated[AgentAccessService, Depends(get_agent_access_service)],
 ) -> AgentBuilderDetailResponse:
+    _require_agent_access(agent_id, account, agent_access)
     detail = builder_service.get_builder_detail(agent_id, version)
     return AgentBuilderDetailResponse.from_domain(detail)
 
@@ -345,7 +432,10 @@ def get_builder_detail(
 def list_agent_publications(
     agent_id: UUID,
     builder_service: Annotated[AgentBuilderService, Depends(get_agent_builder_service)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    agent_access: Annotated[AgentAccessService, Depends(get_agent_access_service)],
 ) -> AgentBuilderPublicationListResponse:
+    _require_agent_access(agent_id, account, agent_access)
     publications = builder_service.list_publications(agent_id)
     return AgentBuilderPublicationListResponse(
         publications=[AgentBuilderPublicationResponse.from_domain(item) for item in publications]
@@ -357,7 +447,10 @@ def list_agent_version_tests(
     agent_id: UUID,
     version: int,
     builder_service: Annotated[AgentBuilderService, Depends(get_agent_builder_service)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    agent_access: Annotated[AgentAccessService, Depends(get_agent_access_service)],
 ) -> AgentVersionTestListResponse:
+    _require_agent_access(agent_id, account, agent_access)
     tests = builder_service.list_tests(agent_id, version)
     return AgentVersionTestListResponse(
         tests=[AgentVersionTestResponse.from_domain(item) for item in tests]

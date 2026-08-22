@@ -7,7 +7,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends
 
-from app.api.deps import get_actor_id, get_pem_revision_service, get_pem_service, get_project_service
+from app.api.deps import get_accessible_project, get_actor_id, get_pem_revision_service, get_pem_service
 from app.api.schemas.common import RevisionResponse
 from app.api.schemas.pem import (
     PemEnvelopeResponse,
@@ -15,25 +15,22 @@ from app.api.schemas.pem import (
     UpdatePemRequest,
     UpdatePemResponse,
 )
-from app.application.exceptions import PemNotFoundError, ProjectNotFoundError
+from app.application.exceptions import PemNotFoundError
 from app.application.pem_revision_service import PemRevisionService
-from app.application.project_service import PemService, ProjectService
+from app.application.project_service import PemService
 
-router = APIRouter(prefix="/projects/{project_id}/pem", tags=["pem"])
-
-
-def _ensure_project_exists(project_service: ProjectService, project_id: UUID) -> None:
-    if project_service.get_project(project_id) is None:
-        raise ProjectNotFoundError(project_id)
+router = APIRouter(
+    prefix="/projects/{project_id}/pem",
+    tags=["pem"],
+    dependencies=[Depends(get_accessible_project)],
+)
 
 
 @router.get("/current", response_model=PemEnvelopeResponse)
 def get_current_pem(
     project_id: UUID,
-    project_service: Annotated[ProjectService, Depends(get_project_service)],
     pem_service: Annotated[PemService, Depends(get_pem_service)],
 ) -> PemEnvelopeResponse:
-    _ensure_project_exists(project_service, project_id)
     meta = pem_service.get_current_snapshot_meta(project_id)
     if meta is None:
         raise PemNotFoundError(project_id)
@@ -51,10 +48,8 @@ def get_current_pem(
 @router.get("/versions", response_model=PemVersionListResponse)
 def list_pem_versions(
     project_id: UUID,
-    project_service: Annotated[ProjectService, Depends(get_project_service)],
     pem_service: Annotated[PemService, Depends(get_pem_service)],
 ) -> PemVersionListResponse:
-    _ensure_project_exists(project_service, project_id)
     return PemVersionListResponse(
         project_id=project_id,
         versions=pem_service.list_pem_versions(project_id),
@@ -65,10 +60,8 @@ def list_pem_versions(
 def get_pem_version(
     project_id: UUID,
     version: int,
-    project_service: Annotated[ProjectService, Depends(get_project_service)],
     pem_service: Annotated[PemService, Depends(get_pem_service)],
 ) -> PemEnvelopeResponse:
-    _ensure_project_exists(project_service, project_id)
     meta = pem_service.get_snapshot_meta_by_version(project_id, version)
     if meta is None:
         raise PemNotFoundError(project_id, version=version)
@@ -87,11 +80,9 @@ def get_pem_version(
 def update_pem(
     project_id: UUID,
     body: UpdatePemRequest,
-    project_service: Annotated[ProjectService, Depends(get_project_service)],
     pem_revision_service: Annotated[PemRevisionService, Depends(get_pem_revision_service)],
     actor_id: Annotated[str, Depends(get_actor_id)],
 ) -> UpdatePemResponse:
-    _ensure_project_exists(project_service, project_id)
     result = pem_revision_service.update_pem(
         project_id,
         body.pem,

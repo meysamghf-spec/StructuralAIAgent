@@ -34,7 +34,10 @@ def test_approved_agent_execution_completes_and_links_report(db_session) -> None
         ),
         actor_id="engineer-1",
     )
-    assert execution.execution_status == AgentExecutionStatus.WAITING_APPROVAL
+    assert execution.execution_status in {
+        AgentExecutionStatus.REQUIRES_HUMAN_APPROVAL,
+        AgentExecutionStatus.WAITING_APPROVAL,
+    }
     assert execution.approval_request_id is not None
 
     approval_service.approve_request(

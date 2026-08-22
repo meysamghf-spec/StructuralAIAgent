@@ -21,9 +21,11 @@ def test_engineering_agent_types_include_specialized_agents() -> None:
     assert "PROMPT_GENERATION_AGENT" in values
 
 
-def test_agent_execution_statuses_include_approval_gate() -> None:
+def test_agent_execution_statuses_include_lifecycle_states() -> None:
     values = {item.value for item in AgentExecutionStatus}
-    assert "WAITING_APPROVAL" in values
+    assert "QUEUED" in values
+    assert "BLOCKED" in values
+    assert "REQUIRES_HUMAN_APPROVAL" in values
     assert "COMPLETED" in values
 
 

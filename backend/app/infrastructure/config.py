@@ -38,6 +38,53 @@ class Settings(BaseSettings):
     crypto_payment_gateway: str = "mock"
     crypto_payment_allow_mock_in_production: bool = False
     crypto_payment_webhook_secret: SecretStr | None = None
+    exchange_rate_provider: str = "stub"
+    btcpay_server_url: str = ""
+    btcpay_api_key: SecretStr | None = None
+    btcpay_store_id: str = ""
+    btcpay_webhook_secret: SecretStr | None = None
+
+    cors_origins: str = "http://localhost:3000"
+    log_level: str = "INFO"
+    run_migrations_on_startup: bool = False
+    trust_proxy_headers: bool = False
+
+    auth_required: bool = False
+    auth_allow_legacy_actor: bool = True
+    auth_jwt_secret: SecretStr | None = None
+    auth_token_expiry_hours: int = 24
+    project_access_enforced: bool = False
+    entitlement_enforcement_enabled: bool = False
+
+    @property
+    def is_production(self) -> bool:
+        return self.app_env.strip().lower() == "production"
+
+    def validate_security_configuration(self) -> None:
+        """Reject insecure production configuration at startup."""
+        if not self.is_production:
+            return
+        issues: list[str] = []
+        if not self.auth_required:
+            issues.append("AUTH_REQUIRED must be true in production")
+        if not self.project_access_enforced:
+            issues.append("PROJECT_ACCESS_ENFORCED must be true in production")
+        if not self.entitlement_enforcement_enabled:
+            issues.append("ENTITLEMENT_ENFORCEMENT_ENABLED must be true in production")
+        if self.auth_allow_legacy_actor:
+            issues.append("AUTH_ALLOW_LEGACY_ACTOR must be false in production")
+        if self.auth_jwt_secret is None:
+            issues.append("AUTH_JWT_SECRET must be configured in production")
+        dev_secret = "dev-only-auth-secret-change-me"
+        if self.auth_jwt_secret is not None and self.auth_jwt_secret.get_secret_value() == dev_secret:
+            issues.append("AUTH_JWT_SECRET must not use the development default in production")
+        if issues:
+            from app.application.exceptions import SecurityConfigurationError
+
+            raise SecurityConfigurationError(
+                "Insecure production security configuration",
+                issues=issues,
+            )
 
     @field_validator("database_url")
     @classmethod
@@ -72,7 +119,17 @@ class Settings(BaseSettings):
             return Path(self.file_storage_root).expanduser().resolve()
         return (_repo_root().parent / "structuralaiaagent_file_storage").resolve()
 
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [item.strip() for item in self.cors_origins.split(",") if item.strip()]
+
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    settings = Settings()
+    settings.validate_security_configuration()
+    if settings.is_production:
+        from app.infrastructure.payments.payment_factory import validate_payment_configuration
+
+        validate_payment_configuration(settings)
+    return settings

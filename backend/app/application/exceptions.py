@@ -31,6 +31,77 @@ class ProjectNotFoundError(ApplicationError):
         )
 
 
+class ProjectAuthorizationError(ApplicationError):
+    def __init__(self, project_id: UUID, account_id: str) -> None:
+        super().__init__(
+            "PROJECT_FORBIDDEN",
+            "You are not authorized to access this project",
+            status_code=403,
+            details={"project_id": str(project_id), "account_id": account_id},
+        )
+
+
+class AuthenticationError(ApplicationError):
+    def __init__(self, message: str = "Authentication required") -> None:
+        super().__init__(
+            "AUTHENTICATION_REQUIRED",
+            message,
+            status_code=401,
+        )
+
+
+class InvalidCredentialsError(ApplicationError):
+    def __init__(self) -> None:
+        super().__init__(
+            "INVALID_CREDENTIALS",
+            "Invalid email or password",
+            status_code=401,
+        )
+
+
+class DuplicateUserError(ApplicationError):
+    def __init__(self, email: str) -> None:
+        super().__init__(
+            "DUPLICATE_USER",
+            "A user with this email already exists",
+            status_code=409,
+            details={"email": email},
+        )
+
+
+class UserNotFoundError(ApplicationError):
+    def __init__(self, user_id: UUID) -> None:
+        super().__init__(
+            "USER_NOT_FOUND",
+            "User not found",
+            status_code=404,
+            details={"user_id": str(user_id)},
+        )
+
+
+class FeatureAccessDeniedError(ApplicationError):
+    def __init__(self, feature: str, *, upgrade_product_id: str | None = None) -> None:
+        details: dict[str, str] = {"feature": feature}
+        if upgrade_product_id is not None:
+            details["upgrade_product_id"] = upgrade_product_id
+        super().__init__(
+            "FEATURE_ACCESS_DENIED",
+            "Upgrade entitlement is required for this capability",
+            status_code=403,
+            details=details,
+        )
+
+
+class SecurityConfigurationError(ApplicationError):
+    def __init__(self, message: str, *, issues: list[str]) -> None:
+        super().__init__(
+            "SECURITY_CONFIGURATION_ERROR",
+            message,
+            status_code=503,
+            details={"issues": issues},
+        )
+
+
 class PemNotFoundError(ApplicationError):
     def __init__(self, project_id: UUID, *, version: int | None = None) -> None:
         details: dict = {"project_id": str(project_id)}
@@ -213,6 +284,29 @@ class AgentHandlerNotFoundError(ApplicationError):
         )
 
 
+class AgentExecutionBlockedError(ApplicationError):
+    def __init__(self, *, reason: str, missing_inputs: list[str] | None = None) -> None:
+        details: dict[str, object] = {"reason": reason}
+        if missing_inputs:
+            details["missing_inputs"] = missing_inputs
+        super().__init__(
+            "AGENT_EXECUTION_BLOCKED",
+            reason,
+            status_code=409,
+            details=details,
+        )
+
+
+class AgentCapabilityUnavailableError(ApplicationError):
+    def __init__(self, *, capability: str, message: str) -> None:
+        super().__init__(
+            "AGENT_CAPABILITY_UNAVAILABLE",
+            message,
+            status_code=503,
+            details={"capability": capability},
+        )
+
+
 class InvalidLifecycleTransitionError(ApplicationError):
     def __init__(self, message: str, *, details: dict | None = None) -> None:
         super().__init__(
@@ -268,6 +362,16 @@ class AgentBuilderValidationFailedError(ApplicationError):
                 "version": version,
                 "issues": [issue.model_dump() for issue in validation.issues],
             },
+        )
+
+
+class AgentAuthorizationError(ApplicationError):
+    def __init__(self, agent_id: UUID, message: str = "Agent mutation not allowed") -> None:
+        super().__init__(
+            "AGENT_FORBIDDEN",
+            message,
+            status_code=403,
+            details={"agent_id": str(agent_id)},
         )
 
 

@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from app.application.cad_generation_service import CadGenerationService
 from app.application.exceptions import ProjectNotFoundError, ReportNotFoundError
 from app.application.engineering_result_service import EngineeringResultService
 from app.application.human_approval_service import HumanApprovalService
@@ -52,6 +53,7 @@ class ReportGenerationService:
         design_repository: DesignRepository | None = None,
         optimization_repository: OptimizationRepository | None = None,
         engineering_result_service: EngineeringResultService | None = None,
+        cad_generation_service: CadGenerationService | None = None,
     ) -> None:
         self._projects = project_repository
         self._reports = report_repository
@@ -64,6 +66,7 @@ class ReportGenerationService:
         self._design = design_repository
         self._optimization = optimization_repository
         self._engineering_results = engineering_result_service
+        self._cad = cad_generation_service
 
     def create_report(
         self,
@@ -225,6 +228,7 @@ class ReportGenerationService:
 
         sections = self._build_sections(
             request.report_type,
+            project_id=request.project_id,
             context=context.model_dump(mode="json"),
             graph=graph.model_dump(mode="json"),
             approvals=[item.model_dump(mode="json") for item in approvals],
@@ -234,6 +238,10 @@ class ReportGenerationService:
             design_runs=self._list_design_runs(request.project_id),
             optimization_runs=self._list_optimization_runs(request.project_id),
         )
+
+        missing_data = self._collect_missing_data(sections)
+        if missing_data:
+            traceability_metadata["missing_data"] = missing_data
 
         return GeneratedReportData(
             report_type=request.report_type,
@@ -248,6 +256,7 @@ class ReportGenerationService:
         self,
         report_type: ReportType,
         *,
+        project_id: UUID,
         context: dict[str, Any],
         graph: dict[str, Any],
         approvals: list[dict[str, Any]],
@@ -359,27 +368,36 @@ class ReportGenerationService:
                     )
                 )
             elif key == "analysis_results":
-                engineering_results = self._list_engineering_results(request.project_id)
+                engineering_results = self._list_engineering_results(project_id)
+                real_results = [
+                    item
+                    for item in engineering_results
+                    if item.get("engineering_results_available")
+                    and item.get("provenance", {}).get("execution_mode") == "vendor"
+                ]
                 sections.append(
                     ReportSection(
                         key=key,
                         title="Analysis Results",
                         content={
                             "analysis_runs": analysis_runs or [],
-                            "validated_engineering_results": engineering_results,
-                            "real_solver_results_available": any(
-                                item.get("engineering_results_available") for item in engineering_results
-                            ),
+                            "engineering_result_sets": engineering_results,
+                            "validated_vendor_results": real_results,
+                            "real_solver_results_available": len(real_results) > 0,
                             "legacy_pem_analysis_models": pem.get("analysis_models", []) if pem else [],
-                            "solver_unavailable_message": (
-                                None
-                                if any(item.get("engineering_results_available") for item in engineering_results)
-                                else "Real solver results are not available"
-                            ),
+                            "data_availability": {
+                                "status": "available" if real_results else "unavailable",
+                                "message": (
+                                    "Validated vendor solver results are included."
+                                    if real_results
+                                    else "Real solver results are not available; report does not fabricate analysis data."
+                                ),
+                            },
                         },
                     )
                 )
             elif key == "design_results":
+                design_available = bool(design_runs)
                 sections.append(
                     ReportSection(
                         key=key,
@@ -387,16 +405,76 @@ class ReportGenerationService:
                         content={
                             "design_runs": design_runs or [],
                             "legacy_pem_design_results": pem.get("design_results", []) if pem else [],
+                            "data_availability": {
+                                "status": "available" if design_available else "not_run",
+                                "message": (
+                                    "Design runs are included from persisted platform data."
+                                    if design_available
+                                    else "No design runs recorded for this project."
+                                ),
+                            },
                         },
                     )
                 )
             elif key == "optimization_results":
+                optimization_available = bool(optimization_runs)
                 sections.append(
                     ReportSection(
                         key=key,
                         title="Optimization Results",
                         content={
                             "optimization_runs": optimization_runs or [],
+                            "data_availability": {
+                                "status": "available" if optimization_available else "not_run",
+                                "message": (
+                                    "Optimization runs are included from persisted platform data."
+                                    if optimization_available
+                                    else "No optimization runs recorded for this project."
+                                ),
+                            },
+                        },
+                    )
+                )
+            elif key == "cad_outputs":
+                drawings = self._list_cad_drawings(project_id)
+                sections.append(
+                    ReportSection(
+                        key=key,
+                        title="CAD Outputs",
+                        content={
+                            "drawings": drawings,
+                            "data_availability": {
+                                "status": "available" if drawings else "not_generated",
+                                "message": (
+                                    "CAD drawing records are included from persisted platform data."
+                                    if drawings
+                                    else "No CAD drawings have been generated for this project."
+                                ),
+                            },
+                        },
+                    )
+                )
+            elif key == "assumptions":
+                memories = context.get("memories", [])
+                assumptions = [
+                    item
+                    for item in memories
+                    if item.get("memory_type") == MemoryType.ASSUMPTION.value
+                ]
+                sections.append(
+                    ReportSection(
+                        key=key,
+                        title="Assumptions",
+                        content={
+                            "assumptions": assumptions,
+                            "data_availability": {
+                                "status": "available" if assumptions else "missing",
+                                "message": (
+                                    "Recorded assumptions are included from Project Memory."
+                                    if assumptions
+                                    else "No assumptions recorded in Project Memory."
+                                ),
+                            },
                         },
                     )
                 )
@@ -447,6 +525,28 @@ class ReportGenerationService:
             summary.append("VALIDATION_TO_REPORT")
         summary.append("REPORT")
         return summary
+
+    def _list_cad_drawings(self, project_id: UUID) -> list[dict[str, Any]]:
+        if self._cad is None:
+            return []
+        return [
+            item.model_dump(mode="json")
+            for item in self._cad.list_drawings(project_id, limit=20)
+        ]
+
+    @staticmethod
+    def _collect_missing_data(sections: list[ReportSection]) -> list[str]:
+        missing: list[str] = []
+        for section in sections:
+            availability = section.content.get("data_availability")
+            if not isinstance(availability, dict):
+                continue
+            status = availability.get("status")
+            if status in {"unavailable", "not_run", "not_generated", "missing"}:
+                message = availability.get("message")
+                if isinstance(message, str) and message.strip():
+                    missing.append(message.strip())
+        return missing
 
     def _list_engineering_results(self, project_id: UUID) -> list[dict[str, Any]]:
         if self._engineering_results is None:

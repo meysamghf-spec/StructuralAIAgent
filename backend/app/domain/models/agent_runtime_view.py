@@ -6,7 +6,11 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.domain.models.agent_runtime import AgentExecutionRecord, AgentExecutionStatus
+from app.domain.models.agent_runtime import (
+    AgentExecutionRecord,
+    AgentExecutionStatus,
+    is_awaiting_human_approval,
+)
 
 AGENT_EXECUTION_MEMORY_SOURCE_TYPE = "agent_execution"
 
@@ -21,7 +25,7 @@ class AgentExecutionUserView(BaseModel):
 
 def build_agent_execution_user_view(record: AgentExecutionRecord) -> AgentExecutionUserView:
     progress = _resolve_progress(record)
-    requires_approval = record.execution_status == AgentExecutionStatus.WAITING_APPROVAL
+    requires_approval = is_awaiting_human_approval(record.execution_status)
     final_result = _resolve_final_result(record)
     summary = _resolve_summary(record)
 
@@ -35,12 +39,14 @@ def build_agent_execution_user_view(record: AgentExecutionRecord) -> AgentExecut
 
 
 def _resolve_progress(record: AgentExecutionRecord) -> str:
-    if record.execution_status == AgentExecutionStatus.CREATED:
-        return "starting"
+    if record.execution_status in {AgentExecutionStatus.QUEUED, AgentExecutionStatus.CREATED}:
+        return "queued"
     if record.execution_status == AgentExecutionStatus.RUNNING:
         return "in_progress"
-    if record.execution_status == AgentExecutionStatus.WAITING_APPROVAL:
+    if is_awaiting_human_approval(record.execution_status):
         return "awaiting_approval"
+    if record.execution_status == AgentExecutionStatus.BLOCKED:
+        return "blocked"
     if record.execution_status == AgentExecutionStatus.COMPLETED:
         return "completed"
     if record.execution_status == AgentExecutionStatus.FAILED:
@@ -53,8 +59,13 @@ def _resolve_progress(record: AgentExecutionRecord) -> str:
 
 
 def _resolve_final_result(record: AgentExecutionRecord) -> str | None:
-    if record.execution_status == AgentExecutionStatus.WAITING_APPROVAL:
+    if is_awaiting_human_approval(record.execution_status):
         return "Awaiting engineer approval before results are finalized."
+    if record.execution_status == AgentExecutionStatus.BLOCKED:
+        return record.error_metadata.get(
+            "message",
+            "Execution is blocked until required inputs are provided.",
+        )
     if record.execution_status == AgentExecutionStatus.CANCELLED:
         reason = record.error_metadata.get("rejection_reason")
         if reason:

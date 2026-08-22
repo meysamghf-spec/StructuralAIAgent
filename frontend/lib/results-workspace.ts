@@ -74,11 +74,20 @@ export function getNextStepMessage(
 
 export function getResultSourceLabel(result: EngineeringResultSet): string {
   const executionMode = result.provenance?.execution_mode;
+  if (executionMode === "mock") {
+    return "Rejected — mock execution not accepted";
+  }
+  if (result.validation_status === "INVALID") {
+    return "Invalid — not usable for downstream engineering";
+  }
   if (executionMode === "vendor") {
     return "Real CSI solver result";
   }
   if (result.validation_status === "REQUIRES_LOCAL_SOFTWARE") {
     return "Unavailable — solver not connected";
+  }
+  if (!result.engineering_results_available) {
+    return "Not analyzed — no validated results";
   }
   return "Platform calculation";
 }
