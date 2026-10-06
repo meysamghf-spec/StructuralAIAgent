@@ -1,15 +1,10 @@
-"""Document indexing — link project files to project memory records.
-
-Intended post-extraction integration point (not wired into upload yet):
-after ``FileIngestionService.ingest_upload`` returns a ``ProjectFile`` with
-``parsing_status`` and ``extraction_status`` both ``COMPLETE`` and successful
-extraction metadata present, ``DocumentIndexingService.index_file`` may be invoked.
-"""
+"""Document indexing — link project files to project memory records."""
 
 from __future__ import annotations
 
 from uuid import UUID
 
+from app.application.document_extraction_service import build_index_content, document_from_file_record
 from app.application.exceptions import FileNotReadyForIndexingError
 from app.application.file_registry_service import FileRegistryService
 from app.application.project_memory_service import ProjectMemoryService
@@ -46,6 +41,10 @@ class DocumentIndexingService:
         *,
         created_by: str | None = None,
     ) -> ProjectMemory:
+        existing = self.get_memories_for_file(project_id, file_id)
+        if existing:
+            return existing[0]
+
         file_record = self._files.get_project_file(project_id, file_id)
         if not is_file_ready_for_indexing(file_record):
             raise FileNotReadyForIndexingError(
@@ -55,12 +54,17 @@ class DocumentIndexingService:
             )
 
         extraction = file_record.metadata.get("extraction", {})
-        stub_metadata = extraction.get("metadata", {}) if isinstance(extraction, dict) else {}
+        document = document_from_file_record(file_record)
+        if document is not None and document.is_usable:
+            content = build_index_content(file_record, document)
+        else:
+            stub_metadata = extraction.get("metadata", {}) if isinstance(extraction, dict) else {}
+            content = _legacy_index_content(file_record, stub_metadata)
 
         memory = self._memory.create_memory(
             project_id,
             MemoryType.EXTRACTED_INFORMATION,
-            _build_index_content(file_record, stub_metadata),
+            content,
             source_type=FILE_MEMORY_SOURCE_TYPE,
             source_id=file_id,
             confidence=file_record.confidence,
@@ -104,7 +108,12 @@ def is_file_ready_for_indexing(file_record: ProjectFile) -> bool:
     extraction = file_record.metadata.get("extraction")
     if not isinstance(extraction, dict):
         return False
-    return extraction.get("success") is True
+    if extraction.get("success") is not True:
+        return False
+    document = document_from_file_record(file_record)
+    if document is not None:
+        return document.is_usable
+    return True
 
 
 def _indexing_block_reason(file_record: ProjectFile) -> str:
@@ -115,10 +124,13 @@ def _indexing_block_reason(file_record: ProjectFile) -> str:
     extraction = file_record.metadata.get("extraction")
     if not isinstance(extraction, dict) or extraction.get("success") is not True:
         return "extraction did not complete successfully"
+    document = document_from_file_record(file_record)
+    if document is not None and not document.is_usable:
+        return "extracted document content is not usable for indexing"
     return "unknown"
 
 
-def _build_index_content(file_record: ProjectFile, stub_metadata: dict) -> str:
+def _legacy_index_content(file_record: ProjectFile, stub_metadata: dict) -> str:
     line_count = stub_metadata.get("line_count")
     if line_count is not None:
         return f"Document '{file_record.filename}' indexed ({line_count} lines)."

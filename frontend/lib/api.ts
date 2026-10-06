@@ -298,12 +298,17 @@ export async function generateReportVersion(
 
 export type ProjectFileSummary = {
   id: string;
+  project_id?: string;
   filename: string;
+  content_type?: string | null;
   file_type: string;
+  file_version?: number;
   parsing_status: string;
   extraction_status: string;
   upload_time: string;
   created_at: string;
+  updated_at?: string;
+  byte_length?: number | null;
 };
 
 export type ProjectFileListResponse = {
@@ -313,6 +318,35 @@ export type ProjectFileListResponse = {
 
 export async function listProjectFiles(projectId: string): Promise<ProjectFileListResponse> {
   return apiFetch<ProjectFileListResponse>(`/api/v1/projects/${projectId}/files`);
+}
+
+export async function downloadProjectFile(
+  projectId: string,
+  fileId: string,
+  filename: string,
+): Promise<void> {
+  const response = await fetch(
+    `${getApiBaseUrl()}/api/v1/projects/${projectId}/files/${fileId}/content`,
+    {
+      headers: getAuthHeaders(),
+      cache: "no-store",
+    },
+  );
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    const message =
+      typeof body?.error?.message === "string"
+        ? body.error.message
+        : `Download failed (${response.status})`;
+    throw new Error(message);
+  }
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(objectUrl);
 }
 
 export async function uploadProjectFile(projectId: string, file: File): Promise<ProjectFileSummary> {

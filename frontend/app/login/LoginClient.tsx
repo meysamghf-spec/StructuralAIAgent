@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuth } from "@/hooks/useAuth";
+import { AUTH_NAV_LINKS } from "@/lib/auth-forms";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
@@ -74,7 +75,10 @@ export default function LoginClient() {
       </form>
 
       <p className="muted auth-switch">
-        Need an account? <Link href="/register">Create one</Link>
+        {AUTH_NAV_LINKS.signInToSignUp.prompt}{" "}
+        <Link href={AUTH_NAV_LINKS.signInToSignUp.href} className="auth-inline-link">
+          {AUTH_NAV_LINKS.signInToSignUp.label}
+        </Link>
       </p>
     </section>
   );

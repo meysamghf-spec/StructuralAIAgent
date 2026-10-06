@@ -567,6 +567,16 @@ class AIModelNotSupportedError(ApplicationError):
         )
 
 
+class AIProviderRequestError(ApplicationError):
+    def __init__(self, *, provider: str, message: str, status_code: int = 502) -> None:
+        super().__init__(
+            "AI_PROVIDER_REQUEST_FAILED",
+            message,
+            status_code=status_code,
+            details={"provider": provider},
+        )
+
+
 class OrchestrationTaskNotSupportedError(ApplicationError):
     def __init__(self, *, task_type: str) -> None:
         super().__init__(
@@ -711,4 +721,87 @@ class PaymentConfigurationError(ApplicationError):
             "PAYMENT_CONFIGURATION_ERROR",
             message,
             status_code=503,
+        )
+
+
+class ConversationNotFoundError(ApplicationError):
+    def __init__(self, conversation_id: UUID) -> None:
+        super().__init__(
+            "CONVERSATION_NOT_FOUND",
+            "Conversation not found",
+            status_code=404,
+            details={"conversation_id": str(conversation_id)},
+        )
+
+
+class ConversationForbiddenError(ApplicationError):
+    def __init__(self, message: str = "You do not have access to this conversation") -> None:
+        super().__init__(
+            "CONVERSATION_FORBIDDEN",
+            message,
+            status_code=403,
+        )
+
+
+class MetaAgentApprovalRequiredError(ApplicationError):
+    def __init__(
+        self,
+        message: str = "Human approval is required before a new agent may be created or built.",
+        *,
+        details: dict | None = None,
+    ) -> None:
+        super().__init__(
+            "META_AGENT_APPROVAL_REQUIRED",
+            message,
+            status_code=403,
+            details=details,
+        )
+
+
+class MetaAgentUnsupportedRequestError(ApplicationError):
+    def __init__(self, message: str = "Meta-Agent request is unsupported.") -> None:
+        super().__init__(
+            "META_AGENT_UNSUPPORTED",
+            message,
+            status_code=400,
+        )
+
+
+class BuildingBriefIncompleteError(ApplicationError):
+    def __init__(self, missing_inputs: list[str]) -> None:
+        super().__init__(
+            "BUILDING_BRIEF_INCOMPLETE",
+            "The building brief is missing inputs required to generate a layout.",
+            status_code=400,
+            details={"missing_inputs": missing_inputs},
+        )
+
+
+class BuildingLayoutInfeasibleError(ApplicationError):
+    def __init__(self, reason: str, *, details: dict | None = None) -> None:
+        super().__init__(
+            "BUILDING_LAYOUT_INFEASIBLE",
+            reason,
+            status_code=422,
+            details=details,
+        )
+
+
+class BuildingModelNotGeneratedError(ApplicationError):
+    def __init__(self, project_id: UUID) -> None:
+        super().__init__(
+            "BUILDING_MODEL_NOT_GENERATED",
+            "This project has no generated building model yet.",
+            status_code=404,
+            details={"project_id": str(project_id)},
+        )
+
+
+class StructuralAnalysisFailedError(ApplicationError):
+    def __init__(self, reason: str, *, details: dict | None = None) -> None:
+        super().__init__(
+            "STRUCTURAL_ANALYSIS_FAILED",
+            reason,
+            status_code=422,
+            details=details,
         )

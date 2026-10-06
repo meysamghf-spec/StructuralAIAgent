@@ -1,6 +1,7 @@
 ﻿"""Factory helpers for wiring application services to PostgreSQL repositories."""
 
 from app.application.agent_approval_completion_service import AgentApprovalCompletionService
+from app.application.agent_capability_discovery_service import AgentCapabilityDiscoveryService
 from app.application.agent_builder_approval_completion_service import (
     AgentBuilderApprovalCompletionService,
 )
@@ -12,6 +13,8 @@ from app.application.agent_version_service import AgentVersionService
 from app.application.ai_gateway_service import AIGatewayService
 from app.application.analysis_engine_service import AnalysisEngineService
 from app.application.code_engine_service import CodeEngineService
+from app.application.chat_attachment_context_service import ChatAttachmentContextService
+from app.application.conversation_service import ConversationService
 from app.application.compatibility_engine import CompatibilityEngine
 from app.application.cad_generation_service import CadGenerationService
 from app.application.design_engine_service import DesignEngineService
@@ -24,6 +27,7 @@ from app.application.file_registry_service import FileRegistryService
 from app.application.human_approval_service import HumanApprovalService
 from app.application.hybrid_orchestration_service import HybridOrchestrationService
 from app.application.integration_service import IntegrationService
+from app.application.meta_agent_service import MetaAgentService
 from app.application.traceability_service import TraceabilityService
 from app.application.digital_payment_agent import DigitalPaymentAgent
 from app.application.payment_service import PaymentService
@@ -41,10 +45,12 @@ from app.application.validation_engine_service import ValidationEngineService
 from app.infrastructure.config import get_settings
 from app.infrastructure.code_plugins import build_default_plugin_registry
 from app.infrastructure.integrations import build_integration_adapters
+from app.infrastructure.ai.openai_compatible_provider import OpenAICompatibleProvider
 from app.infrastructure.ai.stub_ai_provider import StubAIProvider
 from app.domain.contracts.crypto_payment_gateway import CryptoPaymentGateway
 from app.domain.models.ai_gateway import AIProviderKind
-from app.infrastructure.parsers.stub_parser import StubTextParser
+from app.infrastructure.agent_builder.stub_agent_builder_port import StubAgentBuilderPort
+from app.infrastructure.parsers import build_document_parsers
 from app.infrastructure.repositories.postgres_payment_repository import PostgresPaymentRepository
 from app.application.prompt_template_service import PromptTemplateService
 from app.infrastructure.repositories.postgres_agent_builder_publication_repository import (
@@ -79,6 +85,9 @@ from app.infrastructure.repositories.postgres_prompt_template_repository import 
 )
 from app.infrastructure.repositories.postgres_analysis_repository import PostgresAnalysisRepository
 from app.infrastructure.repositories.postgres_design_repository import PostgresDesignRepository
+from app.infrastructure.repositories.postgres_conversation_repository import (
+    PostgresConversationRepository,
+)
 from app.infrastructure.repositories.postgres_cad_drawing_repository import PostgresCadDrawingRepository
 from app.infrastructure.repositories.postgres_engineering_result_repository import (
     PostgresEngineeringResultRepository,
@@ -200,7 +209,7 @@ def build_file_ingestion_service() -> FileIngestionService:
         project_service=build_project_service(),
         file_repository=_file_repository(),
         file_storage=_file_storage(),
-        parsers=[StubTextParser()],
+        parsers=build_document_parsers(),
         max_upload_bytes=settings.max_upload_bytes,
         document_indexing_service=build_document_indexing_service() if auto_index else None,
         auto_index_on_extraction=auto_index,
@@ -326,6 +335,8 @@ def build_agent_approval_completion_service() -> AgentApprovalCompletionService:
         memory_service=build_project_memory_service(),
         traceability_service=build_traceability_service(),
         report_repository=_report_repository(),
+        definition_repository=_agent_definition_repository(),
+        context_service=build_project_context_assembly_service(),
     )
 
 
@@ -344,14 +355,30 @@ def build_composite_approval_completion_service() -> CompositeApprovalCompletion
     )
 
 
+_human_approval_service_instance: HumanApprovalService | None = None
+_engineering_task_execution_service_instance = None
+
+
+def reset_test_service_caches() -> None:
+    """Clear process-level service singletons between isolated DB tests."""
+    global _human_approval_service_instance, _engineering_task_execution_service_instance, _payment_gateway_instance
+    _human_approval_service_instance = None
+    _engineering_task_execution_service_instance = None
+    _payment_gateway_instance = None
+    get_settings.cache_clear()
+
+
 def build_human_approval_service() -> HumanApprovalService:
-    return HumanApprovalService(
-        project_repository=_project_repository(),
-        approval_repository=_human_approval_repository(),
-        memory_service=build_project_memory_service(),
-        traceability_service=build_traceability_service(),
-        agent_completion_service=build_composite_approval_completion_service(),
-    )
+    global _human_approval_service_instance
+    if _human_approval_service_instance is None:
+        _human_approval_service_instance = HumanApprovalService(
+            project_repository=_project_repository(),
+            approval_repository=_human_approval_repository(),
+            memory_service=build_project_memory_service(),
+            traceability_service=build_traceability_service(),
+            agent_completion_service=build_composite_approval_completion_service(),
+        )
+    return _human_approval_service_instance
 
 
 def build_report_generation_service() -> ReportGenerationService:
@@ -408,8 +435,37 @@ def build_structural_solver_integration_service() -> StructuralSolverIntegration
 
 
 def build_ai_gateway_service() -> AIGatewayService:
-    stub = StubAIProvider()
-    return AIGatewayService(providers={AIProviderKind.STUB: stub})
+    settings = get_settings()
+    providers: dict[AIProviderKind, StubAIProvider | OpenAICompatibleProvider] = {
+        AIProviderKind.STUB: StubAIProvider()
+    }
+    provider_name = settings.ai_provider.strip().lower()
+    api_key = settings.openai_api_key.get_secret_value() if settings.openai_api_key else ""
+    if provider_name in {"openai", "openai_compatible", "openai-compatible"} and api_key:
+        providers[AIProviderKind.OPENAI] = OpenAICompatibleProvider(
+            api_key=api_key,
+            api_base=settings.openai_api_base,
+            default_model=settings.openai_model,
+            timeout_seconds=settings.ai_timeout_seconds,
+            max_retries=settings.ai_max_retries,
+        )
+    return AIGatewayService(providers=providers)
+
+
+def build_building_design_pipeline():
+    from app.application.building_design_pipeline import BuildingDesignPipeline
+    from app.application.sheet_generation_service import SheetGenerationService
+
+    return BuildingDesignPipeline(
+        code_engine=build_code_engine_service(),
+        project_service=build_project_service(),
+        pem_service=build_pem_service(),
+        pem_revision_service=build_pem_revision_service(),
+        cad_generation_service=build_cad_generation_service(),
+        sheet_generation_service=SheetGenerationService(),
+        traceability_service=build_traceability_service(),
+        approval_service=build_human_approval_service(),
+    )
 
 
 def build_hybrid_orchestration_service() -> HybridOrchestrationService:
@@ -500,6 +556,35 @@ def build_engineering_agent_services() -> EngineeringAgentServices:
         engineering_result_service=build_engineering_result_service(),
         cad_generation_service=build_cad_generation_service(),
         report_generation_service=build_report_generation_service(),
+        building_design_pipeline=build_building_design_pipeline(),
+    )
+
+
+def build_engineering_task_execution_service():
+    global _engineering_task_execution_service_instance
+    if _engineering_task_execution_service_instance is not None:
+        return _engineering_task_execution_service_instance
+    from app.application.engineering_task_execution_service import EngineeringTaskExecutionService
+
+    services = build_engineering_agent_services()
+    _engineering_task_execution_service_instance = EngineeringTaskExecutionService(
+        workflow_service=build_engineering_task_workflow_service(),
+        hybrid_orchestration=build_hybrid_orchestration_service(),
+        integration_service=build_integration_service(),
+        solver_integration=build_structural_solver_integration_service(),
+        architectural_concept_service=None,
+        cad_generation_service=services.cad_generation_service,
+        handlers=build_engineering_agent_handlers(services),
+    )
+    return _engineering_task_execution_service_instance
+
+
+def build_engineering_task_workflow_service() -> EngineeringTaskWorkflowService:
+    from app.application.engineering_task_workflow_service import EngineeringTaskWorkflowService
+
+    return EngineeringTaskWorkflowService(
+        hybrid_orchestration=build_hybrid_orchestration_service(),
+        integration_service=build_integration_service(),
     )
 
 
@@ -516,6 +601,8 @@ def build_agent_orchestration_service() -> AgentOrchestrationService:
         approval_service=build_human_approval_service(),
         entitlement_service=build_entitlement_authorization_service(),
         orchestration_service=build_hybrid_orchestration_service(),
+        task_workflow_service=build_engineering_task_workflow_service(),
+        task_execution_service=build_engineering_task_execution_service(),
         handlers=build_engineering_agent_handlers(build_engineering_agent_services()),
     )
 
@@ -576,3 +663,43 @@ def build_payment_service() -> PaymentService:
 
 def build_digital_payment_agent() -> DigitalPaymentAgent:
     return DigitalPaymentAgent(payment_service=build_payment_service())
+
+
+def build_agent_capability_discovery_service() -> AgentCapabilityDiscoveryService:
+    return AgentCapabilityDiscoveryService(agent_access=build_agent_access_service())
+
+
+def build_agent_builder_port() -> StubAgentBuilderPort:
+    return StubAgentBuilderPort()
+
+
+def build_meta_agent_service() -> MetaAgentService:
+    return MetaAgentService(
+        discovery_service=build_agent_capability_discovery_service(),
+        project_access=build_project_access_service(),
+        approval_service=build_human_approval_service(),
+        agent_builder=build_agent_builder_port(),
+        agent_registry_builder=build_agent_builder_service(),
+        conversation_repository=PostgresConversationRepository(),
+    )
+
+
+def build_chat_attachment_context_service() -> ChatAttachmentContextService:
+    return ChatAttachmentContextService(
+        file_registry=build_file_registry_service(),
+        file_ingestion=build_file_ingestion_service(),
+        document_indexing=build_document_indexing_service(),
+    )
+
+
+def build_conversation_service() -> ConversationService:
+    return ConversationService(
+        repository=PostgresConversationRepository(),
+        project_access=build_project_access_service(),
+        agent_runtime=build_agent_runtime_service(),
+        ai_gateway=build_ai_gateway_service(),
+        file_ingestion=build_file_ingestion_service(),
+        file_registry=build_file_registry_service(),
+        project_memory=build_project_memory_service(),
+        attachment_context=build_chat_attachment_context_service(),
+    )

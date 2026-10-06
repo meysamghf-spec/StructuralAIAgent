@@ -13,6 +13,7 @@ from app.application.optimization_engine_service import OptimizationEngineServic
 from app.application.integration_service import IntegrationService
 from app.application.report_generation_service import ReportGenerationService
 from app.application.validation_engine_service import ValidationEngineService
+from app.application.building_design_pipeline import BuildingDesignPipeline
 
 
 @dataclass(frozen=True)
@@ -26,3 +27,4 @@ class EngineeringAgentServices:
     engineering_result_service: EngineeringResultService
     cad_generation_service: CadGenerationService
     report_generation_service: ReportGenerationService | None = None
+    building_design_pipeline: BuildingDesignPipeline | None = None

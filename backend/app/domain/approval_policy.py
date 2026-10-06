@@ -18,6 +18,7 @@ AGENT_ACTIONS_REQUIRING_APPROVAL: frozenset[str] = frozenset(
         "agent.activate",
         "agent.version.publish",
         "agent.rollback",
+        "agent.create",
     }
 )
 

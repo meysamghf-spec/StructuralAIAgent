@@ -10,6 +10,7 @@ import {
   getVersionStatusLabel,
 } from "@/lib/agent-builder";
 import {
+  apiFetch,
   createBuilderAgent,
   getBuilderDetail,
   listAgentCapabilities,
@@ -87,9 +88,7 @@ export default function AgentBuilderClient() {
       setLoading(true);
       setError(null);
       try {
-        const projectResponse = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000"}/api/v1/projects`,
-        ).then((response) => response.json() as Promise<ProjectListResponse>);
+        const projectResponse = await apiFetch<ProjectListResponse>("/api/v1/projects");
         const capabilityResponse = await listAgentCapabilities();
         setProjects(projectResponse.projects);
         setCapabilities(capabilityResponse.map((item) => ({ key: item.key, name: item.name })));

@@ -100,4 +100,6 @@ def test_prompt_generation_includes_execution_plan_and_services() -> None:
     assert result.selected_agent_type == EngineeringAgentType.ANALYSIS_AGENT
     assert "engineering.analysis.run" in result.deterministic_services
     assert any(step["capability"] == EngineeringAgentType.ANALYSIS_AGENT.value for step in result.execution_plan)
-    assert result.metadata["routing_method"] == "keyword_and_context"
+    assert result.metadata["routing_method"] == "scored_keyword_and_context"
+    assert result.metadata["routing_score"] > 0
+    assert "analysis" in result.metadata["matched_keywords"] or "drift" in result.metadata["matched_keywords"]

@@ -1,7 +1,16 @@
 "use client";
 
+import { BuildingPlanSvg } from "@/components/model/BuildingPlanSvg";
 import { ProjectScopePanel } from "@/components/workspace/ProjectScopePanel";
 import { useProjectScope } from "@/hooks/useProjectScope";
+import {
+  defaultBuildingBrief,
+  downloadBuildingSheet,
+  generateBuilding,
+  getBuilding,
+  type BuildingGetResponse,
+  type BuildingView,
+} from "@/lib/building";
 import {
   formatModelCounts,
   getAnalysisStatusLabel,
@@ -38,6 +47,11 @@ export default function ModelWorkspaceClient() {
   const [versions, setVersions] = useState<number[]>([]);
   const [revisions, setRevisions] = useState<RevisionSummary[]>([]);
   const [busy, setBusy] = useState(false);
+  const [brief, setBrief] = useState(defaultBuildingBrief());
+  const [building, setBuilding] = useState<BuildingGetResponse | null>(null);
+  const [selectedFloorId, setSelectedFloorId] = useState<string>("");
+  const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
+  const [generateMessage, setGenerateMessage] = useState<string | null>(null);
 
   const loadModelData = useCallback(async () => {
     if (!selectedProjectId) {
@@ -46,6 +60,7 @@ export default function ModelWorkspaceClient() {
       setValidation(null);
       setVersions([]);
       setRevisions([]);
+      setBuilding(null);
       return;
     }
     setError(null);
@@ -60,6 +75,14 @@ export default function ModelWorkspaceClient() {
     setValidation(null);
     setVersions(versionData.versions);
     setRevisions(revisionData.revisions);
+    try {
+      const buildingData = await getBuilding(selectedProjectId);
+      setBuilding(buildingData);
+      const firstFloor = buildingData.view.floors[0]?.id ?? "";
+      setSelectedFloorId(firstFloor);
+    } catch {
+      setBuilding(null);
+    }
   }, [selectedProjectId, setError]);
 
   useEffect(() => {
@@ -83,6 +106,28 @@ export default function ModelWorkspaceClient() {
       setSummary(await getModelSummary(selectedProjectId));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Validation failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleGenerateBuilding() {
+    if (!selectedProjectId) return;
+    setBusy(true);
+    setError(null);
+    setGenerateMessage(null);
+    try {
+      const result = await generateBuilding(selectedProjectId, brief);
+      if (result.missing_inputs.length) {
+        setGenerateMessage(`Need more information: ${result.missing_inputs.join("; ")}`);
+      } else {
+        setGenerateMessage(
+          `Generated v${result.pem_version ?? "—"} (${result.status}). Preliminary automated engineering model — requires review and approval by a qualified engineer.`,
+        );
+      }
+      await loadModelData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Building generation failed");
     } finally {
       setBusy(false);
     }
@@ -116,6 +161,48 @@ export default function ModelWorkspaceClient() {
       />
 
       {error ? <div className="alert error">{error}</div> : null}
+      {generateMessage ? <div className="alert">{generateMessage}</div> : null}
+
+      {selectedProjectId ? (
+        <section className="card">
+          <h3>Generate building from brief</h3>
+          <p className="muted">
+            Deterministic architecture + RC frame + gravity analysis. Not a construction issue set until
+            an engineer approves it.
+          </p>
+          <textarea
+            className="input"
+            rows={3}
+            value={brief}
+            onChange={(event) => setBrief(event.target.value)}
+            aria-label="Building brief"
+          />
+          <div className="form-row">
+            <button
+              className="button"
+              type="button"
+              disabled={busy}
+              onClick={() => void handleGenerateBuilding()}
+            >
+              {busy ? "Generating…" : "Generate building"}
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {building?.view.site ? (
+        <BuildingModelPanel
+          building={building}
+          selectedFloorId={selectedFloorId}
+          selectedElementId={selectedElementId}
+          onSelectFloor={setSelectedFloorId}
+          onSelectElement={setSelectedElementId}
+          onDownloadSheet={(name) => {
+            if (!selectedProjectId) return;
+            void downloadBuildingSheet(selectedProjectId, name);
+          }}
+        />
+      ) : null}
 
       {summary && model ? (
         <>
@@ -331,6 +418,146 @@ export default function ModelWorkspaceClient() {
       ) : (
         !loading && <p className="muted">Select a project to view the engineering model.</p>
       )}
+    </section>
+  );
+}
+
+function BuildingModelPanel({
+  building,
+  selectedFloorId,
+  selectedElementId,
+  onSelectFloor,
+  onSelectElement,
+  onDownloadSheet,
+}: {
+  building: BuildingGetResponse;
+  selectedFloorId: string;
+  selectedElementId: string | null;
+  onSelectFloor: (id: string) => void;
+  onSelectElement: (id: string) => void;
+  onDownloadSheet: (name: string) => void;
+}) {
+  const view: BuildingView = building.view;
+  const floor = view.floors.find((item) => item.id === selectedFloorId) ?? view.floors[0] ?? null;
+  const selectedSpace = floor?.spaces.find((space) => space.id === selectedElementId);
+  const selectedColumn = view.columns.find((column) => column.id === selectedElementId);
+  const selectedBeam = view.beams.find((beam) => beam.id === selectedElementId);
+  const selectedCheck = view.design_checks.find((check) => check.member_id === selectedElementId);
+
+  return (
+    <section className="card">
+      <h3>Generated building</h3>
+      <p className="muted">
+        Plot {view.site?.frontage_m} m × {view.site?.depth_m} m · {view.counts.spaces} spaces ·{" "}
+        {view.counts.parking} parking · {view.counts.columns} columns · {view.counts.beams} beams ·{" "}
+        {view.counts.slabs} slabs · {view.structural_system}
+      </p>
+      <div className="form-row">
+        <select
+          className="input"
+          value={floor?.id ?? ""}
+          onChange={(event) => onSelectFloor(event.target.value)}
+          aria-label="Floor plan"
+        >
+          {view.floors.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.name} ({item.floor_type})
+            </option>
+          ))}
+        </select>
+      </div>
+      <BuildingPlanSvg
+        view={view}
+        floor={floor}
+        selectedId={selectedElementId}
+        onSelect={onSelectElement}
+      />
+      <div className="grid cards-2">
+        <article>
+          <h4>Selected element</h4>
+          {selectedSpace ? (
+            <p>
+              {selectedSpace.name} · {selectedSpace.usage} · {selectedSpace.area_m2.toFixed(2)} m²
+            </p>
+          ) : selectedColumn ? (
+            <p>
+              Column {selectedColumn.name}
+              {selectedCheck
+                ? ` · ${selectedCheck.check_kind} ${selectedCheck.status} (D/C ${selectedCheck.utilization.toFixed(2)})`
+                : ""}
+            </p>
+          ) : selectedBeam ? (
+            <p>
+              Beam {selectedBeam.name}
+              {selectedCheck
+                ? ` · ${selectedCheck.check_kind} ${selectedCheck.status} (D/C ${selectedCheck.utilization.toFixed(2)})`
+                : ""}
+            </p>
+          ) : (
+            <p className="muted">Click a room, column or beam.</p>
+          )}
+          <h4>QA</h4>
+          {(view.qa_findings ?? []).slice(0, 6).map((finding, index) => (
+            <p key={`${finding.code ?? "qa"}-${index}`} className="muted">
+              {String(finding.status ?? "")} {String(finding.message ?? finding.code ?? "")}
+            </p>
+          ))}
+        </article>
+        <article>
+          <h4>Design / analysis</h4>
+          <p className="muted">
+            {view.disclaimer ??
+              "Preliminary automated engineering model — requires review and approval by a qualified engineer."}
+          </p>
+          <p className="muted">
+            Lifecycle: {view.lifecycle_status ?? "—"} · Analysis:{" "}
+            {String(view.analysis?.last_analysis_status ?? view.analysis?.solver ?? "—")}
+          </p>
+          {(view.design_checks ?? []).slice(0, 8).map((check) => (
+            <p key={`${check.member_id}-${check.check_kind}`}>
+              {check.member_name} {check.check_kind}: {check.status} (D/C {check.utilization.toFixed(2)}) ·{" "}
+              {check.code_reference}
+            </p>
+          ))}
+          {(view.story_drifts ?? []).length > 0 ? (
+            <>
+              <h4>Storey drift</h4>
+              {view.story_drifts?.map((drift) => (
+                <p key={drift.level_id} className="muted">
+                  {drift.story_name}: Δx/h={drift.drift_ratio_x.toFixed(4)} Δy/h={drift.drift_ratio_y.toFixed(4)}{" "}
+                  {drift.status}
+                </p>
+              ))}
+            </>
+          ) : null}
+          {(view.footings ?? []).length > 0 ? (
+            <>
+              <h4>Foundations</h4>
+              {view.footings?.slice(0, 6).map((footing) => (
+                <p key={footing.id} className="muted">
+                  {footing.id}: {footing.width_m.toFixed(2)}×{footing.length_m.toFixed(2)} m · D/C{" "}
+                  {footing.utilization.toFixed(2)} · {footing.status}
+                </p>
+              ))}
+            </>
+          ) : null}
+          <h4>PDF sheets</h4>
+          {building.sheet_names.length === 0 ? (
+            <p className="muted">Generate a building to produce PDF sheets.</p>
+          ) : (
+            building.sheet_names.map((name) => (
+              <button
+                key={name}
+                className="button"
+                type="button"
+                onClick={() => onDownloadSheet(name)}
+              >
+                Download {name}
+              </button>
+            ))
+          )}
+        </article>
+      </div>
     </section>
   );
 }

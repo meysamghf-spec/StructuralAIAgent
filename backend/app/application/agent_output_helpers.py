@@ -20,6 +20,7 @@ CAPABILITY_LABELS = {
     "REQUIRES_LOCAL_SOFTWARE": "Required software is not available on this computer",
     "MODEL_NOT_READY": "Complete the engineering model first",
     "NOT_IMPLEMENTED": "This capability is not available yet",
+    "DEMO_COMPLETED": "Demo calculation completed",
     "PASS": "Completed successfully",
     "SUCCESS": "Completed successfully",
 }

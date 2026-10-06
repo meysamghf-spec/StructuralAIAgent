@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
 
+from app.domain.models.pem_architecture import BuildingModel, create_empty_building_model
 from app.domain.models.pem_structural import StructuralModel, create_empty_structural_model
 
 
@@ -136,6 +137,10 @@ class ProjectEngineeringModel(BaseModel):
 
     M2 stores code_configuration and unit_configuration as first-class structures.
     Additional PEM sections are reserved for future milestones.
+
+    ``building_model`` holds site and architectural geometry in the same coordinate
+    frame as ``structural_model``. Both default to empty, so snapshots written before
+    these sections existed still validate.
     """
 
     id: UUID = Field(default_factory=uuid4)
@@ -151,7 +156,11 @@ class ProjectEngineeringModel(BaseModel):
     validation_results: list[Any] = Field(default_factory=list)
     decisions: list[Any] = Field(default_factory=list)
     assumptions: list[Any] = Field(default_factory=list)
+    building_model: BuildingModel = Field(default_factory=create_empty_building_model)
     structural_model: StructuralModel = Field(default_factory=create_empty_structural_model)
+    lifecycle_status: str = "DRAFT"
+    engineering_report: dict[str, Any] = Field(default_factory=dict)
+    code_compliance: dict[str, str] = Field(default_factory=dict)
 
 
 def create_software_default_code_configuration() -> CodeConfiguration:

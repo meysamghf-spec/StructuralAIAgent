@@ -42,7 +42,12 @@ def render_plan_dxf(
     drawing_type: str,
     units: str = "METERS",
 ) -> DxfRenderResult:
+    from app.infrastructure.cad.building_drawing_renderer import render_building_drawing_dxf
+
     normalized = drawing_type.strip().upper()
+    building_view = render_building_drawing_dxf(pem, drawing_type=normalized, units=units)
+    if building_view is not None:
+        return building_view
     if normalized in {"COLUMN_PLAN", "COLUMN_LAYOUT"}:
         return render_column_plan_dxf(pem, drawing_type=normalized, units=units)
     if normalized in {"BEAM_PLAN", "BEAM_LAYOUT"}:
@@ -561,3 +566,48 @@ def _point_marker(layer: str, x: float, y: float, label: str) -> list[str]:
     entities.extend(_line_entity(layer, x, y - size, x, y + size))
     entities.extend(_text_entity(layer, x + size, y + size, label))
     return entities
+
+
+def render_architectural_zoning_dxf(concept: Any) -> DxfRenderResult:
+    """Render a schematic architectural zoning diagram from a parsed concept."""
+    length = float(getattr(concept, "plan_length_m", 0) or 0)
+    width = float(getattr(concept, "plan_width_m", 0) or 0)
+    if length <= 0 or width <= 0:
+        raise ValueError("Plan dimensions are required to render an architectural zoning diagram.")
+
+    entities: list[str] = []
+    layers = {"BOUNDARY": 0, "ZONES": 0, "TEXT": 0}
+    entities.extend(_closed_polyline("BOUNDARY", [(0.0, 0.0), (length, 0.0), (length, width), (0.0, width)]))
+    layers["BOUNDARY"] += 4
+
+    spaces = list(getattr(concept, "spaces", []) or [])
+    zone_count = max(len(spaces), 1)
+    cell_width = length / max(zone_count, 1)
+    for index, space in enumerate(spaces[:8]):
+        x1 = index * cell_width
+        x2 = min(length, x1 + cell_width * 0.9)
+        entities.extend(_closed_polyline("ZONES", [(x1, 0.0), (x2, 0.0), (x2, width * 0.45), (x1, width * 0.45)]))
+        entities.extend(_text_entity("TEXT", x1 + 1.0, width * 0.2, f"{space.name} x{space.count}"))
+        layers["ZONES"] += 4
+        layers["TEXT"] += 1
+
+    header = "\n".join(
+        [
+            "0",
+            "SECTION",
+            "2",
+            "ENTITIES",
+        ]
+    )
+    content = header + "\n" + "\n".join(entities) + "\n0\nENDSEC\n0\nEOF\n"
+    return DxfRenderResult(
+        content=content,
+        entity_count=len(entities),
+        layer_summary=layers,
+        metadata={
+            "drawing_type": "ARCHITECTURAL_ZONING",
+            "plan_length_m": length,
+            "plan_width_m": width,
+            "space_count": len(spaces),
+        },
+    )

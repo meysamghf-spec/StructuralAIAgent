@@ -22,6 +22,7 @@ from app.domain.contracts.file_storage import FileStorageProtocol
 from app.domain.models.file_artifact import (
     ExtractionStatus,
     FileSource,
+    FileType,
     ParsingStatus,
     ProjectFile,
 )
@@ -105,6 +106,26 @@ class FileIngestionService:
         if record is None:
             raise ProjectFileNotFoundError(project_id, file_id)
 
+        if record.file_type in {FileType.UNKNOWN, FileType.IMAGE}:
+            metadata = dict(record.metadata)
+            metadata["ingestion"] = {
+                "stored": True,
+                "byte_length": len(content),
+                "note": _skip_extraction_note(record),
+            }
+            return self._require_updated(
+                self._file_repository.update_statuses(
+                    project_id,
+                    file_id,
+                    parsing_status=ParsingStatus.SKIPPED,
+                    extraction_status=ExtractionStatus.SKIPPED,
+                    confidence=None,
+                    metadata=metadata,
+                ),
+                project_id,
+                file_id,
+            )
+
         self._file_repository.update_statuses(
             project_id,
             file_id,
@@ -175,3 +196,36 @@ class FileIngestionService:
         if record is None:
             raise ProjectFileNotFoundError(project_id, file_id)
         return record
+
+
+def _skip_extraction_note(record: ProjectFile) -> str:
+    if record.file_type == FileType.IMAGE:
+        return "Image stored; OCR is not available in this environment."
+    extension = Path(record.filename).suffix.lower()
+    notes = {
+        ".edb": (
+            "ETABS EDB stored; automated binary extraction is not implemented. "
+            "Use the ETABS integration workflow."
+        ),
+        ".sdb": (
+            "SAP2000 SDB stored; automated binary extraction is not implemented. "
+            "Use the SAP2000 integration workflow."
+        ),
+        ".f2k": (
+            "SAP2000 F2K stored; structured model parsing is not implemented. "
+            "Use the SAP2000 integration workflow."
+        ),
+        ".dwg": (
+            "DWG stored; automated geometry extraction is not implemented. "
+            "Use the CAD integration workflow."
+        ),
+        ".dxf": (
+            "DXF stored; automated geometry extraction is not implemented. "
+            "Use the CAD integration workflow."
+        ),
+        ".doc": "Legacy Word .doc extraction is not implemented.",
+    }
+    return notes.get(
+        extension,
+        "Engineering file stored; automated extraction was not run for this format.",
+    )

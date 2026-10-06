@@ -50,7 +50,7 @@ def test_file_ingestion_status_transitions(db_session, file_storage_root) -> Non
     assert record.parsing_status == ParsingStatus.COMPLETE
     assert record.extraction_status == ExtractionStatus.COMPLETE
     assert record.confidence == 1.0
-    assert record.metadata["extraction"]["parser_key"] == "stub_text"
+    assert record.metadata["extraction"]["parser_key"] == "text_plain"
 
 
 def test_file_ingestion_persists_content(db_session, file_storage_root) -> None:

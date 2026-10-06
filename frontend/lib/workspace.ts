@@ -51,6 +51,7 @@ const REPORT_STATUS_LABELS: Record<string, string> = {
 const FILE_STATUS_LABELS: Record<string, string> = {
   PENDING: "Waiting to process",
   IN_PROGRESS: "Processing",
+  COMPLETE: "Processed",
   COMPLETED: "Processed",
   FAILED: "Processing failed",
   SKIPPED: "Skipped",

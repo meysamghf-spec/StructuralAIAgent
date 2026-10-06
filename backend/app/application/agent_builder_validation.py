@@ -19,10 +19,10 @@ ALLOWED_TOOLS_BY_AGENT_TYPE: dict[str, frozenset[str]] = {
         {"engineering.analysis.run", "project.validate", "project.context"}
     ),
     EngineeringAgentType.CONCRETE_DESIGN_AGENT.value: frozenset(
-        {"engineering.design.run", "code.lookup", "project.validate"}
+        {"engineering.design.run", "code.lookup", "unit.convert", "project.validate"}
     ),
     EngineeringAgentType.STEEL_DESIGN_AGENT.value: frozenset(
-        {"engineering.design.run", "code.lookup", "project.validate"}
+        {"engineering.design.run", "code.lookup", "unit.convert", "project.validate"}
     ),
     EngineeringAgentType.SEISMIC_AGENT.value: frozenset(
         {"code.lookup", "engineering.analysis.run", "project.context"}

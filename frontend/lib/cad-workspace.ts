@@ -40,6 +40,15 @@ const DRAWING_TYPE_LABELS: Record<string, string> = {
   COLUMN_LAYOUT: "Column layout",
   BEAM_LAYOUT: "Beam layout",
   FOUNDATION_LAYOUT: "Foundation layout",
+  SITE_PLAN: "Site / plot plan",
+  PARKING_PLAN: "Parking / piloti plan",
+  ARCHITECTURAL_FLOOR_PLAN: "Architectural floor plan",
+  ROOF_PLAN: "Roof plan",
+  ELEVATION: "Elevation",
+  SECTION: "Section",
+  COLUMN_SCHEDULE: "Column schedule",
+  BEAM_SCHEDULE: "Beam schedule",
+  SLAB_SCHEDULE: "Slab schedule",
 };
 
 export function getDrawingTypeLabel(drawingType: string): string {

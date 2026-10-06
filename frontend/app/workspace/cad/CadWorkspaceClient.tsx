@@ -27,6 +27,15 @@ const DRAWING_TYPES = [
   "COLUMN_LAYOUT",
   "BEAM_LAYOUT",
   "FOUNDATION_LAYOUT",
+  "SITE_PLAN",
+  "PARKING_PLAN",
+  "ARCHITECTURAL_FLOOR_PLAN",
+  "ROOF_PLAN",
+  "ELEVATION",
+  "SECTION",
+  "COLUMN_SCHEDULE",
+  "BEAM_SCHEDULE",
+  "SLAB_SCHEDULE",
 ];
 
 export default function CadWorkspaceClient() {

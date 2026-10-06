@@ -8,7 +8,25 @@ from pathlib import Path
 from app.application.exceptions import InvalidUploadError, UploadTooLargeError
 
 _FILENAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]{0,254}$")
-_ALLOWED_EXTENSIONS = {".txt"}
+_ALLOWED_EXTENSIONS = {
+    ".txt",
+    ".pdf",
+    ".dwg",
+    ".dxf",
+    ".edb",
+    ".sdb",
+    ".f2k",
+    ".xlsx",
+    ".xls",
+    ".docx",
+    ".doc",
+    ".csv",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+}
 
 
 def validate_filename(filename: str) -> str:

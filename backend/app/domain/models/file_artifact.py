@@ -12,6 +12,10 @@ from pydantic import BaseModel, Field
 
 class FileType(StrEnum):
     TEXT = "TEXT"
+    PDF = "PDF"
+    DOCX = "DOCX"
+    SPREADSHEET = "SPREADSHEET"
+    IMAGE = "IMAGE"
     UNKNOWN = "UNKNOWN"
 
 

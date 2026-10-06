@@ -233,7 +233,7 @@ export default function DesignWorkspaceClient() {
           </button>
         </div>
         <p className="muted">
-          {getDesignCapabilityLabel("REQUIRES_SOLVER", "fa")}
+          {getDesignCapabilityLabel("REQUIRES_SOLVER")}
         </p>
       </section>
 
@@ -246,7 +246,7 @@ export default function DesignWorkspaceClient() {
             {getDesignStatusLabel(result.status)}
           </p>
           <p className="muted">{getDesignCapabilityLabel(result.capability_status)}</p>
-          <p className="muted">{getDesignCapabilityLabel(result.capability_status, "fa")}</p>
+          <p className="muted">{getDesignCapabilityLabel(result.capability_status)}</p>
           <div className="execution-result">
             <p className="result-text">{result.message}</p>
           </div>

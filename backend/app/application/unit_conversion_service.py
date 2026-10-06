@@ -9,6 +9,7 @@ from app.domain.models.units import EngineeringQuantityType, UnitConversionResul
 _TO_SI: dict[EngineeringQuantityType, dict[str, float]] = {
     EngineeringQuantityType.LENGTH: {
         "m": 1.0,
+        "mm": 0.001,
         "ft": 0.3048,
         "in": 0.0254,
     },
@@ -34,11 +35,14 @@ _TO_SI: dict[EngineeringQuantityType, dict[str, float]] = {
     },
     EngineeringQuantityType.AREA: {
         "m2": 1.0,
+        "mm2": 1e-6,
         "in2": 0.00064516,
         "ft2": 0.09290304,
     },
     EngineeringQuantityType.VOLUME: {
         "m3": 1.0,
+        "cm3": 1e-6,
+        "mm3": 1e-9,
         "ft3": 0.0283168466,
         "in3": 1.6387064e-5,
     },

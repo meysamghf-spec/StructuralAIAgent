@@ -38,6 +38,19 @@ def _normalize_solver(raw: object | None) -> IntegrationSoftware | None:
     return mapping.get(normalized)
 
 
+_INTERNAL_SOLVER_NAMES = frozenset(
+    {"internal", "internal_direct_stiffness_2d", "internal_direct_stiffness_3d"}
+)
+_INTERNAL_ANALYSIS_TYPES = frozenset({"STATIC", "LINEAR_STATIC", "DRIFT"})
+
+
+def _uses_internal_solver(pem, requested_solver: object | None) -> bool:
+    if requested_solver is not None:
+        return str(requested_solver).strip().lower() in _INTERNAL_SOLVER_NAMES
+    configuration = pem.structural_model.analysis_model.configuration or {}
+    return str(configuration.get("solver", "")).strip().lower() in _INTERNAL_SOLVER_NAMES
+
+
 class AnalysisEngineService:
     def __init__(
         self,
@@ -101,6 +114,7 @@ class AnalysisEngineService:
         )
 
         status, capability_status, message, outputs = self._determine_outcome(
+            pem=pem,
             normalized_type=normalized_type,
             readiness=readiness,
             request=request,
@@ -166,6 +180,7 @@ class AnalysisEngineService:
     def _determine_outcome(
         self,
         *,
+        pem,
         normalized_type: str,
         readiness: AnalysisReadinessReport,
         request: AnalysisRequest,
@@ -205,9 +220,16 @@ class AnalysisEngineService:
                 },
             )
 
-        solver = _normalize_solver(
-            request.parameters.get("solver") or request.parameters.get("software")
-        )
+        requested_solver = request.parameters.get("solver") or request.parameters.get("software")
+        if _uses_internal_solver(pem, requested_solver):
+            return self._determine_internal_solver_outcome(
+                pem=pem,
+                normalized_type=normalized_type,
+                readiness=readiness,
+                outputs=outputs,
+            )
+
+        solver = _normalize_solver(requested_solver)
         if solver is not None:
             return self._determine_solver_outcome(
                 normalized_type=normalized_type,
@@ -250,6 +272,77 @@ class AnalysisEngineService:
                 "(ETABS, SAP2000, SAFE, or equivalent) is required to execute analysis and "
                 "return forces, displacements, or modal results."
             ),
+            outputs,
+        )
+
+    def _determine_internal_solver_outcome(
+        self,
+        *,
+        pem,
+        normalized_type: str,
+        readiness: AnalysisReadinessReport,
+        outputs: dict[str, Any],
+    ) -> tuple[AnalysisStatus, str, str, dict[str, Any]]:
+        if normalized_type not in _INTERNAL_ANALYSIS_TYPES:
+            outputs.update(
+                {
+                    "solver_status": "INTERNAL_LINEAR_STATIC_ONLY",
+                    "reason": "INTERNAL_SOLVER_SCOPE",
+                    "model_prepared": True,
+                    "prepared_model_summary": readiness.model_summary,
+                }
+            )
+            return (
+                AnalysisStatus.NOT_IMPLEMENTED,
+                AnalysisStatus.NOT_IMPLEMENTED.value,
+                (
+                    f"The in-repository solver supports linear-static (including gravity, "
+                    f"simplified wind/ELF and elastic drift) analysis only. "
+                    f"'{normalized_type}' is not implemented internally; use ETABS/SAP2000 "
+                    "or treat the request as not checked."
+                ),
+                outputs,
+            )
+
+        from app.application.building_analysis_service import BuildingAnalysisService
+
+        analysis = BuildingAnalysisService().analyze(pem)
+        outputs.update(
+            {
+                "solver_connected": True,
+                "solver_status": analysis.status,
+                "solver": analysis.solver,
+                "model_prepared": True,
+                "prepared_model_summary": readiness.model_summary,
+                "engineering_results_available": analysis.status == "SUCCESS",
+                "engineering_results": analysis.engineering_results,
+                "max_abs_displacement_m": analysis.max_abs_displacement_m,
+                "reactions_kN": analysis.reactions_kN,
+                "assumptions": analysis.assumptions,
+                "warnings": analysis.warnings,
+                "fidelity": "INTERNAL_3D_LINEAR_STATIC"
+                if analysis.solver == "internal_direct_stiffness_3d"
+                else "INTERNAL_2D_LINEAR_STATIC",
+            }
+        )
+        if analysis.status == "SUCCESS":
+            return (
+                AnalysisStatus.SUCCESS,
+                AnalysisStatus.SUCCESS.value,
+                analysis.message,
+                outputs,
+            )
+        if analysis.status == "MODEL_NOT_READY":
+            return (
+                AnalysisStatus.MODEL_NOT_READY,
+                AnalysisStatus.MODEL_NOT_READY.value,
+                analysis.message,
+                outputs,
+            )
+        return (
+            AnalysisStatus.FAILED,
+            AnalysisStatus.FAILED.value,
+            analysis.message,
             outputs,
         )
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from app.application.agent_orchestration_service import AgentOrchestrationService
+from app.application.agent_run_events import AgentRunProgressSink
 from app.application.exceptions import AgentExecutionNotFoundError
 from app.application.project_context_assembly_service import ProjectContextAssemblyService
 from app.application.prompt_generation_service import PromptGenerationService
@@ -36,12 +37,14 @@ class AgentRuntimeService:
         *,
         actor_id: str,
         account_id: str | None = None,
+        progress_sink: AgentRunProgressSink | None = None,
     ) -> AgentExecutionRecord:
         resolved_account_id = account_id or actor_id
         return self._orchestration.orchestrate(
             request,
             actor_id=actor_id,
             account_id=resolved_account_id,
+            progress_sink=progress_sink,
         )
 
     def get_execution(self, execution_id: UUID) -> AgentExecutionRecord:

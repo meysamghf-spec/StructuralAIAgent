@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 
 const NAV_ITEMS = [
-  { href: "/", label: "Dashboard" },
+  { href: "/", label: "Chat" },
   { href: "/projects", label: "Projects" },
   { href: "/workspace/model", label: "Model" },
   { href: "/workspace/files", label: "Files" },
@@ -34,6 +34,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { user, isAuthenticated, logout } = useAuth();
   const isAuthPage = AUTH_PATHS.has(pathname);
+  const isChatHome = pathname === "/" && isAuthenticated;
 
   function handleLogout() {
     logout();
@@ -46,6 +47,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         <main className="content auth-content">{children}</main>
       </div>
     );
+  }
+
+  if (isChatHome) {
+    return <main className="chat-root">{children}</main>;
   }
 
   return (

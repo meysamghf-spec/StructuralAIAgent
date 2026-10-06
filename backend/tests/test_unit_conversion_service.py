@@ -59,6 +59,26 @@ def test_convert_round_trip(service: UnitConversionService) -> None:
     assert back.value == pytest.approx(original, rel=1e-9)
 
 
+def test_convert_mm_to_in(service: UnitConversionService) -> None:
+    result = service.convert(
+        300.0,
+        from_unit="mm",
+        to_unit="in",
+        quantity_type=EngineeringQuantityType.LENGTH,
+    )
+    assert result.value == pytest.approx(11.811023622, rel=1e-6)
+
+
+def test_convert_mm2_to_in2(service: UnitConversionService) -> None:
+    result = service.convert(
+        1500.0,
+        from_unit="mm2",
+        to_unit="in2",
+        quantity_type=EngineeringQuantityType.AREA,
+    )
+    assert result.value == pytest.approx(2.325003875, rel=1e-6)
+
+
 def test_unsupported_conversion_raises(service: UnitConversionService) -> None:
     with pytest.raises(UnsupportedUnitConversionError):
         service.convert(

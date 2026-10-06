@@ -6,71 +6,19 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.application.ai_gateway_service import AIGatewayService
+from app.application.agent_intent_routing import resolve_agent_intent
 from app.domain.models.agent import EngineeringAgentType
 from app.domain.models.agent_runtime import PromptGenerationResult
 from app.domain.models.ai_gateway import AIMessage, AIMessageRole, AICompletionRequest
 
 _DEFAULT_MODEL = "stub-engineering-router"
 
-_ROUTING: list[tuple[tuple[str, ...], EngineeringAgentType, str]] = [
-    (
-        ("model", "geometry", "structural model", "مدل", "هندسی"),
-        EngineeringAgentType.STRUCTURAL_MODELING_AGENT,
-        "Set up or revise the structural engineering model",
-    ),
-    (
-        ("seismic", "earthquake", "spectral", "زلزله", "لرزه"),
-        EngineeringAgentType.SEISMIC_AGENT,
-        "Evaluate seismic design parameters and lateral system assumptions",
-    ),
-    (
-        ("load", "loading", "dead load", "live load", "بار"),
-        EngineeringAgentType.LOAD_ASSESSMENT_AGENT,
-        "Review and organize project loading assumptions",
-    ),
-    (
-        ("analyze", "analysis", "modal", "drift", "تحلیل"),
-        EngineeringAgentType.ANALYSIS_AGENT,
-        "Run or review structural analysis workflows",
-    ),
-    (
-        ("concrete", "rebar", "slab", "بتن"),
-        EngineeringAgentType.CONCRETE_DESIGN_AGENT,
-        "Support concrete member and slab design checks",
-    ),
-    (
-        ("steel", "beam", "column", "connection", "فولاد"),
-        EngineeringAgentType.STEEL_DESIGN_AGENT,
-        "Support steel member sizing and connection review",
-    ),
-    (
-        ("validate", "validation", "code check", "بررسی", "کنترل"),
-        EngineeringAgentType.VALIDATION_AGENT,
-        "Validate configuration, assumptions, and code compliance",
-    ),
-    (
-        ("cad", "drawing", "autocad", "dxf", "dwg", "نقشه", "اجرا"),
-        EngineeringAgentType.CAD_AGENT,
-        "Prepare or coordinate engineering drawings and CAD deliverables",
-    ),
-    (
-        ("report", "summary", "deliverable", "گزارش"),
-        EngineeringAgentType.REPORTING_AGENT,
-        "Prepare engineering summaries and deliverable reports",
-    ),
-    (
-        ("document", "spec", "interpret", "pdf", "سند", "مشخصات"),
-        EngineeringAgentType.DOCUMENT_INTERPRETATION_AGENT,
-        "Interpret uploaded documents and specifications",
-    ),
-]
-
 _AGENT_DETERMINISTIC_SERVICES: dict[EngineeringAgentType, list[str]] = {
     EngineeringAgentType.STRUCTURAL_MODELING_AGENT: ["pem.revision", "project.validate"],
     EngineeringAgentType.LOAD_ASSESSMENT_AGENT: ["code.lookup", "unit.convert"],
     EngineeringAgentType.ANALYSIS_AGENT: ["engineering.analysis.run", "project.validate"],
-    EngineeringAgentType.CONCRETE_DESIGN_AGENT: ["engineering.design.run", "code.lookup"],
-    EngineeringAgentType.STEEL_DESIGN_AGENT: ["engineering.design.run", "code.lookup"],
+    EngineeringAgentType.CONCRETE_DESIGN_AGENT: ["engineering.design.run", "code.lookup", "unit.convert"],
+    EngineeringAgentType.STEEL_DESIGN_AGENT: ["engineering.design.run", "code.lookup", "unit.convert"],
     EngineeringAgentType.SEISMIC_AGENT: ["code.lookup", "engineering.analysis.run"],
     EngineeringAgentType.VALIDATION_AGENT: ["project.validate", "code.lookup"],
     EngineeringAgentType.CAD_AGENT: ["integration.autocad", "pem.revision"],
@@ -97,7 +45,8 @@ _BASE_REQUIRED_INPUTS: dict[EngineeringAgentType, list[str]] = {
     ],
     EngineeringAgentType.STEEL_DESIGN_AGENT: [
         "Member forces or analysis results",
-        "Steel section catalog preferences",
+        "Steel yield strength Fy",
+        "Plastic section modulus Zx",
     ],
     EngineeringAgentType.SEISMIC_AGENT: [
         "Site class and seismic parameters",
@@ -127,6 +76,8 @@ class _IntentProfile:
     agent_type: EngineeringAgentType
     intent_label: str
     objectives: list[str]
+    score: float = 0.0
+    matched_keywords: tuple[str, ...] = ()
 
 
 class PromptGenerationService:
@@ -247,7 +198,9 @@ class PromptGenerationService:
             metadata={
                 "provider": gateway_response.provider.value,
                 "model": gateway_response.model,
-                "routing_method": "keyword_and_context",
+                "routing_method": "scored_keyword_and_context",
+                "routing_score": intent.score,
+                "matched_keywords": list(intent.matched_keywords),
             },
             user_intent=intent.intent_label,
             engineering_objectives=intent.objectives,
@@ -277,22 +230,13 @@ class PromptGenerationService:
         )
 
     def _analyze_intent(self, user_request: str) -> _IntentProfile:
-        normalized = user_request.lower()
-        for keywords, agent_type, intent_label in _ROUTING:
-            if any(keyword in normalized for keyword in keywords):
-                return _IntentProfile(
-                    agent_type=agent_type,
-                    intent_label=intent_label,
-                    objectives=self._objectives_for_agent(agent_type, user_request),
-                )
+        routed = resolve_agent_intent(user_request)
         return _IntentProfile(
-            agent_type=EngineeringAgentType.VALIDATION_AGENT,
-            intent_label="Review project readiness and identify next engineering steps",
-            objectives=[
-                "Understand the engineer request",
-                "Check project configuration and available context",
-                "Recommend the next safe engineering action",
-            ],
+            agent_type=routed.agent_type,
+            intent_label=routed.intent_label,
+            objectives=self._objectives_for_agent(routed.agent_type, user_request),
+            score=routed.score,
+            matched_keywords=routed.matched_keywords,
         )
 
     def _objectives_for_agent(
@@ -351,7 +295,7 @@ class PromptGenerationService:
                 if str(file_item.get("extraction_status", "")).upper() in {"COMPLETED", "IN_PROGRESS", "PENDING"}
             ][:8]
 
-        return {
+        relevant: dict[str, Any] = {
             "project_id": context_summary.get("project_id"),
             "project_name": context_summary.get("project_name"),
             "pem_version": context_summary.get("pem_version"),
@@ -362,6 +306,10 @@ class PromptGenerationService:
             "memory_total_count": context_summary.get("memory_total_count", 0),
             "file_count": len(files),
         }
+        chat_attachments = context_summary.get("chat_attachments")
+        if isinstance(chat_attachments, dict) and chat_attachments.get("attachments"):
+            relevant["chat_attachments"] = chat_attachments
+        return relevant
 
     def _detect_missing_information(
         self,

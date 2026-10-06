@@ -71,7 +71,7 @@ export default function ProjectsPage() {
         <h3>Project List</h3>
         {loading ? <p className="muted">Loading projects…</p> : null}
         {!loading && projects.length === 0 ? (
-          <p className="muted">No projects yet. Create one to begin.</p>
+          <p className="muted">Create your first structural project to start chatting and analyzing.</p>
         ) : null}
         <ul className="project-list">
           {projects.map((project) => (

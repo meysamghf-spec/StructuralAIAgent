@@ -7,11 +7,28 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from app.application.agent_capability_catalog import AgentCapabilityProfile, get_agent_capability_profile
+from app.application.agent_run_tool_payloads import (
+    capability_tool_payload,
+    iter_document_tool_events,
+)
+from app.application.agent_run_events import (
+    EVENT_APPROVAL_REQUIRED,
+    EVENT_CONTEXT,
+    EVENT_FAILED,
+    EVENT_STEP,
+    EVENT_TOOL,
+    EVENT_VALIDATION,
+    AgentRunProgressSink,
+    emit_progress,
+    safe_stream_error,
+)
 from app.application.engineering_agent_handlers import (
     EngineeringAgentHandler,
     build_engineering_agent_handlers,
     new_trace_result_id,
 )
+from app.application.engineering_task_workflow_service import EngineeringTaskWorkflowService
+from app.application.engineering_task_execution_service import EngineeringTaskExecutionService
 from app.application.entitlement_authorization_service import EntitlementAuthorizationService
 from app.application.exceptions import (
     AgentHandlerNotFoundError,
@@ -40,6 +57,7 @@ from app.domain.models.agent_runtime import (
     is_awaiting_human_approval,
 )
 from app.domain.models.human_approval import ApprovalTargetType
+from app.domain.models.engineering_task import EngineeringTask, EngineeringTaskStatus
 from app.domain.models.orchestration import OrchestrationTask
 from app.domain.models.project_context import ProjectContextAssembly
 from app.domain.repositories.agent_protocols import (
@@ -73,6 +91,8 @@ class AgentOrchestrationService:
         approval_service: HumanApprovalService,
         entitlement_service: EntitlementAuthorizationService,
         orchestration_service: HybridOrchestrationService | None = None,
+        task_workflow_service: EngineeringTaskWorkflowService | None = None,
+        task_execution_service: EngineeringTaskExecutionService | None = None,
         handlers: dict[EngineeringAgentType, EngineeringAgentHandler] | None = None,
     ) -> None:
         self._definitions = definition_repository
@@ -84,6 +104,8 @@ class AgentOrchestrationService:
         self._approval = approval_service
         self._entitlements = entitlement_service
         self._orchestration = orchestration_service
+        self._task_workflow = task_workflow_service
+        self._task_execution = task_execution_service
         self._handlers = handlers or build_engineering_agent_handlers()
 
     def orchestrate(
@@ -92,9 +114,76 @@ class AgentOrchestrationService:
         *,
         actor_id: str,
         account_id: str,
+        progress_sink: AgentRunProgressSink | None = None,
     ) -> AgentExecutionRecord:
+        conversation_id = request.parameters.get("conversation_id")
+        base = {"conversation_id": str(conversation_id) if conversation_id else None}
+        emit_progress(
+            progress_sink,
+            EVENT_STEP,
+            {**base, "step_id": "project_context", "name": "Loading project context", "status": "current"},
+        )
         context_assembly = self._context.assemble(request.project_id)
         context_snapshot = self._build_scoped_context(context_assembly)
+        attachment_context = request.parameters.get("attachment_context")
+        if isinstance(attachment_context, dict):
+            context_snapshot["chat_attachments"] = attachment_context
+        emit_progress(
+            progress_sink,
+            EVENT_STEP,
+            {**base, "step_id": "project_context", "name": "Loading project context", "status": "complete"},
+        )
+        emit_progress(
+            progress_sink,
+            EVENT_CONTEXT,
+            {
+                **base,
+                "context": {
+                    "conversation": conversation_id is not None,
+                    "project": True,
+                    "project_id": str(request.project_id),
+                    "conversation_id": str(conversation_id) if conversation_id else None,
+                },
+            },
+        )
+        attachments = _attachment_entries(attachment_context)
+        if attachments:
+            emit_progress(
+                progress_sink,
+                EVENT_STEP,
+                {**base, "step_id": "documents", "name": "Reading documents", "status": "current"},
+            )
+            emit_progress(
+                progress_sink,
+                EVENT_CONTEXT,
+                {
+                    **base,
+                    "context": {
+                        "conversation": conversation_id is not None,
+                        "project": True,
+                        "project_id": str(request.project_id),
+                        "conversation_id": str(conversation_id) if conversation_id else None,
+                        "files": [
+                            {
+                                "filename": item["filename"],
+                                "file_type": item.get("file_type"),
+                                "availability": item.get("availability"),
+                            }
+                            for item in attachments
+                        ],
+                        "indexed_document_count": sum(
+                            1 for item in attachments if item.get("availability") == "indexed"
+                        ),
+                    },
+                },
+            )
+            for tool_payload in iter_document_tool_events(attachments):
+                emit_progress(progress_sink, EVENT_TOOL, {**base, "tool": tool_payload})
+            emit_progress(
+                progress_sink,
+                EVENT_STEP,
+                {**base, "step_id": "documents", "name": "Reading documents", "status": "complete"},
+            )
 
         prompt_result: PromptGenerationResult | None = None
         if request.agent_definition_id is not None:
@@ -119,6 +208,17 @@ class AgentOrchestrationService:
 
         capability_profile = get_agent_capability_profile(selected_type)
         self._enforce_entitlements(account_id, capability_profile)
+        emit_progress(
+            progress_sink,
+            EVENT_TOOL,
+            {
+                **base,
+                "tool": capability_tool_payload(
+                    agent_type=selected_type.value,
+                    status="current",
+                ),
+            },
+        )
 
         if prompt_result is None:
             prompt_result = self._prompt_generation.generate(
@@ -135,19 +235,99 @@ class AgentOrchestrationService:
             capability_profile=capability_profile,
         )
 
+        engineering_task: EngineeringTask | None = None
+        resume_execution_id = request.parameters.get("resume_execution_id")
+        if self._task_workflow is not None:
+            if resume_execution_id:
+                prior = self._executions.get_by_id(UUID(str(resume_execution_id)))
+                prior_task = (
+                    prior.traceability_metadata.get("engineering_task")
+                    if prior is not None
+                    else None
+                )
+                if isinstance(prior_task, dict):
+                    engineering_task = EngineeringTask.model_validate(prior_task)
+                    engineering_task = self._task_workflow.refresh_task_for_resume(
+                        engineering_task,
+                        supplemental_request=request.user_request,
+                        context_snapshot=context_snapshot,
+                        prompt_result=prompt_result,
+                        attachment_context=(
+                            attachment_context if isinstance(attachment_context, dict) else None
+                        ),
+                    )
+            if engineering_task is None:
+                engineering_task = self._task_workflow.build_task(
+                    user_request=request.user_request,
+                    project_id=request.project_id,
+                    context_snapshot=context_snapshot,
+                    prompt_result=prompt_result,
+                    conversation_id=str(request.parameters.get("conversation_id"))
+                    if request.parameters.get("conversation_id")
+                    else None,
+                    account_id=account_id,
+                    attachment_context=(
+                        attachment_context if isinstance(attachment_context, dict) else None
+                    ),
+                )
+
+            use_multi_step = (
+                self._task_execution is not None
+                and self._task_execution.should_execute_multi_step(engineering_task)
+            )
+            if not use_multi_step:
+                engineering_task = self._task_workflow.execute_preparatory_steps(
+                    engineering_task,
+                    project_id=request.project_id,
+                    context_snapshot=context_snapshot,
+                )
+            orchestration_trace.append(
+                {
+                    "step": 8,
+                    "action": "construct_engineering_task",
+                    "detail": {
+                        "task_id": str(engineering_task.id),
+                        "status": engineering_task.status.value,
+                        "step_count": len(engineering_task.steps),
+                        "multi_step_execution": use_multi_step,
+                    },
+                }
+            )
+        else:
+            use_multi_step = False
+
         if self._should_block_execution(
             request=request,
             prompt_result=prompt_result,
             capability_profile=capability_profile,
         ):
-            return self._create_blocked_execution(
+            record = self._create_blocked_execution(
                 request=request,
                 actor_id=actor_id,
                 agent_definition=agent_definition,
                 prompt_result=prompt_result,
                 context_snapshot=context_snapshot,
                 orchestration_trace=orchestration_trace,
+                engineering_task=engineering_task,
             )
+            emit_progress(
+                progress_sink,
+                EVENT_FAILED,
+                {
+                    **base,
+                    "run_id": str(record.id),
+                    "error": safe_stream_error(
+                        title="Additional input is required",
+                        reason=record.error_metadata.get(
+                            "message",
+                            "Required inputs are missing before execution can proceed",
+                        )
+                        if isinstance(record.error_metadata, dict)
+                        else "Required inputs are missing before execution can proceed",
+                    ),
+                },
+            )
+            return record
 
         agent_version = self._resolve_agent_version(agent_definition, request)
         handler = self._resolve_handler(agent_definition)
@@ -176,25 +356,89 @@ class AgentOrchestrationService:
         record.execution_status = AgentExecutionStatus.RUNNING
         record.started_at = datetime.now(UTC)
         record = self._executions.update(record)
+        base["run_id"] = str(record.id)
+        emit_progress(
+            progress_sink,
+            EVENT_STEP,
+            {**base, "step_id": "execute", "name": "Running engineering workflow", "status": "current"},
+        )
 
         try:
-            agent_result = handler.execute(
-                user_request=request.user_request,
-                parameters=request.parameters,
-                context=context_snapshot,
+            if use_multi_step and engineering_task is not None and self._task_execution is not None:
+                outcome = self._task_execution.execute_workflow(
+                    task=engineering_task,
+                    project_id=request.project_id,
+                    user_request=request.user_request,
+                    context_snapshot=context_snapshot,
+                    parameters=request.parameters,
+                    agent_definition=agent_definition,
+                    actor_id=actor_id,
+                    execution_id=record.id,
+                    resume=bool(resume_execution_id),
+                )
+                agent_result = self._apply_orchestration(
+                    project_id=request.project_id,
+                    request=request,
+                    agent_result=outcome.agent_result,
+                )
+                engineering_task = outcome.task
+                if outcome.selected_agent_type is not None:
+                    selected_type = outcome.selected_agent_type
+            else:
+                agent_result = handler.execute(
+                    user_request=request.user_request,
+                    parameters=request.parameters,
+                    context=context_snapshot,
+                )
+                agent_result = self._apply_orchestration(
+                    project_id=request.project_id,
+                    request=request,
+                    agent_result=agent_result,
+                )
+            emit_progress(
+                progress_sink,
+                EVENT_STEP,
+                {**base, "step_id": "execute", "name": "Running engineering workflow", "status": "complete"},
             )
-            agent_result = self._apply_orchestration(
-                project_id=request.project_id,
-                request=request,
-                agent_result=agent_result,
+            emit_progress(
+                progress_sink,
+                EVENT_STEP,
+                {**base, "step_id": "validate", "name": "Validating results", "status": "current"},
             )
             validation_status = self._validate_result(agent_result)
+            emit_progress(
+                progress_sink,
+                EVENT_VALIDATION,
+                {**base, "validation_status": validation_status.value},
+            )
+            emit_progress(
+                progress_sink,
+                EVENT_STEP,
+                {**base, "step_id": "validate", "name": "Validating results", "status": "complete"},
+            )
+            emit_progress(
+                progress_sink,
+                EVENT_TOOL,
+                {
+                    **base,
+                    "tool": capability_tool_payload(
+                        agent_type=selected_type.value,
+                        status="complete",
+                        agent_result=agent_result,
+                        validation_status=validation_status.value,
+                    ),
+                },
+            )
             requires_approval = self._requires_approval(
                 request=request,
                 agent_definition=agent_definition,
                 capability_profile=capability_profile,
                 agent_result=agent_result,
             )
+            if use_multi_step and engineering_task is not None and self._task_execution is not None:
+                requires_approval = requires_approval or (
+                    engineering_task.status == EngineeringTaskStatus.WAITING_FOR_APPROVAL
+                )
 
             record.agent_result = agent_result
             record.output = agent_result.structured_output
@@ -244,7 +488,20 @@ class AgentOrchestrationService:
                     "message": "Agent output failed validation checks",
                     "validation_status": validation_status.value,
                 }
-                return self._executions.update(record)
+                updated = self._executions.update(record)
+                emit_progress(
+                    progress_sink,
+                    EVENT_FAILED,
+                    {
+                        **base,
+                        "run_id": str(updated.id),
+                        "error": safe_stream_error(
+                            title="Engineering workflow failed",
+                            reason="Agent output failed validation checks",
+                        ),
+                    },
+                )
+                return updated
 
             if requires_approval:
                 approval = self._approval.create_request(
@@ -263,6 +520,15 @@ class AgentOrchestrationService:
                 )
                 record.approval_request_id = approval.id
                 record.execution_status = AgentExecutionStatus.REQUIRES_HUMAN_APPROVAL
+                emit_progress(
+                    progress_sink,
+                    EVENT_APPROVAL_REQUIRED,
+                    {
+                        **base,
+                        "run_id": str(record.id),
+                        "approval_request_id": str(approval.id),
+                    },
+                )
                 record_agent_result_to_approval(
                     self._traceability,
                     project_id=request.project_id,
@@ -270,8 +536,41 @@ class AgentOrchestrationService:
                     approval_id=approval.id,
                 )
             else:
-                record.execution_status = AgentExecutionStatus.COMPLETED
-                record.completed_at = datetime.now(UTC)
+                if use_multi_step and engineering_task is not None and self._task_execution is not None:
+                    record.execution_status = outcome.execution_status
+                    if record.execution_status == AgentExecutionStatus.COMPLETED:
+                        record.completed_at = datetime.now(UTC)
+                else:
+                    record.execution_status = AgentExecutionStatus.COMPLETED
+                    record.completed_at = datetime.now(UTC)
+
+            if engineering_task is not None and self._task_workflow is not None:
+                if use_multi_step:
+                    record.traceability_metadata = {
+                        **record.traceability_metadata,
+                        "engineering_task": engineering_task.model_dump(mode="json"),
+                    }
+                else:
+                    engineering_task = self._task_workflow.finalize_with_handler_result(
+                        engineering_task,
+                        agent_type=selected_type,
+                        agent_result=record.agent_result,
+                        execution_status=record.execution_status,
+                        requires_approval=requires_approval,
+                        execution_id=record.id,
+                    )
+                    record.traceability_metadata = {
+                        **record.traceability_metadata,
+                        "engineering_task": engineering_task.model_dump(mode="json"),
+                    }
+                if engineering_task.artifacts and record.agent_result is not None:
+                    merged = list(record.agent_result.generated_artifacts)
+                    for artifact in engineering_task.artifacts:
+                        if artifact.generation_status == "generated":
+                            merged.append(artifact.model_dump(mode="json"))
+                    record.agent_result = record.agent_result.model_copy(
+                        update={"generated_artifacts": merged[:10]}
+                    )
 
             return self._executions.update(record)
         except FeatureAccessDeniedError:
@@ -279,12 +578,60 @@ class AgentOrchestrationService:
             record.completed_at = datetime.now(UTC)
             record.error_metadata = {"message": "Upgrade entitlement required", "type": "FeatureAccessDeniedError"}
             self._executions.update(record)
+            emit_progress(
+                progress_sink,
+                EVENT_TOOL,
+                {
+                    **base,
+                    "tool": capability_tool_payload(
+                        agent_type=selected_type.value,
+                        status="error",
+                        error_message="This capability is not available for this account.",
+                    ),
+                },
+            )
+            emit_progress(
+                progress_sink,
+                EVENT_FAILED,
+                {
+                    **base,
+                    "run_id": str(record.id),
+                    "error": safe_stream_error(
+                        title="Engineering workflow failed",
+                        reason="This capability is not available for this account.",
+                    ),
+                },
+            )
             raise
         except Exception as exc:
             record.execution_status = AgentExecutionStatus.FAILED
             record.completed_at = datetime.now(UTC)
             record.error_metadata = {"message": str(exc), "type": exc.__class__.__name__}
             self._executions.update(record)
+            emit_progress(
+                progress_sink,
+                EVENT_TOOL,
+                {
+                    **base,
+                    "tool": capability_tool_payload(
+                        agent_type=selected_type.value,
+                        status="error",
+                        error_message="The agent could not complete this engineering step.",
+                    ),
+                },
+            )
+            emit_progress(
+                progress_sink,
+                EVENT_FAILED,
+                {
+                    **base,
+                    "run_id": str(record.id),
+                    "error": safe_stream_error(
+                        title="Engineering workflow failed",
+                        reason="The agent could not complete this engineering step.",
+                    ),
+                },
+            )
             raise
 
     def _enforce_entitlements(self, account_id: str, profile: AgentCapabilityProfile) -> None:
@@ -313,6 +660,7 @@ class AgentOrchestrationService:
         prompt_result: PromptGenerationResult,
         context_snapshot: dict[str, Any],
         orchestration_trace: list[dict[str, Any]],
+        engineering_task=None,
     ) -> AgentExecutionRecord:
         agent_version = self._resolve_agent_version(agent_definition, request)
         record = self._executions.create(
@@ -331,15 +679,30 @@ class AgentOrchestrationService:
         record.prompt_generation = prompt_result.model_dump()
         record.execution_status = AgentExecutionStatus.BLOCKED
         record.completed_at = datetime.now(UTC)
+        if engineering_task is not None and self._task_workflow is not None:
+            engineering_task = self._task_workflow.finalize_with_handler_result(
+                engineering_task,
+                agent_type=prompt_result.selected_agent_type,
+                agent_result=None,
+                execution_status=AgentExecutionStatus.BLOCKED,
+                requires_approval=False,
+            )
         record.error_metadata = {
             "message": "Required inputs are missing before execution can proceed",
-            "missing_inputs": prompt_result.missing_information,
+            "missing_inputs": (
+                engineering_task.missing_required_inputs
+                if engineering_task is not None
+                else prompt_result.missing_information
+            ),
             "reason": "missing_required_input",
         }
-        record.traceability_metadata = {
+        trace_metadata = {
             "orchestration_trace": orchestration_trace,
             "blocked": True,
         }
+        if engineering_task is not None:
+            trace_metadata["engineering_task"] = engineering_task.model_dump(mode="json")
+        record.traceability_metadata = trace_metadata
         return self._executions.update(record)
 
     def _build_orchestration_trace(
@@ -427,6 +790,8 @@ class AgentOrchestrationService:
         capability_status = str(agent_result.validation_information.get("capability_status", "")).upper()
         if capability_status in {"NOT_IMPLEMENTED", "NOT_AVAILABLE", "REQUIRES_LOCAL_SOFTWARE", "FAILED"}:
             return AgentValidationStatus.REQUIRES_ENGINEER_REVIEW
+        if capability_status in {"MISSING_REQUIRED_INPUT", "INVALID_INPUT", "UNSUPPORTED_CODE"}:
+            return AgentValidationStatus.WARNING
         if capability_status in {"ERROR", "FAIL"}:
             return AgentValidationStatus.ERROR
         if capability_status in {"WARNING", "WARN"}:
@@ -434,6 +799,8 @@ class AgentOrchestrationService:
 
         validation_status = agent_result.validation_information.get("validation_status")
         if validation_status == "ERROR":
+            return AgentValidationStatus.ERROR
+        if validation_status == "FAIL":
             return AgentValidationStatus.ERROR
         if validation_status in {"WARNING", "REQUIRES_ENGINEER_REVIEW"}:
             return AgentValidationStatus.WARNING
@@ -481,11 +848,14 @@ class AgentOrchestrationService:
     ) -> bool:
         if request.requires_approval is True:
             return True
+        explicit = agent_result.validation_information.get("requires_approval")
+        if explicit is False:
+            return False
         if capability_profile.requires_human_approval:
             return True
         if agent_definition.agent_type in AGENT_TYPES_REQUIRING_APPROVAL:
             return True
-        return bool(agent_result.validation_information.get("requires_approval"))
+        return bool(explicit)
 
     def build_context_snapshot(self, assembly: ProjectContextAssembly) -> dict[str, Any]:
         return self._build_scoped_context(assembly)
@@ -526,3 +896,16 @@ class AgentOrchestrationService:
                 for file_item in assembly.files[:25]
             ],
         }
+
+
+def _attachment_entries(attachment_context: Any) -> list[dict[str, Any]]:
+    if not isinstance(attachment_context, dict):
+        return []
+    raw_entries = attachment_context.get("attachments")
+    if not isinstance(raw_entries, list):
+        return []
+    return [
+        item
+        for item in raw_entries
+        if isinstance(item, dict) and item.get("filename")
+    ]

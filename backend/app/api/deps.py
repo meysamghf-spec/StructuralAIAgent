@@ -17,9 +17,11 @@ from app.application.agent_runtime_service import AgentRuntimeService
 from app.application.agent_version_service import AgentVersionService
 from app.application.ai_gateway_service import AIGatewayService
 from app.application.analysis_engine_service import AnalysisEngineService
+from app.application.conversation_service import ConversationService
 from app.application.code_engine_service import CodeEngineService
 from app.application.design_engine_service import DesignEngineService
 from app.application.cad_generation_service import CadGenerationService
+from app.application.building_design_pipeline import BuildingDesignPipeline
 from app.application.engineering_result_service import EngineeringResultService
 from app.application.optimization_engine_service import OptimizationEngineService
 from app.application.digital_payment_agent import DigitalPaymentAgent
@@ -28,6 +30,7 @@ from app.application.file_registry_service import FileRegistryService
 from app.application.human_approval_service import HumanApprovalService
 from app.application.hybrid_orchestration_service import HybridOrchestrationService
 from app.application.integration_service import IntegrationService
+from app.application.meta_agent_service import MetaAgentService
 from app.application.pem_model_service import PemModelService
 from app.application.pem_revision_service import PemRevisionService
 from app.application.project_context_assembly_service import ProjectContextAssemblyService
@@ -48,6 +51,8 @@ from app.application.service_factory import (
     build_ai_gateway_service,
     build_analysis_engine_service,
     build_auth_service,
+    build_building_design_pipeline,
+    build_conversation_service,
     build_code_engine_service,
     build_cad_generation_service,
     build_design_engine_service,
@@ -65,6 +70,7 @@ from app.application.service_factory import (
     build_pem_service,
     build_entitlement_authorization_service,
     build_agent_access_service,
+    build_meta_agent_service,
     build_project_access_service,
     build_project_context_assembly_service,
     build_project_memory_service,
@@ -228,6 +234,10 @@ def get_unit_conversion_service() -> UnitConversionService:
     return build_unit_conversion_service()
 
 
+def get_conversation_service() -> ConversationService:
+    return build_conversation_service()
+
+
 def get_code_engine_service() -> CodeEngineService:
     return build_code_engine_service()
 
@@ -270,6 +280,14 @@ def get_engineering_result_service() -> EngineeringResultService:
 
 def get_cad_generation_service() -> CadGenerationService:
     return build_cad_generation_service()
+
+
+def get_building_design_pipeline() -> BuildingDesignPipeline:
+    return build_building_design_pipeline()
+
+
+def get_meta_agent_service() -> MetaAgentService:
+    return build_meta_agent_service()
 
 
 def get_human_approval_service() -> HumanApprovalService:

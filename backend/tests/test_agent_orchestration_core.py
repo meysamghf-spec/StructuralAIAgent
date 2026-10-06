@@ -233,7 +233,7 @@ def test_high_impact_agent_cannot_bypass_approval_with_client_flag(db_session: s
         AgentExecutionRequest(
             project_id=project.project.id,
             agent_type=EngineeringAgentType.CONCRETE_DESIGN_AGENT,
-            user_request="Design the transfer beam",
+            user_request="Run concrete member design for the project frames.",
             requires_approval=False,
         ),
         actor_id="engineer-1",
@@ -241,6 +241,51 @@ def test_high_impact_agent_cannot_bypass_approval_with_client_flag(db_session: s
     )
 
     assert record.execution_status == AgentExecutionStatus.REQUIRES_HUMAN_APPROVAL
+
+
+def test_aci_missing_inputs_do_not_create_approval(db_session: str) -> None:
+    project = build_project_service().create_project(name="ACI Missing Input Project")
+    runtime = build_agent_runtime_service()
+
+    record = runtime.execute(
+        AgentExecutionRequest(
+            project_id=project.project.id,
+            agent_type=EngineeringAgentType.CONCRETE_DESIGN_AGENT,
+            user_request="Design this beam.",
+            requires_approval=False,
+        ),
+        actor_id="engineer-1",
+        account_id="engineer-1",
+    )
+
+    assert record.execution_status == AgentExecutionStatus.COMPLETED
+    assert record.approval_request_id is None
+    assert record.agent_result is not None
+    assert record.agent_result.structured_output["capability_status"] == "MISSING_REQUIRED_INPUT"
+
+
+def test_aci_completed_check_requires_approval(db_session: str) -> None:
+    project = build_project_service().create_project(name="ACI Complete Check Project")
+    runtime = build_agent_runtime_service()
+
+    record = runtime.execute(
+        AgentExecutionRequest(
+            project_id=project.project.id,
+            agent_type=EngineeringAgentType.CONCRETE_DESIGN_AGENT,
+            user_request=(
+                "Check this RC beam per ACI 318: span 6 m, 20 kN/m, "
+                "b=300 mm, h=500 mm, d=450 mm, fc=25 MPa, fy=400 MPa, As=1500 mm2."
+            ),
+            requires_approval=False,
+        ),
+        actor_id="engineer-1",
+        account_id="engineer-1",
+    )
+
+    assert record.execution_status == AgentExecutionStatus.REQUIRES_HUMAN_APPROVAL
+    assert record.approval_request_id is not None
+    assert record.agent_result is not None
+    assert record.agent_result.structured_output["aci_rc_beam"]["kind"] == "aci_rc_beam"
 
 
 def test_agent_orchestration_ignores_client_orchestration_task(db_session: str) -> None:

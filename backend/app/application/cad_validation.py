@@ -25,7 +25,20 @@ def validate_cad_drawing(
         missing.append(f"Drawing type '{normalized}' is not supported")
 
     member_count = len(pem.structural_model.members.members)
-    if member_count == 0 and normalized not in {"SLAB_PLAN", "GRID_PLAN"}:
+    architectural_types = {
+        "SITE_PLAN",
+        "PARKING_PLAN",
+        "ARCHITECTURAL_FLOOR_PLAN",
+        "ROOF_PLAN",
+        "ELEVATION",
+        "SECTION",
+        "SLAB_PLAN",
+        "GRID_PLAN",
+        "COLUMN_SCHEDULE",
+        "BEAM_SCHEDULE",
+        "SLAB_SCHEDULE",
+    }
+    if member_count == 0 and normalized not in architectural_types:
         missing.append("Structural model has no members to draw")
 
     if entity_count <= 0:

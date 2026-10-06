@@ -56,6 +56,13 @@ class Settings(BaseSettings):
     project_access_enforced: bool = False
     entitlement_enforcement_enabled: bool = False
 
+    ai_provider: str = "stub"
+    openai_api_key: SecretStr | None = None
+    openai_api_base: str = "https://api.openai.com/v1"
+    openai_model: str = "gpt-4o-mini"
+    ai_timeout_seconds: float = 30.0
+    ai_max_retries: int = 2
+
     @property
     def is_production(self) -> bool:
         return self.app_env.strip().lower() == "production"

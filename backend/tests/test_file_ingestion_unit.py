@@ -23,7 +23,12 @@ def test_detect_file_type_by_mime_when_extension_missing() -> None:
 
 def test_detect_file_type_rejects_unsupported() -> None:
     with pytest.raises(UnsupportedFileTypeError):
-        detect_file_type("drawing.dwg", "application/octet-stream")
+        detect_file_type("malware.exe", "application/octet-stream")
+
+
+def test_detect_file_type_accepts_engineering_pdf() -> None:
+    result = detect_file_type("loads.pdf", "application/pdf")
+    assert result.file_type == FileType.PDF
 
 
 def test_validate_filename_rejects_path_traversal() -> None:
@@ -43,5 +48,5 @@ def test_stub_parser_contract() -> None:
     assert parser.supports(FileType.TEXT, "text/plain")
     result = parser.extract(b"line1\nline2", filename="sample.txt")
     assert result.success is True
-    assert result.parser_key == "stub_text"
-    assert result.metadata["line_count"] == 2
+    assert result.parser_key == "text_plain"
+    assert result.metadata["document"]["metadata"]["line_count"] == 2

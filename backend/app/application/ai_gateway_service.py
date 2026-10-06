@@ -36,7 +36,11 @@ class AIGatewayService:
                 raise AIModelNotSupportedError(model=model, provider=provider_kind.value)
             return provider
 
-        for provider in self._providers.values():
+        ranked = sorted(
+            self._providers.items(),
+            key=lambda item: 1 if item[0] == AIProviderKind.STUB else 0,
+        )
+        for _kind, provider in ranked:
             if provider.supports_model(model):
                 return provider
 

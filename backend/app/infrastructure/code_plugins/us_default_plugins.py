@@ -154,10 +154,15 @@ class Aci31825Plugin(_BaseStandardPlugin):
         fy = float(inputs["fy_psi"])
         b = float(inputs["width_in"])
         h = float(inputs["depth_in"])
-        cover = 1.5
-        d = h - cover - 0.5
-        a = (0.85 * fc * b * d) / max(fy, 1.0)
-        a = min(a, 0.75 * d)
+        d = float(inputs["d_in"]) if inputs.get("d_in") is not None else (h - 1.5 - 0.5)
+        if inputs.get("As_in2") is not None:
+            steel_area = float(inputs["As_in2"])
+            a = (steel_area * fy) / max(0.85 * fc * b, 1.0)
+            method = "whitney_rectangular_stress_block"
+        else:
+            a = (0.85 * fc * b * d) / max(fy, 1.0)
+            a = min(a, 0.75 * d)
+            method = "simplified_rectangular_stress_block"
         phi = 0.9
         mn_kipft = phi * 0.85 * fc * b * a * (d - a / 2.0) / 12.0 / 1000.0
         utilization = mu / mn_kipft if mn_kipft > 0 else math.inf
@@ -173,7 +178,9 @@ class Aci31825Plugin(_BaseStandardPlugin):
             metadata={
                 "utilization": round(utilization, 4),
                 "phiMn_kipft": round(mn_kipft, 4),
-                "method": "simplified_rectangular_stress_block",
+                "a_in": round(a, 4),
+                "d_in": round(d, 4),
+                "method": method,
             },
         )
 
@@ -182,7 +189,7 @@ class Aci31825Plugin(_BaseStandardPlugin):
         fc = float(inputs["fc_psi"])
         b = float(inputs["width_in"])
         h = float(inputs["depth_in"])
-        d = h - 1.5 - 0.5
+        d = float(inputs["d_in"]) if inputs.get("d_in") is not None else (h - 1.5 - 0.5)
         phi = 0.75
         vc_kip = phi * 2.0 * math.sqrt(max(fc, 1.0)) * b * d / 1000.0
         utilization = vu / vc_kip if vc_kip > 0 else math.inf
@@ -198,6 +205,7 @@ class Aci31825Plugin(_BaseStandardPlugin):
             metadata={
                 "utilization": round(utilization, 4),
                 "phiVc_kip": round(vc_kip, 4),
+                "d_in": round(d, 4),
                 "method": "simplified_concrete_shear",
             },
         )

@@ -28,6 +28,7 @@ def test_migrations_directory_contains_bootstrap_and_pem_foundation() -> None:
         "017_crypto_payment_foundation.sql",
         "018_user_identity_foundation.sql",
         "019_agent_execution_lifecycle.sql",
+        "020_conversations_foundation.sql",
     ]
 
 

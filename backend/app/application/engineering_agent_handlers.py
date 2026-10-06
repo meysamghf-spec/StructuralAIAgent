@@ -18,6 +18,10 @@ from app.domain.models.analysis import AnalysisRequest
 from app.domain.models.design import DesignRequest
 from app.domain.models.optimization import OptimizationRequest
 from app.domain.models.cad import CadDrawingRequest, CadOutputFormat
+from app.application.aci_rc_beam_check import is_aci_rc_beam_check_request, run_aci_rc_beam_check
+from app.application.aisc_steel_beam_check import is_aisc_steel_beam_check_request, run_aisc_steel_beam_check
+from app.application.building_brief_parser import BuildingBriefParser
+from app.application.demo_rc_beam_analysis import analyze_simply_supported_rc_beam
 from app.application.engineering_agent_services import EngineeringAgentServices
 from app.domain.models.reporting import ReportGenerationRequest, ReportType
 
@@ -75,6 +79,247 @@ def _base_output(
     return output
 
 
+def _looks_like_building_brief(user_request: str, parameters: dict[str, Any]) -> bool:
+    if parameters.get("generate_building") is True:
+        return True
+    brief = BuildingBriefParser().parse(user_request)
+    if brief.has_plot_geometry:
+        return True
+    lowered = user_request.lower()
+    markers = (
+        "building layout",
+        "design this building",
+        "design the building",
+        "residential floors",
+        "parking spaces",
+        "پیلوت",
+        "طبقه مسکونی",
+        "این ساختمان",
+        "ساختمان را طراحی",
+        "طراحی کن",
+        "پارکینگ",
+        "زمین",
+    )
+    return any(marker in user_request or marker in lowered for marker in markers)
+
+
+def _demo_rc_beam_result(
+    *,
+    agent_type: EngineeringAgentType,
+    action: str,
+    user_request: str,
+    parameters: dict[str, Any],
+    context: dict[str, Any],
+) -> AgentResult | None:
+    demo = analyze_simply_supported_rc_beam(user_request)
+    if demo is None:
+        return None
+    payload = demo.to_dict()
+    payload["project_context_used"] = _context_summary(context)
+    return AgentResult(
+        structured_output=_base_output(
+            agent_type=agent_type,
+            action=action,
+            user_request=user_request,
+            parameters=parameters,
+            context=context,
+            capability_status="DEMO_COMPLETED",
+            status_message=demo.to_markdown(),
+            payload={
+                "demo_rc_beam": payload,
+                "user_summary": demo.to_markdown(),
+            },
+        ),
+        confidence=1.0,
+        generated_artifacts=[
+            {
+                "type": "demo_calculation",
+                "name": "RC beam Demo analysis",
+                "description": "Deterministic simply-supported UDL beam Demo (not a CSI/CAD run).",
+            }
+        ],
+        recommendations=[
+            "Treat this as a demonstration of chat-to-calculation flow, not a construction document.",
+            "Next: attach a drawing or specification, then request validation against the project code profile.",
+        ],
+        validation_information={
+            "capability_status": "DEMO_COMPLETED",
+            "demo": True,
+            "requires_approval": False,
+            "warnings": list(demo.warnings),
+        },
+    )
+
+
+def _aci_rc_beam_result(
+    *,
+    agent_type: EngineeringAgentType,
+    action: str,
+    user_request: str,
+    parameters: dict[str, Any],
+    context: dict[str, Any],
+    services: EngineeringAgentServices,
+    require_explicit_concrete: bool = False,
+) -> AgentResult | None:
+    if not is_aci_rc_beam_check_request(
+        user_request, require_explicit_concrete=require_explicit_concrete
+    ):
+        return None
+    outcome = run_aci_rc_beam_check(
+        user_request=user_request,
+        parameters=parameters,
+        context=context,
+        code_engine=services.code_engine,
+    )
+    if outcome is None:
+        return None
+
+    payload = dict(outcome.payload)
+    warnings = list(payload.get("warnings") or [])
+    if context.get("files"):
+        warning = (
+            "Attached project files were not used as numerical inputs. "
+            "This check does not parse ETABS, SAP2000, SAFE, DWG, or PDF for member demands yet."
+        )
+        if warning not in warnings:
+            warnings.append(warning)
+        payload["warnings"] = warnings
+
+    completed = outcome.status in {"PASS", "FAIL"}
+    artifacts = []
+    if completed:
+        artifacts.append(
+            {
+                "type": "code_check",
+                "name": "ACI 318 RC beam check",
+                "description": "Deterministic ACI 318-25 flexure and concrete-shear check (no CSI/CAD).",
+            }
+        )
+    recommendations = [
+        "Independent engineer review is required before using these values in construction documents.",
+    ]
+    if outcome.status == "MISSING_REQUIRED_INPUT":
+        recommendations = [
+            "Provide the listed inputs. The agent will not invent span, section, materials, As, or demands.",
+        ]
+    elif outcome.status == "UNSUPPORTED_CODE":
+        recommendations = [
+            "Configure the project concrete code to ACI CODE-318-25, or wait for an implemented plugin.",
+        ]
+    elif outcome.status == "INVALID_INPUT":
+        recommendations = [
+            "Correct the out-of-range values and resubmit the check.",
+        ]
+
+    return AgentResult(
+        structured_output=_base_output(
+            agent_type=agent_type,
+            action=action,
+            user_request=user_request,
+            parameters=parameters,
+            context=context,
+            capability_status=outcome.status,
+            status_message=outcome.message,
+            payload={
+                "aci_rc_beam": payload,
+                "user_summary": outcome.message,
+            },
+        ),
+        confidence=1.0,
+        generated_artifacts=artifacts,
+        recommendations=recommendations,
+            validation_information={
+                "capability_status": outcome.status,
+                "validation_status": outcome.validation_status,
+                "requires_approval": outcome.requires_approval,
+                "warnings": warnings,
+            },
+        )
+
+
+def _aisc_steel_beam_result(
+    *,
+    agent_type: EngineeringAgentType,
+    action: str,
+    user_request: str,
+    parameters: dict[str, Any],
+    context: dict[str, Any],
+    services: EngineeringAgentServices,
+) -> AgentResult | None:
+    if not is_aisc_steel_beam_check_request(user_request):
+        return None
+    outcome = run_aisc_steel_beam_check(
+        user_request=user_request,
+        parameters=parameters,
+        context=context,
+        code_engine=services.code_engine,
+    )
+    if outcome is None:
+        return None
+
+    payload = dict(outcome.payload)
+    warnings = list(payload.get("warnings") or [])
+    if context.get("files"):
+        warning = (
+            "Attached project files were not used as numerical inputs. "
+            "This check does not parse ETABS, SAP2000, SAFE, DWG, or PDF for member demands yet."
+        )
+        if warning not in warnings:
+            warnings.append(warning)
+        payload["warnings"] = warnings
+
+    completed = outcome.status in {"PASS", "FAIL"}
+    artifacts = []
+    if completed:
+        artifacts.append(
+            {
+                "type": "code_check",
+                "name": "AISC 360 steel beam flexure check",
+                "description": "Deterministic AISC 360-22 compact plastic-moment flexure check (no CSI/CAD).",
+            }
+        )
+    recommendations = [
+        "Independent engineer review is required before using these values in construction documents.",
+    ]
+    if outcome.status == "MISSING_REQUIRED_INPUT":
+        recommendations = [
+            "Provide Fy, Zx, and Mu (or span and uniform load). The agent will not invent steel properties or demands.",
+        ]
+    elif outcome.status == "UNSUPPORTED_CODE":
+        recommendations = [
+            "Configure the project steel code to AISC 360-22, or wait for an implemented plugin.",
+        ]
+    elif outcome.status == "INVALID_INPUT":
+        recommendations = [
+            "Correct the out-of-range values and resubmit the check.",
+        ]
+
+    return AgentResult(
+        structured_output=_base_output(
+            agent_type=agent_type,
+            action=action,
+            user_request=user_request,
+            parameters=parameters,
+            context=context,
+            capability_status=outcome.status,
+            status_message=outcome.message,
+            payload={
+                "aisc_steel_beam": payload,
+                "user_summary": outcome.message,
+            },
+        ),
+        confidence=1.0,
+        generated_artifacts=artifacts,
+        recommendations=recommendations,
+        validation_information={
+            "capability_status": outcome.status,
+            "validation_status": outcome.validation_status,
+            "requires_approval": outcome.requires_approval,
+            "warnings": warnings,
+        },
+    )
+
+
 class StructuralModelingAgentHandler:
     agent_type = EngineeringAgentType.STRUCTURAL_MODELING_AGENT
 
@@ -88,6 +333,9 @@ class StructuralModelingAgentHandler:
         parameters: dict[str, Any],
         context: dict[str, Any],
     ) -> AgentResult:
+        if _looks_like_building_brief(user_request, parameters):
+            return self._generate_building(user_request=user_request, parameters=parameters, context=context)
+
         pem_version = context.get("pem_version")
         missing: list[str] = []
         if pem_version in (None, 0):
@@ -124,6 +372,87 @@ class StructuralModelingAgentHandler:
             validation_information={
                 "capability_status": "READY_FOR_MODELING_WORKFLOW",
                 "requires_approval": True,
+            },
+        )
+
+    def _generate_building(
+        self,
+        *,
+        user_request: str,
+        parameters: dict[str, Any],
+        context: dict[str, Any],
+    ) -> AgentResult:
+        pipeline = self._services.building_design_pipeline
+        if pipeline is None:
+            return AgentResult(
+                structured_output=_base_output(
+                    agent_type=self.agent_type,
+                    action="building_generation",
+                    user_request=user_request,
+                    parameters=parameters,
+                    context=context,
+                    capability_status="NOT_CONFIGURED",
+                    status_message="Building design pipeline is not configured.",
+                ),
+                confidence=0.0,
+                recommendations=["Use the Model workspace Generate building action once the pipeline is wired."],
+                validation_information={"capability_status": "NOT_CONFIGURED"},
+            )
+
+        result = pipeline.generate_from_brief(
+            _project_id(context),
+            user_request,
+            created_by=str(context.get("actor_id") or "building-agent"),
+            max_iterations=int(parameters.get("max_iterations") or 5),
+            generate_drawings=bool(parameters.get("generate_drawings", True)),
+        )
+        waiting = result.assembled.status == "WAITING_FOR_INPUT"
+        capability = "WAITING_FOR_INPUT" if waiting else result.assembled.status
+        message = (
+            "Missing critical inputs: " + "; ".join(result.assembled.missing_inputs)
+            if waiting
+            else (
+                "Generated a preliminary architectural and structural model from the brief. "
+                "Results are automated/preliminary and require engineer review before use."
+            )
+        )
+        return AgentResult(
+            structured_output=_base_output(
+                agent_type=self.agent_type,
+                action="building_generation",
+                user_request=user_request,
+                parameters=parameters,
+                context=context,
+                capability_status=capability,
+                status_message=message,
+                payload={
+                    "summary": result.summary,
+                    "pem_version": result.pem_version,
+                    "snapshot_id": str(result.snapshot_id) if result.snapshot_id else None,
+                    "approval_request_id": str(result.approval_request_id)
+                    if result.approval_request_id
+                    else None,
+                    "drawing_ids": result.drawing_ids,
+                    "sheet_paths": result.sheet_paths,
+                    "missing_inputs": result.assembled.missing_inputs,
+                    "fidelity": result.summary.get("fidelity"),
+                },
+            ),
+            confidence=0.2 if waiting else 0.7,
+            recommendations=(
+                [f"Provide: {item}" for item in result.assembled.missing_inputs]
+                if waiting
+                else [
+                    "Review generated geometry, analysis and design in the Model workspace.",
+                    "Approve or reject the pending model-change request before treating the model as issued.",
+                    "Wind and seismic intensities are PRELIMINARY_NOT_CODE placeholders.",
+                ]
+            ),
+            validation_information={
+                "capability_status": capability,
+                "qa_status": result.assembled.qa.overall_status,
+                "requires_approval": True,
+                "failed_members": result.assembled.design.failed_member_ids,
             },
         )
 
@@ -192,6 +521,15 @@ class AnalysisAgentHandler:
         parameters: dict[str, Any],
         context: dict[str, Any],
     ) -> AgentResult:
+        demo = _demo_rc_beam_result(
+            agent_type=self.agent_type,
+            action="analysis",
+            user_request=user_request,
+            parameters=parameters,
+            context=context,
+        )
+        if demo is not None:
+            return demo
         analysis_type = str(parameters.get("analysis_type", "LATERAL_DRIFT"))
         result = self._services.analysis_engine.run_analysis(
             AnalysisRequest(
@@ -240,10 +578,17 @@ class AnalysisAgentHandler:
                     "user_summary": user_summary,
                 },
             ),
-            confidence=0.0,
-            recommendations=[
-                "Connect an analysis solver adapter before treating results as engineering conclusions.",
-            ],
+            confidence=0.8 if result.outputs.get("engineering_results_available") else 0.0,
+            recommendations=(
+                [
+                    "Internal 2D gravity analysis completed. Review member forces before design.",
+                    "This is not a 3D ETABS/SAP2000 substitute and does not include wind/seismic.",
+                ]
+                if result.outputs.get("engineering_results_available")
+                else [
+                    "Connect an analysis solver adapter before treating results as engineering conclusions.",
+                ]
+            ),
             validation_information={
                 "capability_status": result.capability_status,
                 "analysis_status": result.status.value,
@@ -266,6 +611,25 @@ class ConcreteDesignAgentHandler:
         parameters: dict[str, Any],
         context: dict[str, Any],
     ) -> AgentResult:
+        aci = _aci_rc_beam_result(
+            agent_type=self.agent_type,
+            action="concrete_design",
+            user_request=user_request,
+            parameters=parameters,
+            context=context,
+            services=self._services,
+        )
+        if aci is not None:
+            return aci
+        demo = _demo_rc_beam_result(
+            agent_type=self.agent_type,
+            action="concrete_design",
+            user_request=user_request,
+            parameters=parameters,
+            context=context,
+        )
+        if demo is not None:
+            return demo
         design_type = str(parameters.get("design_type", "CONCRETE_MEMBER"))
         result = self._services.design_engine.run_design(
             DesignRequest(
@@ -334,6 +698,27 @@ class SteelDesignAgentHandler:
         parameters: dict[str, Any],
         context: dict[str, Any],
     ) -> AgentResult:
+        aci = _aci_rc_beam_result(
+            agent_type=self.agent_type,
+            action="steel_design",
+            user_request=user_request,
+            parameters=parameters,
+            context=context,
+            services=self._services,
+            require_explicit_concrete=True,
+        )
+        if aci is not None:
+            return aci
+        steel = _aisc_steel_beam_result(
+            agent_type=self.agent_type,
+            action="steel_design",
+            user_request=user_request,
+            parameters=parameters,
+            context=context,
+            services=self._services,
+        )
+        if steel is not None:
+            return steel
         design_type = str(parameters.get("design_type", "STEEL_MEMBER"))
         result = self._services.design_engine.run_design(
             DesignRequest(

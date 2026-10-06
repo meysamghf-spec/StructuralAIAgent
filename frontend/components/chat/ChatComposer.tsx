@@ -1,0 +1,197 @@
+"use client";
+
+import { AttachmentChip } from "./AttachmentChip";
+import type { PendingAttachment } from "@/lib/chat";
+import { canSendMessage, handleComposerKeyDown } from "@/lib/chat";
+import { AGENT_CHAT_MODES, ENGINEERING_FILE_ACCEPT, type AgentChatMode } from "@/lib/chat-types";
+import { FormEvent, useRef, useState, type RefObject } from "react";
+
+type ChatComposerProps = {
+  content: string;
+  attachments: PendingAttachment[];
+  busy: boolean;
+  projectSelected: boolean;
+  mode?: AgentChatMode;
+  variant?: "default" | "prominent";
+  hintId?: string;
+  inputRef?: RefObject<HTMLTextAreaElement | null>;
+  onContentChange: (value: string) => void;
+  onModeChange?: (mode: AgentChatMode) => void;
+  onSend: () => void;
+  onPickFiles: (files: FileList | File[]) => void;
+  onRemoveAttachment: (localId: string) => void;
+};
+
+export function ChatComposer({
+  content,
+  attachments,
+  busy,
+  projectSelected,
+  mode = "auto",
+  variant = "default",
+  hintId,
+  inputRef,
+  onContentChange,
+  onModeChange,
+  onSend,
+  onPickFiles,
+  onRemoveAttachment,
+}: ChatComposerProps) {
+  const localInputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = inputRef ?? localInputRef;
+  const [dragActive, setDragActive] = useState(false);
+  const resolvedHintId = hintId ?? "chat-composer-hint";
+
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    if (!canSendMessage(content, attachments) || busy) {
+      return;
+    }
+    onSend();
+  }
+
+  function handleDrop(event: React.DragEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (event.dataTransfer.files.length > 0) {
+      onPickFiles(event.dataTransfer.files);
+    }
+  }
+
+  const isProminent = variant === "prominent";
+
+  return (
+    <form
+      className={
+        isProminent
+          ? dragActive
+            ? "chat-composer chat-composer-prominent chat-composer-drag-active"
+            : "chat-composer chat-composer-prominent"
+          : dragActive
+            ? "chat-composer chat-composer-drag-active"
+            : "chat-composer"
+      }
+      onSubmit={handleSubmit}
+      onDragEnter={(event) => {
+        event.preventDefault();
+        setDragActive(true);
+      }}
+      onDragOver={(event) => {
+        event.preventDefault();
+        setDragActive(true);
+      }}
+      onDragLeave={(event) => {
+        if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          return;
+        }
+        setDragActive(false);
+      }}
+      onDrop={(event) => {
+        setDragActive(false);
+        handleDrop(event);
+      }}
+      aria-busy={busy}
+    >
+      {attachments.length > 0 ? (
+        <div className="chat-composer-attachments">
+          {attachments.map((attachment) => (
+            <AttachmentChip
+              key={attachment.localId}
+              attachment={attachment}
+              onRemove={busy ? undefined : () => onRemoveAttachment(attachment.localId)}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      <div className="chat-composer-box">
+        <textarea
+          ref={textareaRef}
+          className="input chat-composer-input"
+          rows={isProminent ? 4 : 3}
+          placeholder={
+            isProminent
+              ? "Tell StructuralAIAgent what you want to accomplish…"
+              : "Ask StructuralAIAgent…"
+          }
+          value={content}
+          onChange={(event) => onContentChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (!canSendMessage(content, attachments) || busy) {
+              return;
+            }
+            handleComposerKeyDown(event, onSend);
+          }}
+          disabled={busy}
+          aria-label="Type your structural engineering request"
+          aria-describedby={resolvedHintId}
+          aria-disabled={busy}
+        />
+        <div className="chat-composer-toolbar">
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="chat-file-input"
+            multiple
+            accept={ENGINEERING_FILE_ACCEPT}
+            disabled={busy}
+            onChange={(event) => {
+              if (event.target.files) {
+                onPickFiles(event.target.files);
+                event.target.value = "";
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="button secondary chat-composer-icon-button"
+            disabled={busy}
+            aria-label="Attach engineering file"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {isProminent ? "Attach file" : "Attach"}
+          </button>
+          <label className="chat-mode-select">
+            <span className="visually-hidden">Agent mode</span>
+            <select
+              className="input chat-mode-input"
+              value={mode}
+              disabled={busy}
+              aria-label="Agent mode"
+              onChange={(event) => onModeChange?.(event.target.value as AgentChatMode)}
+            >
+              {AGENT_CHAT_MODES.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            className="button chat-composer-send"
+            type="submit"
+            disabled={busy || !canSendMessage(content, attachments)}
+            aria-label={busy ? "Sending message" : "Send message"}
+            aria-disabled={busy || !canSendMessage(content, attachments)}
+          >
+            {busy ? "Sending…" : isProminent ? "Send" : "Send"}
+          </button>
+        </div>
+      </div>
+      {!isProminent ? (
+        <p id={resolvedHintId} className="muted chat-composer-hint">
+          Enter to send · Shift+Enter for a new line · Drag and drop supported engineering files
+          {!projectSelected ? " · Select a project before attaching files" : ""}
+        </p>
+      ) : (
+        <p
+          id={resolvedHintId}
+          className="muted chat-composer-hint chat-composer-hint-prominent"
+        >
+          Enter to send · Shift+Enter for a new line · Attach supported engineering files
+          {!projectSelected ? " · Select a project before attaching files" : ""}
+        </p>
+      )}
+    </form>
+  );
+}
