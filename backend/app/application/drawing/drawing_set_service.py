@@ -6,9 +6,9 @@ printed on S-001 and the sheets actually generated can never drift apart.
 
 Generation is deterministic: given the same PEM and the same ``generated_at``,
 the geometry, the primitive IDs and therefore every sheet signature come out
-identical. Only sheets whose phase is implemented appear here; schedules
-(S-201..S-203), structural sections (S-301) and reinforcement details (S-401)
-are later milestones and are deliberately absent rather than stubbed.
+identical. Phase H schedules (S-201..S-203) are appended from the PEM.
+Structural sections (S-301) and reinforcement details (S-401) stay absent
+rather than being stubbed.
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ from app.application.drawing.architectural_sheets import (
     build_typical_residential_plan,
 )
 from app.application.drawing.pem_solids import PemDrawingContext
+from app.application.drawing.schedule_sheets import build_schedule_sheets
 from app.application.drawing.sheet_builder import SheetBuildContext
 from app.application.drawing.structural_sheets import (
     build_beam_layout,
@@ -95,6 +96,16 @@ class DrawingSetService:
         stamp = generated_at or datetime.now(UTC)
         specs = [spec for spec in SHEET_SPECS if only is None or spec.number in only]
 
+        schedule_catalog = (
+            ("S-201", "Beam schedule"),
+            ("S-202", "Column schedule"),
+            ("S-203", "Slab / reinforcement schedule"),
+        )
+        schedule_index = [
+            item
+            for item in schedule_catalog
+            if only is None or item[0] in only
+        ]
         context = SheetBuildContext(
             pem=pem_context,
             project_name=pem.metadata.name,
@@ -104,10 +115,20 @@ class DrawingSetService:
             pem_version=pem_version,
             revision=revision,
             units=pem.building_model.length_unit or "m",
-            drawing_index=[(spec.number, spec.title) for spec in specs],
+            drawing_index=[(spec.number, spec.title) for spec in specs] + schedule_index,
         )
 
         sheets = [spec.builder(context) for spec in specs]
+        if schedule_index:
+            schedule_sheets = build_schedule_sheets(context)
+            if only is not None:
+                schedule_sheets = [
+                    sheet
+                    for sheet in schedule_sheets
+                    if sheet.sheet_number in only
+                    or str(sheet.metadata.get("schedule_family")) in only
+                ]
+            sheets.extend(schedule_sheets)
         resolved_project_id = project_id or pem.project_id
         return DrawingSet(
             id=f"DS-{resolved_project_id}-{pem_version if pem_version is not None else 0}-r{revision}",
@@ -136,9 +157,6 @@ class DrawingSetService:
                 ],
                 "level_ids": [level.id for level in pem_context.levels_sorted],
                 "pending_milestones": [
-                    "S-201 beam schedule",
-                    "S-202 column schedule",
-                    "S-203 slab / reinforcement schedule",
                     "S-301 structural sections",
                     "S-401 reinforcement details",
                 ],

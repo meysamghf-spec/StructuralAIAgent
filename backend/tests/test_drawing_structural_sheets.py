@@ -25,6 +25,7 @@ from app.application.drawing.drawing_set_service import (
     STRUCTURAL_SHEET_NUMBERS,
     DrawingSetService,
 )
+from app.application.drawing.schedule_sheets import schedule_source_ids
 from app.application.drawing.annotation import LAYER_GRID, LAYER_GRID_BUBBLE
 from app.application.service_factory import build_code_engine_service
 from app.domain.models.drawing import (
@@ -120,13 +121,15 @@ def test_structural_sheets_are_generated(demo) -> None:
 
 
 def test_out_of_scope_sheets_are_absent_rather_than_stubbed(demo) -> None:
-    """S-201..S-401 belong to later milestones and must not be faked as empty sheets."""
+    """S-301 and S-401 remain later milestones and must not be faked as empty sheets."""
     _, drawing_set = demo
     numbers = set(drawing_set.sheet_numbers)
-    assert not numbers & {"S-201", "S-202", "S-203", "S-301", "S-401"}
+    assert not numbers & {"S-301", "S-401"}
     pending = drawing_set.metadata["pending_milestones"]
-    for number in ("S-201", "S-202", "S-203", "S-301", "S-401"):
+    for number in ("S-301", "S-401"):
         assert any(entry.startswith(number) for entry in pending), number
+    for number in ("S-201", "S-202", "S-203"):
+        assert not any(entry.startswith(number) for entry in pending), number
 
 
 # ---------------------------------------------------------------------------
@@ -680,3 +683,14 @@ def test_generator_is_not_tuned_to_the_12x22_model(demo) -> None:
     other_levels = {_view_level(view) for view in _sheet(other_set, "S-102").views}
     demo_levels = {level.id for level in demo_pem.structural_model.geometry.levels}
     assert other_levels != demo_levels
+
+    for family, member_type in (
+        ("S-201", MemberType.BEAM),
+        ("S-202", MemberType.COLUMN),
+        ("S-203", MemberType.SLAB),
+    ):
+        demo_ids = _member_ids(demo_pem, member_type)
+        other_ids = _member_ids(other_pem, member_type)
+        assert schedule_source_ids(demo_set.sheets, family) == demo_ids
+        assert schedule_source_ids(other_set.sheets, family) == other_ids
+        assert demo_ids != other_ids
