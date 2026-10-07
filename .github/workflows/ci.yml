@@ -1,0 +1,99 @@
+# Validates pull requests and pushes to master.
+# Backend persistence tests use a disposable PostgreSQL service that exists
+# only for the job. No production credentials, BTCPay, or vendor software.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend pytest
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
+          # Job-scoped database with no password. Reachable only from this
+          # runner; the container is discarded when the job ends.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APP_ENV: development
+      AI_PROVIDER: stub
+      CRYPTO_PAYMENT_GATEWAY: mock
+      EXCHANGE_RATE_PROVIDER: stub
+      AUTH_REQUIRED: "false"
+      # Application database name. Pytest derives an isolated *_test database
+      # from this URL and truncates only that database.
+      DATABASE_URL: postgresql://postgres@127.0.0.1:5432/structuralaiaagent
+      TEST_DATABASE_URL: postgresql://postgres@127.0.0.1:5432/structuralaiaagent_test
+      # FILE_STORAGE_ROOT is intentionally unset. Production-configuration tests
+      # require it to be absent, and the app falls back to a directory outside
+      # the repository. API fixtures set a temporary root per test.
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -r backend/requirements.txt
+
+      - name: Run backend pytest
+        working-directory: backend
+        run: python -m pytest
+
+  frontend:
+    name: Frontend test and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run frontend tests
+        working-directory: frontend
+        run: npm test
+
+      - name: Build frontend
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_API_URL: http://127.0.0.1:8000
+        run: npm run build
