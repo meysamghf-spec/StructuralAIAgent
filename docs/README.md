@@ -1,6 +1,6 @@
 # StructuralAIAgent — Documentation
 
-**Current product:** chat-first structural engineering workspace. Run instructions and the RC beam graphical Demo are in [DEMO.md](DEMO.md). The live ACI 318 RC beam check: [ACI_RC_BEAM_CHECK.md](ACI_RC_BEAM_CHECK.md). Agent progress, lifecycle, and capability boundaries: [AGENT_WORKSPACE.md](AGENT_WORKSPACE.md).
+**Current product:** chat-first structural engineering workspace. Run instructions and the RC beam graphical Demo are in [DEMO.md](DEMO.md). The live ACI 318 RC beam check: [ACI_RC_BEAM_CHECK.md](ACI_RC_BEAM_CHECK.md). Agent progress, lifecycle, and capability boundaries: [AGENT_WORKSPACE.md](AGENT_WORKSPACE.md). What the product can and cannot do (inspection): [CAPABILITY_AUDIT.md](CAPABILITY_AUDIT.md).
 
 Phase 0 architecture is frozen in `PHASE_0_ARCHITECTURE_ASSESSMENT.md` (do not modify without approval). Product vs World boundaries: [PRODUCT_BOUNDARIES.md](PRODUCT_BOUNDARIES.md).
 

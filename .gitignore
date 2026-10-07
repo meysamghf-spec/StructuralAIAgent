@@ -16,6 +16,10 @@ build/
 htmlcov/
 .coverage
 coverage.xml
+coverage/
+lcov.info
+.tox/
+.ipynb_checkpoints/
 
 # Node / Next.js
 node_modules/
@@ -24,18 +28,52 @@ out/
 .turbo/
 *.tsbuildinfo
 next-env.d.ts
+.vercel/
 
 # Environment and secrets
+# .env.* covers .env.local, .env.production, .env.test and friends; the
+# placeholder template is re-included so it stays tracked.
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 .local/
 
-# IDE
+# Keys and credentials
+*.pem
+*.key
+*.pfx
+*.p12
+*.crt
+*.cer
+*.keystore
+*.jks
+id_rsa*
+*.ppk
+secrets.json
+credentials*.json
+service-account*.json
+
+# Local databases and dumps
+*.db
+*.db3
+*.sqlite
+*.sqlite3
+*.dump
+*.sql.gz
+
+# Generated/local storage
+# Anchored to the repository root so backend/app/infrastructure/storage, which
+# is source code, is not caught.
+/file_storage/
+/probe_out/
+
+# IDE and local tooling state
 .idea/
 .vscode/
 *.swp
 *.swo
+.cursor/
+terminals/
 
 # OS
 .DS_Store
