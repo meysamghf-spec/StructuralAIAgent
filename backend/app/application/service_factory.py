@@ -1,5 +1,7 @@
 ﻿"""Factory helpers for wiring application services to PostgreSQL repositories."""
 
+from __future__ import annotations
+
 from app.application.agent_approval_completion_service import AgentApprovalCompletionService
 from app.application.agent_capability_discovery_service import AgentCapabilityDiscoveryService
 from app.application.agent_builder_approval_completion_service import (
