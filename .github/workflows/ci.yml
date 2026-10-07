@@ -48,7 +48,9 @@ jobs:
       # from this URL and truncates only that database.
       DATABASE_URL: postgresql://postgres@127.0.0.1:5432/structuralaiaagent
       TEST_DATABASE_URL: postgresql://postgres@127.0.0.1:5432/structuralaiaagent_test
-      FILE_STORAGE_ROOT: ${{ runner.temp }}/file_storage
+      # FILE_STORAGE_ROOT is intentionally unset. Production-configuration tests
+      # require it to be absent, and the app falls back to a directory outside
+      # the repository. API fixtures set a temporary root per test.
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -65,9 +67,7 @@ jobs:
 
       - name: Run backend pytest
         working-directory: backend
-        run: |
-          mkdir -p "$FILE_STORAGE_ROOT"
-          python -m pytest
+        run: python -m pytest
 
   frontend:
     name: Frontend test and build
