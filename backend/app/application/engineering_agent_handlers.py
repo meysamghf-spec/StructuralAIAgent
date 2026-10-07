@@ -43,7 +43,7 @@ def _project_id(context: dict[str, Any]) -> UUID:
 
 
 def _context_summary(context: dict[str, Any]) -> dict[str, Any]:
-    return {
+    summary: dict[str, Any] = {
         "project_id": context.get("project_id"),
         "project_name": context.get("project_name"),
         "pem_version": context.get("pem_version"),
@@ -52,6 +52,13 @@ def _context_summary(context: dict[str, Any]) -> dict[str, Any]:
         "code_configuration": context.get("code_configuration"),
         "unit_configuration": context.get("unit_configuration"),
     }
+    record_ids = context.get("learning_record_ids")
+    if isinstance(record_ids, list) and record_ids:
+        summary["approved_learning_count"] = len(record_ids)
+        summary["learning_explanation"] = context.get("learning_explanation")
+        summary["learning_record_ids"] = list(record_ids)
+        summary["learning_authority"] = context.get("learning_authority", "CONTEXT_ONLY")
+    return summary
 
 
 def _base_output(

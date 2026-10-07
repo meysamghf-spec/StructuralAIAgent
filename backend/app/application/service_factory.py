@@ -77,6 +77,9 @@ from app.infrastructure.repositories.postgres_file_repository import PostgresFil
 from app.infrastructure.repositories.postgres_human_approval_repository import (
     PostgresHumanApprovalRepository,
 )
+from app.infrastructure.repositories.postgres_engineering_learning_repository import (
+    PostgresEngineeringLearningRepository,
+)
 from app.infrastructure.repositories.postgres_pem_repository import PostgresPemRepository
 from app.infrastructure.repositories.postgres_project_memory_repository import (
     PostgresProjectMemoryRepository,
@@ -122,6 +125,10 @@ def _revision_repository() -> PostgresRevisionRepository:
 
 def _project_memory_repository() -> PostgresProjectMemoryRepository:
     return PostgresProjectMemoryRepository()
+
+
+def _engineering_learning_repository() -> PostgresEngineeringLearningRepository:
+    return PostgresEngineeringLearningRepository()
 
 
 def _human_approval_repository() -> PostgresHumanApprovalRepository:
@@ -275,6 +282,12 @@ def build_revision_service() -> RevisionService:
         project_repository=_project_repository(),
         revision_repository=_revision_repository(),
     )
+
+
+def build_engineering_learning_service():
+    from app.application.engineering_learning_service import EngineeringLearningService
+
+    return EngineeringLearningService(repository=_engineering_learning_repository())
 
 
 def build_project_memory_service() -> ProjectMemoryService:
@@ -606,6 +619,7 @@ def build_agent_orchestration_service() -> AgentOrchestrationService:
         task_workflow_service=build_engineering_task_workflow_service(),
         task_execution_service=build_engineering_task_execution_service(),
         handlers=build_engineering_agent_handlers(build_engineering_agent_services()),
+        learning_service=build_engineering_learning_service(),
     )
 
 

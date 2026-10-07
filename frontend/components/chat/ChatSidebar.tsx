@@ -198,6 +198,9 @@ export function ChatSidebar({
           <Link href="/workspace/memory" className="chat-sidebar-link" onClick={onClose}>
             Memory
           </Link>
+          <Link href="/workspace/learning" className="chat-sidebar-link" onClick={onClose}>
+            Learning
+          </Link>
           <Link href="/workspace/traceability" className="chat-sidebar-link" onClick={onClose}>
             Traceability
           </Link>

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   getApprovalStatusLabel,
+  getLearningScopeLabel,
+  getLearningStatusLabel,
   getMemoryTypeLabel,
   getReportTypeLabel,
   getTraceObjectLabel,
@@ -19,6 +21,15 @@ describe("workspace display helpers", () => {
   it("maps memory and report types to friendly labels", () => {
     expect(getMemoryTypeLabel("DECISION")).toBe("Decision");
     expect(getReportTypeLabel("PROJECT_SUMMARY")).toBe("Project summary");
+  });
+
+  it("maps learning scope and approval labels", () => {
+    expect(getLearningScopeLabel("PROJECT")).toBe("Project");
+    expect(getLearningScopeLabel("ENGINEER")).toBe("Engineer");
+    expect(getLearningScopeLabel("GLOBAL")).toBe("Global");
+    expect(getLearningStatusLabel("CANDIDATE")).toBe("Candidate");
+    expect(getLearningStatusLabel("APPROVED")).toBe("Approved");
+    expect(getLearningStatusLabel("REJECTED")).toBe("Rejected");
   });
 
   it("maps traceability labels for engineer-readable chain view", () => {

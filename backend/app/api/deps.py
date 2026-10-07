@@ -22,6 +22,7 @@ from app.application.code_engine_service import CodeEngineService
 from app.application.design_engine_service import DesignEngineService
 from app.application.cad_generation_service import CadGenerationService
 from app.application.building_design_pipeline import BuildingDesignPipeline
+from app.application.engineering_learning_service import EngineeringLearningService
 from app.application.engineering_result_service import EngineeringResultService
 from app.application.optimization_engine_service import OptimizationEngineService
 from app.application.digital_payment_agent import DigitalPaymentAgent
@@ -56,6 +57,7 @@ from app.application.service_factory import (
     build_code_engine_service,
     build_cad_generation_service,
     build_design_engine_service,
+    build_engineering_learning_service,
     build_engineering_result_service,
     build_optimization_engine_service,
     build_digital_payment_agent,
@@ -112,6 +114,10 @@ def get_revision_service() -> RevisionService:
 
 def get_project_memory_service() -> ProjectMemoryService:
     return build_project_memory_service()
+
+
+def get_engineering_learning_service() -> EngineeringLearningService:
+    return build_engineering_learning_service()
 
 
 def get_project_context_assembly_service() -> ProjectContextAssemblyService:

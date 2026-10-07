@@ -29,6 +29,7 @@ def test_migrations_directory_contains_bootstrap_and_pem_foundation() -> None:
         "018_user_identity_foundation.sql",
         "019_agent_execution_lifecycle.sql",
         "020_conversations_foundation.sql",
+        "021_engineering_learning_foundation.sql",
     ]
 
 
@@ -170,6 +171,17 @@ def test_crypto_payment_migration_defines_payment_tables() -> None:
     assert "CREATE TABLE IF NOT EXISTS upgrade_entitlements" in sql
     assert "CREATE TABLE IF NOT EXISTS payment_audit_events" in sql
     assert "('017', 'crypto_payment_foundation')" in sql
+
+
+def test_engineering_learning_migration_defines_records_and_uses() -> None:
+    sql = (get_migrations_dir() / "021_engineering_learning_foundation.sql").read_text(
+        encoding="utf-8"
+    )
+    assert "CREATE TABLE IF NOT EXISTS engineering_learning_records" in sql
+    assert "CREATE TABLE IF NOT EXISTS engineering_learning_uses" in sql
+    assert "PROJECT" in sql and "ENGINEER" in sql and "GLOBAL" in sql
+    assert "CANDIDATE" in sql and "APPROVED" in sql and "REJECTED" in sql
+    assert "('021', 'engineering_learning_foundation')" in sql
 
 
 def test_user_identity_migration_defines_users_and_project_ownership() -> None:

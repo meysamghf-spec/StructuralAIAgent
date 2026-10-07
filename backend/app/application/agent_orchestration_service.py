@@ -27,6 +27,7 @@ from app.application.engineering_agent_handlers import (
     build_engineering_agent_handlers,
     new_trace_result_id,
 )
+from app.application.engineering_learning_service import EngineeringLearningService
 from app.application.engineering_task_workflow_service import EngineeringTaskWorkflowService
 from app.application.engineering_task_execution_service import EngineeringTaskExecutionService
 from app.application.entitlement_authorization_service import EntitlementAuthorizationService
@@ -55,6 +56,11 @@ from app.domain.models.agent_runtime import (
     AgentValidationStatus,
     PromptGenerationResult,
     is_awaiting_human_approval,
+)
+from app.domain.models.engineering_learning import (
+    LEARNING_AUTHORITY,
+    LearningRetrieval,
+    experience_context,
 )
 from app.domain.models.human_approval import ApprovalTargetType
 from app.domain.models.engineering_task import EngineeringTask, EngineeringTaskStatus
@@ -94,6 +100,7 @@ class AgentOrchestrationService:
         task_workflow_service: EngineeringTaskWorkflowService | None = None,
         task_execution_service: EngineeringTaskExecutionService | None = None,
         handlers: dict[EngineeringAgentType, EngineeringAgentHandler] | None = None,
+        learning_service: EngineeringLearningService | None = None,
     ) -> None:
         self._definitions = definition_repository
         self._versions = version_repository
@@ -107,6 +114,7 @@ class AgentOrchestrationService:
         self._task_workflow = task_workflow_service
         self._task_execution = task_execution_service
         self._handlers = handlers or build_engineering_agent_handlers()
+        self._learning = learning_service
 
     def orchestrate(
         self,
@@ -206,6 +214,13 @@ class AgentOrchestrationService:
         if selected_type is None:
             raise AgentHandlerNotFoundError("unknown")
 
+        learning_retrieval = self._attach_approved_learning(
+            request=request,
+            account_id=account_id,
+            agent_id=selected_type.value,
+            context_snapshot=context_snapshot,
+        )
+
         capability_profile = get_agent_capability_profile(selected_type)
         self._enforce_entitlements(account_id, capability_profile)
         emit_progress(
@@ -220,7 +235,9 @@ class AgentOrchestrationService:
             },
         )
 
-        if prompt_result is None:
+        if prompt_result is None or (
+            learning_retrieval is not None and learning_retrieval.records
+        ):
             prompt_result = self._prompt_generation.generate(
                 user_request=request.user_request,
                 context_summary=context_snapshot,
@@ -440,18 +457,38 @@ class AgentOrchestrationService:
                     engineering_task.status == EngineeringTaskStatus.WAITING_FOR_APPROVAL
                 )
 
+            agent_result = self._annotate_with_learning(agent_result, learning_retrieval)
+            if (
+                self._learning is not None
+                and learning_retrieval is not None
+                and learning_retrieval.records
+            ):
+                self._learning.record_use(
+                    project_id=request.project_id,
+                    task_id=record.id,
+                    retrieval=learning_retrieval,
+                )
+
             record.agent_result = agent_result
             record.output = agent_result.structured_output
             record.validation_status = validation_status
 
             request_trace_id = uuid4()
             result_trace_id = new_trace_result_id()
+            learning_trace: dict[str, Any] = {}
+            if learning_retrieval is not None and learning_retrieval.records:
+                learning_trace = {
+                    "learning_record_ids": [str(item.id) for item in learning_retrieval.records],
+                    "learning_explanation": learning_retrieval.explanation,
+                    "learning_authority": LEARNING_AUTHORITY,
+                }
             record.traceability_metadata = {
                 **record.traceability_metadata,
                 "request_trace_id": str(request_trace_id),
                 "result_trace_id": str(result_trace_id),
                 "selected_agent_type": selected_type.value,
                 "pem_version": context_snapshot.get("pem_version"),
+                **learning_trace,
             }
 
             record_request_to_agent_execution(
@@ -859,6 +896,60 @@ class AgentOrchestrationService:
 
     def build_context_snapshot(self, assembly: ProjectContextAssembly) -> dict[str, Any]:
         return self._build_scoped_context(assembly)
+
+    def _attach_approved_learning(
+        self,
+        *,
+        request: AgentExecutionRequest,
+        account_id: str,
+        agent_id: str,
+        context_snapshot: dict[str, Any],
+    ) -> LearningRetrieval | None:
+        if self._learning is None:
+            return None
+        parameters = request.parameters if isinstance(request.parameters, dict) else {}
+        task_type = parameters.get("task_type")
+        element_type = parameters.get("element_type")
+        retrieval = self._learning.retrieve(
+            project_id=request.project_id,
+            account_id=account_id,
+            agent_id=agent_id,
+            task_type=task_type if isinstance(task_type, str) else None,
+            element_type=element_type if isinstance(element_type, str) else None,
+        )
+        if not retrieval.records:
+            return retrieval
+        context_snapshot["approved_learning"] = [
+            experience_context(record) for record in retrieval.records
+        ]
+        context_snapshot["learning_explanation"] = retrieval.explanation
+        context_snapshot["learning_authority"] = retrieval.authority
+        context_snapshot["learning_record_ids"] = [str(record.id) for record in retrieval.records]
+        return retrieval
+
+    def _annotate_with_learning(
+        self,
+        agent_result: AgentResult,
+        retrieval: LearningRetrieval | None,
+    ) -> AgentResult:
+        if retrieval is None or not retrieval.records:
+            return agent_result
+        output = dict(agent_result.structured_output)
+        record_ids = [str(record.id) for record in retrieval.records]
+        output["learning_explanation"] = retrieval.explanation
+        output["learning_record_ids"] = record_ids
+        output["learning_authority"] = retrieval.authority
+        output["learning_overrides_pem"] = False
+        output["learning_overrides_rules"] = False
+        output["learning_overrides_qa"] = False
+        recommendations = list(agent_result.recommendations)
+        recommendations.append(retrieval.explanation)
+        return agent_result.model_copy(
+            update={
+                "structured_output": output,
+                "recommendations": recommendations,
+            }
+        )
 
     def _build_scoped_context(self, assembly: ProjectContextAssembly) -> dict[str, Any]:
         return {
