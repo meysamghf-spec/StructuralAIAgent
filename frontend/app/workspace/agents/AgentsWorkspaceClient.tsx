@@ -20,7 +20,15 @@ import {
   type PromptGenerationResult,
 } from "@/lib/api";
 import { filesForProject, productionRunAllowed } from "@/lib/engineering-workspace";
-import { structuralWorkflowGlance } from "@/lib/structural-workflow";
+import {
+  buildEngineeringBriefPayload,
+  emptyEngineeringBrief,
+  ENGINEERING_BRIEF_FIELDS,
+  BRIEF_ORIGINS,
+  structuralWorkflowGlance,
+  type BriefOrigin,
+  type EngineeringBriefFieldKey,
+} from "@/lib/structural-workflow";
 import { listCadDrawings, type CadDrawing } from "@/lib/cad";
 import { RequestPlanPanel } from "@/components/agents/RequestPlanPanel";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
@@ -49,6 +57,7 @@ export default function AgentsWorkspaceClient() {
   const [drawings, setDrawings] = useState<CadDrawing[]>([]);
   const [selectedExecutionId, setSelectedExecutionId] = useState<string | null>(null);
   const [applyBrief, setApplyBrief] = useState(false);
+  const [engineeringBrief, setEngineeringBrief] = useState(emptyEngineeringBrief);
 
   const refreshProjectContext = useCallback(async (projectId: string) => {
     if (!projectId) {
@@ -170,6 +179,22 @@ export default function AgentsWorkspaceClient() {
     executions.find((execution) => execution.id === selectedExecutionId) ?? executions[0] ?? null;
   const workflowGlance = structuralWorkflowGlance(selectedExecution);
 
+  function updateBriefField(
+    key: EngineeringBriefFieldKey,
+    patch: { value?: string; origin?: BriefOrigin },
+  ) {
+    setEngineeringBrief((current) => {
+      const next = { ...current[key], ...patch };
+      if (patch.value !== undefined && patch.origin === undefined) {
+        next.origin = patch.value.trim() ? (current[key].origin === "UNAVAILABLE" ? "USER_PROVIDED" : current[key].origin) : "UNAVAILABLE";
+      }
+      if (!next.value.trim()) {
+        next.origin = "UNAVAILABLE";
+      }
+      return { ...current, [key]: next };
+    });
+  }
+
   async function runStructuralAction(operation: string) {
     if (!selectedProjectId) {
       return;
@@ -183,7 +208,8 @@ export default function AgentsWorkspaceClient() {
         agent_type: "STRUCTURAL_ENGINEERING_AGENT",
         parameters: {
           operation,
-          apply_to_pem: operation === "prepare" ? applyBrief : false,
+          apply_to_pem: operation === "prepare" || operation === "workflow" ? applyBrief : false,
+          engineering_brief: buildEngineeringBriefPayload(engineeringBrief),
         },
       });
       await refreshProjectContext(selectedProjectId);
@@ -276,6 +302,7 @@ export default function AgentsWorkspaceClient() {
         <div className="button-row">
           {(
             [
+              ["workflow", "Run workflow"],
               ["prepare", "Prepare"],
               ["validate", "Validate"],
               ["analyze", "Analyze"],
@@ -301,8 +328,36 @@ export default function AgentsWorkspaceClient() {
             checked={applyBrief}
             onChange={(event) => setApplyBrief(event.target.checked)}
           />{" "}
-          Prepare may write a complete brief into the PEM. A chat message alone does not.
+          Prepare and Run workflow may write this brief into the PEM. A chat message alone does not.
         </label>
+        <form className="brief-form" aria-label="Engineering brief">
+          {ENGINEERING_BRIEF_FIELDS.map((field) => (
+            <label key={field.key} className="brief-field">
+              <span>{field.label}</span>
+              <span className="brief-field-controls">
+                <input
+                  className="input"
+                  value={engineeringBrief[field.key].value}
+                  onChange={(event) => updateBriefField(field.key, { value: event.target.value })}
+                />
+                <select
+                  className="input"
+                  aria-label={`${field.label} provenance`}
+                  value={engineeringBrief[field.key].origin}
+                  onChange={(event) =>
+                    updateBriefField(field.key, { origin: event.target.value as BriefOrigin })
+                  }
+                >
+                  {BRIEF_ORIGINS.map((origin) => (
+                    <option key={origin} value={origin}>
+                      {origin}
+                    </option>
+                  ))}
+                </select>
+              </span>
+            </label>
+          ))}
+        </form>
       </section>
 
       <section className="card">
