@@ -19,6 +19,9 @@ _WORKFLOW_KEYS = (
     "engineering_results_available",
     "engineering_design_results_available",
     "code_edition",
+    "integration_execution_id",
+    "solver",
+    "solver_status",
 )
 
 

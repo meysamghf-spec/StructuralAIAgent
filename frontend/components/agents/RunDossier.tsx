@@ -83,6 +83,20 @@ export function RunDossier({ execution }: { execution: AgentExecutionSummary }) 
         {dossier.engineering.resultValidationStatus ? (
           <p className="muted">Result validation {dossier.engineering.resultValidationStatus}</p>
         ) : null}
+        {dossier.engineering.solver ? (
+          <p className="muted">
+            {dossier.engineering.solver}{" "}
+            {dossier.engineering.solverStatus === "REQUIRES_LOCAL_SOFTWARE" ||
+            dossier.engineering.solverStatus === "NOT_INSTALLED" ||
+            dossier.engineering.solverStatus === "NOT_ACCESSIBLE"
+              ? "was not executed. Local engineering software is not available in this environment."
+              : `status ${dossier.engineering.solverStatus ?? "recorded"}.`}
+            {dossier.engineering.integrationExecutionId
+              ? ` Integration ${dossier.engineering.integrationExecutionId}.`
+              : ""}{" "}
+            <Link href={`/workspace/integrations?project=${execution.project_id}`}>Open integrations</Link>
+          </p>
+        ) : null}
       </section>
 
       <section aria-label="Learning context">

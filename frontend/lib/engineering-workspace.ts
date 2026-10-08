@@ -27,6 +27,9 @@ export type EngineeringChain = {
   resultValidationStatus: string | null;
   capabilityStatus: string | null;
   engineeringResultsAvailable: boolean | null;
+  solver: string | null;
+  solverStatus: string | null;
+  integrationExecutionId: string | null;
 };
 
 export type RunDossier = {
@@ -148,6 +151,11 @@ function engineeringChain(
     capabilityStatus: text(firstDefined(trace.capability_status, structured.capability_status)),
     engineeringResultsAvailable: availabilityFlag(
       firstDefined(trace.engineering_results_available, structured.engineering_results_available),
+    ),
+    solver: text(firstDefined(trace.solver, structured.solver)),
+    solverStatus: text(firstDefined(trace.solver_status, structured.solver_status)),
+    integrationExecutionId: text(
+      firstDefined(trace.integration_execution_id, structured.integration_execution_id),
     ),
   };
 }

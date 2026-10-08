@@ -398,6 +398,15 @@ class AnalysisEngineService:
                 )
             else:
                 message = capability.message
+            recorded = self._solver_integration.record_unavailable_analysis(
+                request.project_id,
+                solver,
+                analysis_type=normalized_type,
+                pem_version=pem_version,
+                analysis_run_id=analysis_run_id,
+                parameters=request.parameters,
+                created_by=created_by,
+            )
             return (
                 status,
                 AnalysisStatus.REQUIRES_LOCAL_SOFTWARE.value,
@@ -405,6 +414,9 @@ class AnalysisEngineService:
                 {
                     **outputs,
                     "reason": capability.availability.value,
+                    "integration_execution_id": str(recorded.id),
+                    "engineering_results_available": False,
+                    "executed": False,
                 },
             )
 

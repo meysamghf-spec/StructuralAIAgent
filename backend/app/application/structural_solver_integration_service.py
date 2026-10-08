@@ -161,6 +161,44 @@ class StructuralSolverIntegrationService:
         self._record_memory(project_id, completed, created_by)
         return completed
 
+    def record_unavailable_analysis(
+        self,
+        project_id: UUID,
+        software: IntegrationSoftware,
+        *,
+        analysis_type: str,
+        pem_version: int | None = None,
+        analysis_run_id: UUID | None = None,
+        parameters: dict[str, Any] | None = None,
+        created_by: str | None = None,
+    ) -> IntegrationExecution:
+        """Persist that a named solver was requested and not executed."""
+        _pem, snapshot_id, version = self._resolve_pem(project_id, pem_version)
+        capability = self.get_capability(software)
+        return self._executions.create_execution(
+            project_id,
+            software=software,
+            operation=IntegrationOperation.RUN_ANALYSIS,
+            status=IntegrationOperationStatus.REQUIRES_LOCAL_SOFTWARE,
+            message=capability.message,
+            pem_snapshot_id=snapshot_id,
+            pem_version=version,
+            analysis_run_id=analysis_run_id,
+            inputs={
+                "analysis_type": analysis_type,
+                "parameters": parameters or {},
+                "engineering_results_available": False,
+            },
+            outputs={
+                "engineering_results_available": False,
+                "solver": software.value,
+                "solver_status": capability.availability.value,
+                "executed": False,
+            },
+            metadata={"availability": capability.availability.value},
+            created_by=created_by,
+        )
+
     def run_solver_analysis(
         self,
         project_id: UUID,
@@ -175,11 +213,23 @@ class StructuralSolverIntegrationService:
         pem, snapshot_id, version = self._resolve_pem(project_id, pem_version)
         capability = self.get_capability(software)
         if capability.availability != SoftwareAvailabilityStatus.AVAILABLE:
+            recorded = self.record_unavailable_analysis(
+                project_id,
+                software,
+                analysis_type=analysis_type,
+                pem_version=version,
+                analysis_run_id=analysis_run_id,
+                parameters=parameters,
+                created_by=created_by,
+            )
             return {
                 "status": IntegrationOperationStatus.REQUIRES_LOCAL_SOFTWARE.value,
                 "capability_status": capability.availability.value,
                 "message": capability.message,
                 "engineering_results_available": False,
+                "integration_execution_id": str(recorded.id),
+                "solver": software.value,
+                "solver_status": capability.availability.value,
             }
 
         export_execution = self.export_model(
