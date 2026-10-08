@@ -777,7 +777,7 @@ class EngineeringTaskWorkflowService:
             "architectural drawings": ("architectural drawing", "architectural drawings"),
             "structural design drawings": ("structural design drawing", "structural drawings", "structural design"),
             "construction drawings": ("construction drawing", "construction drawings"),
-            "ETABS model": ("etabs model", "etabs"),
+            "ETABS model": ("etabs model",),
             "engineering report": ("report", "engineering report"),
             "analysis results": ("analysis", "analyze"),
         }

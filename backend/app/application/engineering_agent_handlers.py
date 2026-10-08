@@ -541,11 +541,15 @@ class AnalysisAgentHandler:
         if demo is not None:
             return demo
         analysis_type = str(parameters.get("analysis_type", "LATERAL_DRIFT"))
+        analysis_parameters = dict(parameters.get("analysis_parameters", {}))
+        for key in ("solver", "software"):
+            if parameters.get(key) and key not in analysis_parameters:
+                analysis_parameters[key] = parameters[key]
         result = self._services.analysis_engine.run_analysis(
             AnalysisRequest(
                 project_id=_project_id(context),
                 analysis_type=analysis_type,
-                parameters=dict(parameters.get("analysis_parameters", {})),
+                parameters=analysis_parameters,
             )
         )
 
@@ -580,6 +584,8 @@ class AnalysisAgentHandler:
                         str(validation_status) if validation_status else None
                     ),
                     "integration_execution_id": result.outputs.get("integration_execution_id"),
+                    "solver": result.outputs.get("solver"),
+                    "solver_status": result.outputs.get("solver_status"),
                     "engineering_results_available": bool(
                         result.outputs.get("engineering_results_available")
                     ),

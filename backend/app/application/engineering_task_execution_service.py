@@ -124,6 +124,12 @@ class EngineeringTaskExecutionService:
             task.paused_step_id = None
 
         task = self._workflow.evaluate_steps(task, context_snapshot)
+        self._record_unavailable_integrations(
+            task=task,
+            project_id=project_id,
+            actor_id=actor_id,
+            parameters=parameters,
+        )
         if parameters.get("allow_missing_inputs"):
             for step in task.steps:
                 if step.status == WorkflowStepStatus.BLOCKED and step.capability_kind in {
@@ -388,6 +394,52 @@ class EngineeringTaskExecutionService:
         task.shared_context["architectural_dxf_path"] = str(file_path)
         return {}
 
+    def _record_unavailable_integrations(
+        self,
+        *,
+        task: EngineeringTask,
+        project_id: UUID,
+        actor_id: str,
+        parameters: dict[str, Any],
+    ) -> None:
+        """Persist a named solver that the plan already knows cannot run.
+
+        Planning marks missing local software as unsupported before the step
+        executes. The attempt is still an integration record tied to this project
+        and the current PEM, with no engineering results attached.
+        """
+        if self._solver is None:
+            return
+        for step in task.steps:
+            if step.capability_kind != "integration" or step.status != WorkflowStepStatus.UNSUPPORTED:
+                continue
+            if step.outputs.get("integration_execution_id"):
+                continue
+            software = _INTEGRATION_CAPABILITY_MAP.get(step.capability)
+            if software is None:
+                continue
+            recorded = self._solver.record_unavailable_analysis(
+                project_id,
+                software,
+                analysis_type=str(parameters.get("analysis_type") or "STATIC"),
+                parameters=parameters,
+                created_by=actor_id,
+            )
+            availability = str(recorded.outputs.get("solver_status") or recorded.status.value)
+            step.execution_result = {
+                "capability_status": availability,
+                "message": recorded.message,
+                "integration_execution_id": str(recorded.id),
+                "engineering_results_available": False,
+            }
+            step.outputs = {
+                "integration_execution_id": str(recorded.id),
+                "solver": software.value,
+                "solver_status": availability,
+                "engineering_results_available": False,
+            }
+            task.shared_context.update(step.outputs)
+
     def _execute_integration(
         self,
         step: EngineeringTaskStep,
@@ -404,12 +456,28 @@ class EngineeringTaskExecutionService:
 
         capability = self._solver.get_capability(software)
         if capability.availability.value != "AVAILABLE":
+            recorded = self._solver.record_unavailable_analysis(
+                project_id,
+                software,
+                analysis_type=str(parameters.get("analysis_type") or "STATIC"),
+                parameters=parameters,
+                created_by=actor_id,
+            )
             step.status = WorkflowStepStatus.UNSUPPORTED
             step.limitations = [capability.message or capability.availability.value]
             step.execution_result = {
                 "capability_status": capability.availability.value,
                 "message": capability.message,
+                "integration_execution_id": str(recorded.id),
+                "engineering_results_available": False,
             }
+            step.outputs = {
+                "integration_execution_id": str(recorded.id),
+                "solver": software.value,
+                "solver_status": capability.availability.value,
+                "engineering_results_available": False,
+            }
+            task.shared_context.update(step.outputs)
             return {}
 
         if step.step_id == "etabs_model" or (
@@ -551,10 +619,17 @@ class EngineeringTaskExecutionService:
                 else None
             ),
         }
-        if step.outputs.get("analysis_run_id"):
-            task.shared_context["analysis_run_id"] = step.outputs["analysis_run_id"]
-        if step.outputs.get("result_set_id"):
-            task.shared_context["result_set_id"] = step.outputs["result_set_id"]
+        for key in (
+            "analysis_run_id",
+            "result_set_id",
+            "integration_execution_id",
+            "solver",
+            "solver_status",
+            "engineering_results_available",
+        ):
+            if agent_result.structured_output.get(key) is not None:
+                step.outputs[key] = agent_result.structured_output[key]
+                task.shared_context[key] = agent_result.structured_output[key]
 
         for raw in agent_result.generated_artifacts[:5]:
             if not isinstance(raw, dict):
@@ -597,19 +672,30 @@ class EngineeringTaskExecutionService:
         ]
         if task.missing_required_inputs:
             summary_lines.append("Missing inputs: " + "; ".join(task.missing_required_inputs[:6]))
-        return AgentResult(
-            structured_output={
-                "agent_type": selected_agent_type.value if selected_agent_type else "WORKFLOW",
-                "action": "multi_step_workflow",
-                "capability_status": task.status.value,
-                "status_message": "\n".join(summary_lines),
-                "workflow_summary": {
-                    "executed": [step.title for step in executed],
-                    "blocked": [step.title for step in blocked],
-                    "unsupported": [step.title for step in unsupported],
-                },
-                "shared_context": task.shared_context,
+        workflow_output = {
+            "agent_type": selected_agent_type.value if selected_agent_type else "WORKFLOW",
+            "action": "multi_step_workflow",
+            "capability_status": task.status.value,
+            "status_message": "\n".join(summary_lines),
+            "workflow_summary": {
+                "executed": [step.title for step in executed],
+                "blocked": [step.title for step in blocked],
+                "unsupported": [step.title for step in unsupported],
             },
+            "shared_context": task.shared_context,
+        }
+        for key in (
+            "analysis_run_id",
+            "result_set_id",
+            "integration_execution_id",
+            "solver",
+            "solver_status",
+            "engineering_results_available",
+        ):
+            if task.shared_context.get(key) is not None:
+                workflow_output[key] = task.shared_context[key]
+        return AgentResult(
+            structured_output=workflow_output,
             confidence=0.6 if executed else 0.2,
             generated_artifacts=aggregate_artifacts,
             recommendations=aggregate_recommendations[:8],

@@ -164,6 +164,24 @@ describe("engineering workspace", () => {
     expect(dossier.authoritative.pemSnapshotId).toBe("snapshot-1");
   });
 
+  it("labels an unavailable solver as not executed", () => {
+    const dossier = buildRunDossier(
+      execution({
+        traceability_metadata: {
+          solver: "ETABS",
+          solver_status: "REQUIRES_LOCAL_SOFTWARE",
+          integration_execution_id: "integration-1",
+          engineering_results_available: false,
+          capability_status: "REQUIRES_LOCAL_SOFTWARE",
+        },
+      }),
+    );
+    expect(dossier.engineering.solver).toBe("ETABS");
+    expect(dossier.engineering.solverStatus).toBe("REQUIRES_LOCAL_SOFTWARE");
+    expect(dossier.engineering.integrationExecutionId).toBe("integration-1");
+    expect(dossier.engineering.engineeringResultsAvailable).toBe(false);
+  });
+
   it("reports a learning override instead of treating it as the PEM", () => {
     const dossier = buildRunDossier(
       execution({
