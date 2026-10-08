@@ -1,5 +1,6 @@
 import pytest
 
+from app.application.exceptions import SecurityConfigurationError
 from app.infrastructure.config import Settings, get_settings
 
 
@@ -81,6 +82,9 @@ def test_production_rejects_mock_payment_gateway_without_explicit_opt_in(monkeyp
     monkeypatch.setenv("AUTH_JWT_SECRET", "production-test-secret-value")
     monkeypatch.setenv("ENTITLEMENT_ENFORCEMENT_ENABLED", "true")
     monkeypatch.setenv("FILE_STORAGE_ROOT", "/tmp/structuralai-test-storage")
+    monkeypatch.setenv("AI_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_API_KEY", "production-test-openai-key")
+    monkeypatch.setenv("EXCHANGE_RATE_PROVIDER", "coingecko")
     monkeypatch.setenv("CRYPTO_PAYMENT_GATEWAY", "mock")
     monkeypatch.delenv("CRYPTO_PAYMENT_ALLOW_MOCK_IN_PRODUCTION", raising=False)
     get_settings.cache_clear()
@@ -96,3 +100,60 @@ def test_production_rejects_mock_payment_gateway_without_explicit_opt_in(monkeyp
     finally:
         factory._payment_gateway_instance = None
         get_settings.cache_clear()
+
+
+def test_production_rejects_stub_ai_and_exchange_rates(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("AUTH_REQUIRED", "true")
+    monkeypatch.setenv("PROJECT_ACCESS_ENFORCED", "true")
+    monkeypatch.setenv("AUTH_ALLOW_LEGACY_ACTOR", "false")
+    monkeypatch.setenv("AUTH_JWT_SECRET", "production-test-secret-value")
+    monkeypatch.setenv("ENTITLEMENT_ENFORCEMENT_ENABLED", "true")
+    monkeypatch.setenv("FILE_STORAGE_ROOT", "/tmp/structuralai-test-storage")
+    monkeypatch.setenv("AI_PROVIDER", "stub")
+    monkeypatch.setenv("EXCHANGE_RATE_PROVIDER", "stub")
+    with pytest.raises(SecurityConfigurationError) as exc_info:
+        Settings().validate_security_configuration()
+    issues = exc_info.value.details["issues"]
+    assert "AI_PROVIDER must not be stub in production" in issues
+    assert "EXCHANGE_RATE_PROVIDER must not be stub in production" in issues
+
+
+def test_production_requires_an_openai_key_when_selected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("AUTH_REQUIRED", "true")
+    monkeypatch.setenv("PROJECT_ACCESS_ENFORCED", "true")
+    monkeypatch.setenv("AUTH_ALLOW_LEGACY_ACTOR", "false")
+    monkeypatch.setenv("AUTH_JWT_SECRET", "production-test-secret-value")
+    monkeypatch.setenv("ENTITLEMENT_ENFORCEMENT_ENABLED", "true")
+    monkeypatch.setenv("FILE_STORAGE_ROOT", "/tmp/structuralai-test-storage")
+    monkeypatch.setenv("AI_PROVIDER", "openai")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("EXCHANGE_RATE_PROVIDER", "coingecko")
+    with pytest.raises(SecurityConfigurationError) as exc_info:
+        Settings().validate_security_configuration()
+    assert (
+        "OPENAI_API_KEY must be configured when AI_PROVIDER is OpenAI-compatible"
+        in exc_info.value.details["issues"]
+    )
+
+
+def test_production_accepts_configured_providers(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("AUTH_REQUIRED", "true")
+    monkeypatch.setenv("PROJECT_ACCESS_ENFORCED", "true")
+    monkeypatch.setenv("AUTH_ALLOW_LEGACY_ACTOR", "false")
+    monkeypatch.setenv("AUTH_JWT_SECRET", "production-test-secret-value")
+    monkeypatch.setenv("ENTITLEMENT_ENFORCEMENT_ENABLED", "true")
+    monkeypatch.setenv("FILE_STORAGE_ROOT", "/tmp/structuralai-test-storage")
+    monkeypatch.setenv("AI_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_API_KEY", "production-test-openai-key")
+    monkeypatch.setenv("EXCHANGE_RATE_PROVIDER", "coingecko")
+    Settings().validate_security_configuration()
+
+
+def test_development_allows_stub_providers(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("AI_PROVIDER", "stub")
+    monkeypatch.setenv("EXCHANGE_RATE_PROVIDER", "stub")
+    Settings().validate_security_configuration()
