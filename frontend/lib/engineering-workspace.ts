@@ -19,6 +19,16 @@ export type RunArtifact = {
   href: string | null;
 };
 
+export type EngineeringChain = {
+  analysisRunId: string | null;
+  designRunId: string | null;
+  optimizationRunId: string | null;
+  resultSetId: string | null;
+  resultValidationStatus: string | null;
+  capabilityStatus: string | null;
+  engineeringResultsAvailable: boolean | null;
+};
+
 export type RunDossier = {
   request: string | null;
   agentResult: string | null;
@@ -32,6 +42,7 @@ export type RunDossier = {
     learningOverridesQa: boolean;
   };
   learning: ApprovedEngineeringExperience | null;
+  engineering: EngineeringChain;
   approval: {
     required: boolean;
     requestId: string | null;
@@ -91,6 +102,7 @@ export function buildRunDossier(execution: AgentExecutionSummary): RunDossier {
       learningOverridesQa,
     },
     learning: experience,
+    engineering: engineeringChain(trace, structured),
     approval: {
       required: execution.user_view.requires_approval,
       requestId: execution.user_view.approval_request_id,
@@ -119,6 +131,25 @@ export function parameterPemIsNotAuthoritative(execution: AgentExecutionSummary)
     return false;
   }
   return String(parameters.pem_version) !== String(trace.pem_version);
+}
+
+function engineeringChain(
+  trace: Record<string, unknown>,
+  structured: Record<string, unknown>,
+): EngineeringChain {
+  return {
+    analysisRunId: text(firstDefined(trace.analysis_run_id, structured.analysis_run_id)),
+    designRunId: text(firstDefined(trace.design_run_id, structured.design_run_id)),
+    optimizationRunId: text(firstDefined(trace.optimization_run_id, structured.optimization_run_id)),
+    resultSetId: text(firstDefined(trace.result_set_id, structured.result_set_id)),
+    resultValidationStatus: text(
+      firstDefined(trace.result_validation_status, structured.result_validation_status),
+    ),
+    capabilityStatus: text(firstDefined(trace.capability_status, structured.capability_status)),
+    engineeringResultsAvailable: availabilityFlag(
+      firstDefined(trace.engineering_results_available, structured.engineering_results_available),
+    ),
+  };
 }
 
 function attachmentsFrom(
@@ -251,6 +282,13 @@ function stringList(value: unknown): string[] {
 
 function flag(value: unknown): boolean {
   return value === true;
+}
+
+function availabilityFlag(value: unknown): boolean | null {
+  if (value === true || value === false) {
+    return value;
+  }
+  return null;
 }
 
 function firstDefined(...values: unknown[]): unknown {
