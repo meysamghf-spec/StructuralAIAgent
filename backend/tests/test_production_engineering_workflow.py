@@ -177,9 +177,18 @@ def test_production_package_does_not_claim_external_success(api_client: TestClie
     assert workflow["analysis"]["executed"] is False
     assert workflow["analysis"]["status"] == "REQUIRES_LOCAL_SOFTWARE"
     assert workflow["analysis"]["solver"] == "ETABS"
-    assert {item["software"] for item in workflow["external_executions"]} == {"ETABS", "SAFE", "AUTOCAD"}
+    by_software = {item["software"]: item for item in workflow["external_executions"]}
+    assert set(by_software) == {"ETABS", "SAFE", "AUTOCAD"}
     assert all(item["executed"] is False for item in workflow["external_executions"])
-    assert all(item["status"] == "REQUIRES_LOCAL_SOFTWARE" for item in workflow["external_executions"])
+    assert by_software["ETABS"]["status"] == "REQUIRES_LOCAL_SOFTWARE"
+    assert by_software["ETABS"]["provenance"]["failure_class"] == "APPLICATION_UNAVAILABLE"
+    assert by_software["ETABS"]["provenance"]["analysis_executed"] is False
+    assert by_software["SAFE"]["status"] == "FAILED"
+    assert by_software["SAFE"]["provenance"]["failure_class"] == "MISSING_INPUTS"
+    assert by_software["SAFE"]["errors"]
+    assert by_software["AUTOCAD"]["status"] == "REQUIRES_LOCAL_SOFTWARE"
+    assert by_software["AUTOCAD"]["provenance"]["construction_ready"] is False
+    assert any("S-301" in item for item in by_software["AUTOCAD"]["provenance"]["missing_construction_details"])
     assert workflow["qa"]["status"] != "PASS"
     assert workflow["qa"]["final_engineering_approval"] is False
     pem = build_pem_service().get_current_pem(UUID(project_id))

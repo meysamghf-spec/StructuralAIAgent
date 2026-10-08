@@ -27,8 +27,28 @@ from app.domain.models.pem import ProjectEngineeringModel
 from app.application.csi_result_normalization import normalize_csi_raw_results
 from app.domain.models.csi_extraction import CsiExtractionStatus
 from app.infrastructure.integrations.csi_detection import CSI_PROFILES, CsiSoftwareProfile, detect_software_capability
-from app.infrastructure.integrations.csi_pem_builder import build_vendor_model_from_export
+from app.infrastructure.integrations.csi_pem_builder import (
+    CSI_UNIT_SYSTEM_KN_M_C,
+    build_vendor_model_from_export,
+)
+from app.infrastructure.integrations.safe_foundation_builder import build_safe_foundation_model
 from app.infrastructure.integrations.csi_result_extractor import extract_csi_results
+
+
+def classify_vendor_failure(exc: Exception, *, default_class: str) -> tuple[IntegrationOperationStatus, str]:
+    """Separate a license rejection from a model, analysis, or extraction failure."""
+    text = str(exc).lower()
+    if any(token in text for token in ("license", "licence", "not authorized", "no authorization")):
+        return IntegrationOperationStatus.NOT_ACCESSIBLE, "LICENSING_FAILURE"
+    return IntegrationOperationStatus.FAILED, default_class
+
+
+def _failure_class_for_availability(status: IntegrationOperationStatus, message: str) -> str:
+    if status == IntegrationOperationStatus.NOT_ACCESSIBLE and any(
+        token in message.lower() for token in ("license", "licence", "not authorized")
+    ):
+        return "LICENSING_FAILURE"
+    return "APPLICATION_UNAVAILABLE"
 
 
 def _map_availability_to_status(
@@ -112,17 +132,22 @@ class CsiStructuralAdapter:
             self._helper = self._start_application()
             self._connected = self._helper is not None
         except Exception as exc:  # noqa: BLE001
+            status, failure_class = classify_vendor_failure(exc, default_class="APPLICATION_UNAVAILABLE")
+            if failure_class == "APPLICATION_UNAVAILABLE":
+                status = IntegrationOperationStatus.NOT_ACCESSIBLE
             return IntegrationResult(
                 software=self._profile.software,
                 operation=IntegrationOperation.CONNECT,
-                status=IntegrationOperationStatus.NOT_ACCESSIBLE,
+                status=status,
                 message=(
                     f"{self._profile.software.value} could not be connected. "
-                    f"Check that the application is installed and accessible."
+                    f"Check that the application is installed, licensed, and accessible."
                 ),
                 metadata={
                     "project_id": str(project_id),
                     "error": str(exc),
+                    "failure_class": failure_class,
+                    "analysis_executed": False,
                 },
             )
 
@@ -176,6 +201,7 @@ class CsiStructuralAdapter:
         pem_snapshot_id: UUID,
         pem_version: int,
         destination_path: str,
+        foundation_spec: dict[str, Any] | None = None,
     ) -> IntegrationResult:
         report = self.detect_capability()
         if report.availability != SoftwareAvailabilityStatus.AVAILABLE:
@@ -210,49 +236,111 @@ class CsiStructuralAdapter:
         vendor_error: str | None = None
         vendor_build_report: dict[str, Any] | None = None
         external_model_identity = str(uuid4())
-        length_unit = "ft"
-        force_unit = "kip"
+        failure_class = "MODEL_BUILD_FAILURE"
+        length_unit = "m"
+        force_unit = "kN"
         unit_config = export.metadata.get("unit_configuration", {})
         if isinstance(unit_config, dict):
             length_unit = str(unit_config.get("length_unit", length_unit))
             force_unit = str(unit_config.get("force_unit", force_unit))
+        if self._profile.software == IntegrationSoftware.SAFE and not (foundation_spec or {}).get("ready"):
+            missing = list((foundation_spec or {}).get("missing") or [])
+            return IntegrationResult(
+                software=self._profile.software,
+                operation=IntegrationOperation.EXPORT_MODEL,
+                status=IntegrationOperationStatus.FAILED,
+                message=(
+                    "SAFE foundation design did not start. "
+                    + ("; ".join(missing) if missing else "A validated isolated-footing specification is required.")
+                ),
+                metadata={
+                    "project_id": str(project_id),
+                    "pem_snapshot_id": str(pem_snapshot_id),
+                    "pem_version": pem_version,
+                    "destination_path": str(export_path),
+                    "vendor_export_status": "NOT_BUILT",
+                    "failure_class": "MISSING_INPUTS",
+                    "missing_inputs": missing,
+                    "analysis_executed": False,
+                    "manifest_is_not_analysis": True,
+                },
+            )
         try:
             if not self._connected:
                 connect_result = self.connect(project_id)
                 if connect_result.status != IntegrationOperationStatus.SUCCESS:
+                    connect_result.metadata["manifest_is_not_analysis"] = True
+                    connect_result.metadata["analysis_executed"] = False
                     return connect_result
 
             sap_model = getattr(self._helper, "SapModel", None)
-            if sap_model is not None:
-                initialize = getattr(sap_model, "InitializeNewModel", None)
-                if callable(initialize):
-                    unit_system = 6  # kN, m, C — documented CSI enum; applied only when API exists
-                    initialize(unit_system)
-                    vendor_export_status = "VENDOR_MODEL_INITIALIZED"
-                    vendor_build_report = build_vendor_model_from_export(
-                        sap_model,
-                        export,
-                        length_unit=length_unit,
-                        force_unit=force_unit,
-                    )
-                    build_status = vendor_build_report.get("vendor_build_status", "PARTIAL")
-                    if build_status == "COMPLETE":
-                        vendor_export_status = "VENDOR_MODEL_BUILT"
-                    elif build_status == "PARTIAL":
-                        vendor_export_status = "VENDOR_MODEL_PARTIAL"
-                    elif build_status == "FAILED":
-                        vendor_export_status = "VENDOR_MODEL_BUILD_FAILED"
+            if sap_model is None:
+                raise RuntimeError("Vendor SapModel object is not available")
+            initialize = getattr(sap_model, "InitializeNewModel", None)
+            if not callable(initialize):
+                raise RuntimeError("Vendor InitializeNewModel API is not available")
+            unit_system = CSI_UNIT_SYSTEM_KN_M_C
+            init_result = initialize(unit_system)
+            init_code = init_result[0] if isinstance(init_result, tuple) else init_result
+            if init_code not in (0, None):
+                raise RuntimeError(f"InitializeNewModel returned code {init_code}")
+            vendor_export_status = "VENDOR_MODEL_INITIALIZED"
+            if self._profile.software == IntegrationSoftware.SAFE:
+                vendor_build_report = build_safe_foundation_model(sap_model, foundation_spec or {})
+            else:
+                vendor_build_report = build_vendor_model_from_export(
+                    sap_model,
+                    export,
+                    length_unit=length_unit,
+                    force_unit=force_unit,
+                )
+            build_status = vendor_build_report.get("vendor_build_status", "PARTIAL")
+            if build_status == "COMPLETE":
+                vendor_export_status = "VENDOR_MODEL_BUILT"
+            elif build_status == "PARTIAL":
+                vendor_export_status = "VENDOR_MODEL_PARTIAL"
+            else:
+                vendor_export_status = "VENDOR_MODEL_BUILD_FAILED"
         except Exception as exc:  # noqa: BLE001
+            status, failure_class = classify_vendor_failure(exc, default_class="MODEL_BUILD_FAILURE")
             vendor_error = str(exc)
             vendor_export_status = "VENDOR_EXPORT_FAILED"
+            return IntegrationResult(
+                software=self._profile.software,
+                operation=IntegrationOperation.EXPORT_MODEL,
+                status=status,
+                message=(
+                    f"{self._profile.software.value} model build failed. "
+                    "The JSON export manifest is not an analysis result."
+                ),
+                metadata={
+                    "project_id": str(project_id),
+                    "pem_snapshot_id": str(pem_snapshot_id),
+                    "pem_version": pem_version,
+                    "destination_path": str(export_path),
+                    "external_model_identity": external_model_identity,
+                    "vendor_export_status": vendor_export_status,
+                    "vendor_build_report": vendor_build_report,
+                    "vendor_error": vendor_error,
+                    "failure_class": failure_class,
+                    "analysis_executed": False,
+                    "manifest_is_not_analysis": True,
+                    "exported_at": datetime.now(UTC).isoformat(),
+                },
+            )
 
+        built = vendor_export_status == "VENDOR_MODEL_BUILT"
         return IntegrationResult(
             software=self._profile.software,
             operation=IntegrationOperation.EXPORT_MODEL,
-            status=IntegrationOperationStatus.SUCCESS,
+            status=IntegrationOperationStatus.SUCCESS if built else IntegrationOperationStatus.FAILED,
             message=(
-                f"Export manifest written for {self._profile.software.value}. "
-                "External model synchronization completed at the integration boundary."
+                f"{self._profile.software.value} vendor model was built from the PEM."
+                if built
+                else (
+                    f"{self._profile.software.value} vendor model was not complete. "
+                    "The JSON export manifest is not an analysis result and analysis was not run."
+                )
             ),
             metadata={
                 "project_id": str(project_id),
@@ -263,7 +351,11 @@ class CsiStructuralAdapter:
                 "vendor_export_status": vendor_export_status,
                 "vendor_build_report": vendor_build_report,
                 "vendor_error": vendor_error,
+                "failure_class": None if built else failure_class,
+                "analysis_executed": False,
+                "manifest_is_not_analysis": True,
                 "exported_at": datetime.now(UTC).isoformat(),
+                "software_version": report.detected_version or self._profile.expected_version,
             },
         )
 
@@ -329,18 +421,22 @@ class CsiStructuralAdapter:
                 raise RuntimeError("Vendor RunAnalysis API is not available")
 
             ret = analyze()
-            if ret not in (0, None):
-                raise RuntimeError(f"Vendor RunAnalysis returned code {ret}")
+            ret_code = ret[0] if isinstance(ret, tuple) else ret
+            if ret_code not in (0, None):
+                raise RuntimeError(f"Vendor RunAnalysis returned code {ret_code}")
         except Exception as exc:  # noqa: BLE001
+            status, failure_class = classify_vendor_failure(exc, default_class="ANALYSIS_FAILURE")
             return IntegrationResult(
                 software=self._profile.software,
                 operation=IntegrationOperation.RUN_ANALYSIS,
-                status=IntegrationOperationStatus.FAILED,
+                status=status,
                 message=f"{self._profile.software.value} analysis execution failed.",
                 metadata={
                     "project_id": str(project_id),
                     "analysis_type": analysis_type,
                     "error": str(exc),
+                    "failure_class": failure_class,
+                    "analysis_executed": False,
                 },
             )
 
@@ -354,6 +450,8 @@ class CsiStructuralAdapter:
                 "analysis_type": analysis_type,
                 "executed_at": datetime.now(UTC).isoformat(),
                 "execution_mode": "vendor",
+                "failure_class": None,
+                "analysis_executed": True,
             },
         )
 
@@ -415,6 +513,7 @@ class CsiStructuralAdapter:
                         "extraction_status": extraction_summary.overall_status.value,
                         "extraction_summary": extraction_summary.model_dump(mode="json"),
                         "engineering_results_available": False,
+                        "failure_class": "EXTRACTION_FAILURE",
                     },
                 )
 
@@ -436,6 +535,7 @@ class CsiStructuralAdapter:
                     "error": str(exc),
                     "extraction_status": CsiExtractionStatus.FAILED.value,
                     "engineering_results_available": False,
+                    "failure_class": classify_vendor_failure(exc, default_class="EXTRACTION_FAILURE")[1],
                 },
             )
 
@@ -466,6 +566,24 @@ class CsiStructuralAdapter:
                     "extraction_status": extraction_status,
                     "extraction_summary": extraction_summary.model_dump(mode="json"),
                     "engineering_results_available": False,
+                    "failure_class": "EXTRACTION_FAILURE",
+                },
+            )
+
+        requested_identity = parameters.get("external_model_identity")
+        returned_identity = parsed.provenance.get("external_model_identity")
+        if requested_identity and returned_identity and str(requested_identity) != str(returned_identity):
+            return IntegrationResult(
+                software=self._profile.software,
+                operation=IntegrationOperation.EXTRACT_RESULTS,
+                status=IntegrationOperationStatus.FAILED,
+                message="Extracted results belong to a different vendor model than the one that was analyzed.",
+                metadata={
+                    "project_id": str(project_id),
+                    "failure_class": "EXTRACTION_FAILURE",
+                    "engineering_results_available": False,
+                    "requested_model_identity": str(requested_identity),
+                    "returned_model_identity": str(returned_identity),
                 },
             )
 
@@ -547,17 +665,22 @@ class CsiStructuralAdapter:
     ) -> IntegrationResult:
         report = report or self.detect_capability()
         status = _map_availability_to_status(report.availability)
+        resolved_message = message or report.message or (
+            f"{self._profile.software.value} {operation.value} requires local "
+            f"{self._profile.software.value} {self._profile.expected_version} installation"
+        )
         return IntegrationResult(
             software=self._profile.software,
             operation=operation,
             status=status,
-            message=message
-            or report.message
-            or (
-                f"{self._profile.software.value} {operation.value} requires local "
-                f"{self._profile.software.value} {self._profile.expected_version} installation"
-            ),
-            metadata={"project_id": str(project_id), **report.metadata, **metadata},
+            message=resolved_message,
+            metadata={
+                "project_id": str(project_id),
+                "failure_class": _failure_class_for_availability(status, resolved_message),
+                "analysis_executed": False,
+                **report.metadata,
+                **metadata,
+            },
         )
 
 
