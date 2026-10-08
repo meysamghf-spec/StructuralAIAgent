@@ -360,6 +360,8 @@ def build_agent_builder_approval_completion_service() -> AgentBuilderApprovalCom
         publication_repository=_agent_builder_publication_repository(),
         version_service=build_agent_version_service(),
         traceability_service=build_traceability_service(),
+        registry_service=build_agent_registry_service(),
+        definition_repository=_agent_definition_repository(),
     )
 
 

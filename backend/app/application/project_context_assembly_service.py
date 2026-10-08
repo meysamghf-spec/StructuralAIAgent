@@ -95,6 +95,7 @@ class ProjectContextAssemblyService:
             project_id=project_id,
             project_name=project.name,
             pem_version=pem_meta.version if pem_meta else None,
+            pem_snapshot_id=pem_meta.id if pem_meta else None,
             code_configuration=pem.code_configuration if pem else None,
             unit_configuration=pem.unit_configuration if pem else None,
             memory_total_count=memory_context.total_count,

@@ -33,6 +33,7 @@ from app.application.engineering_task_execution_service import EngineeringTaskEx
 from app.application.entitlement_authorization_service import EntitlementAuthorizationService
 from app.application.exceptions import (
     AgentHandlerNotFoundError,
+    AgentNotExecutableError,
     AgentNotFoundError,
     FeatureAccessDeniedError,
 )
@@ -47,7 +48,13 @@ from app.application.traceability_integration import (
     record_request_to_agent_execution,
 )
 from app.application.traceability_service import TraceabilityService
-from app.domain.models.agent import AgentDefinition, EngineeringAgentType
+from app.domain.models.agent import (
+    AgentDefinition,
+    AgentDefinitionStatus,
+    AgentVersion,
+    AgentVersionStatus,
+    EngineeringAgentType,
+)
 from app.domain.models.agent_runtime import (
     AgentExecutionRecord,
     AgentExecutionRequest,
@@ -346,7 +353,7 @@ class AgentOrchestrationService:
             )
             return record
 
-        agent_version = self._resolve_agent_version(agent_definition, request)
+        agent_version, agent_version_row = self._resolve_executable_version(agent_definition, request)
         handler = self._resolve_handler(agent_definition)
 
         input_request = {
@@ -367,7 +374,19 @@ class AgentOrchestrationService:
         )
         record.prompt_generation = prompt_result.model_dump()
         record.execution_status = AgentExecutionStatus.QUEUED
-        record.traceability_metadata = {"orchestration_trace": orchestration_trace}
+        record.traceability_metadata = {
+            "orchestration_trace": orchestration_trace,
+            **_execution_provenance(
+                definition=agent_definition,
+                version_number=agent_version,
+                version_row=agent_version_row,
+                project_id=request.project_id,
+                context_snapshot=context_snapshot,
+                run_id=record.id,
+                qa_status=None,
+                learning_record_ids=_learning_record_ids(learning_retrieval),
+            ),
+        }
         record = self._executions.update(record)
 
         record.execution_status = AgentExecutionStatus.RUNNING
@@ -488,6 +507,9 @@ class AgentOrchestrationService:
                 "result_trace_id": str(result_trace_id),
                 "selected_agent_type": selected_type.value,
                 "pem_version": context_snapshot.get("pem_version"),
+                "pem_snapshot_id": context_snapshot.get("pem_snapshot_id"),
+                "qa_status": validation_status.value,
+                "run_id": str(record.id),
                 **learning_trace,
             }
 
@@ -699,7 +721,7 @@ class AgentOrchestrationService:
         orchestration_trace: list[dict[str, Any]],
         engineering_task=None,
     ) -> AgentExecutionRecord:
-        agent_version = self._resolve_agent_version(agent_definition, request)
+        agent_version, agent_version_row = self._resolve_executable_version(agent_definition, request)
         record = self._executions.create(
             project_id=request.project_id,
             agent_definition_id=agent_definition.id,
@@ -736,6 +758,16 @@ class AgentOrchestrationService:
         trace_metadata = {
             "orchestration_trace": orchestration_trace,
             "blocked": True,
+            **_execution_provenance(
+                definition=agent_definition,
+                version_number=agent_version,
+                version_row=agent_version_row,
+                project_id=request.project_id,
+                context_snapshot=context_snapshot,
+                run_id=record.id,
+                qa_status=None,
+                learning_record_ids=[],
+            ),
         }
         if engineering_task is not None:
             trace_metadata["engineering_task"] = engineering_task.model_dump(mode="json")
@@ -791,6 +823,62 @@ class AgentOrchestrationService:
             agent_type=agent_type,
             configuration={"auto_provisioned": True},
         )
+
+    def _resolve_executable_version(
+        self,
+        definition: AgentDefinition,
+        request: AgentExecutionRequest,
+    ) -> tuple[int, AgentVersion | None]:
+        version_number = self._resolve_agent_version(definition, request)
+        version_row = self._versions.get_by_definition_and_version(definition.id, version_number)
+        self._ensure_project_agent_executable(definition, request, version_row)
+        return version_number, version_row
+
+    def _ensure_project_agent_executable(
+        self,
+        definition: AgentDefinition,
+        request: AgentExecutionRequest,
+        version_row: AgentVersion | None,
+    ) -> None:
+        """Project assistants run in production only from the published version.
+
+        Platform agents without a project stay on the existing handler path.
+        Builder tests may execute a draft without publishing it.
+        """
+
+        if definition.project_id is None:
+            return
+        if definition.status == AgentDefinitionStatus.ARCHIVED:
+            raise AgentNotExecutableError(
+                definition.id,
+                "Archived assistants cannot start new executions. Historical runs remain available.",
+            )
+        if definition.status == AgentDefinitionStatus.DISABLED or definition.configuration.get("enabled") is False:
+            raise AgentNotExecutableError(
+                definition.id,
+                "This assistant is disabled and cannot start a new execution.",
+            )
+        parameters = request.parameters if isinstance(request.parameters, dict) else {}
+        if parameters.get("builder_test_mode") is True:
+            if version_row is None or version_row.status not in {
+                AgentVersionStatus.DRAFT,
+                AgentVersionStatus.INACTIVE,
+            }:
+                raise AgentNotExecutableError(
+                    definition.id,
+                    "Only a draft or inactive version can be tested.",
+                    details={"agent_version": version_row.version if version_row else None},
+                )
+            return
+        if version_row is None or version_row.status != AgentVersionStatus.ACTIVE:
+            raise AgentNotExecutableError(
+                definition.id,
+                "A draft assistant version cannot execute as a published production agent.",
+                details={
+                    "agent_version": version_row.version if version_row else None,
+                    "version_status": version_row.status.value if version_row else None,
+                },
+            )
 
     def _resolve_agent_version(
         self,
@@ -956,6 +1044,7 @@ class AgentOrchestrationService:
             "project_id": str(assembly.project_id),
             "project_name": assembly.project_name,
             "pem_version": assembly.pem_version,
+            "pem_snapshot_id": str(assembly.pem_snapshot_id) if assembly.pem_snapshot_id else None,
             "code_configuration": (
                 assembly.code_configuration.model_dump(mode="json")
                 if assembly.code_configuration is not None
@@ -987,6 +1076,36 @@ class AgentOrchestrationService:
                 for file_item in assembly.files[:25]
             ],
         }
+
+
+def _learning_record_ids(retrieval: LearningRetrieval | None) -> list[str]:
+    if retrieval is None:
+        return []
+    return [str(item.id) for item in retrieval.records]
+
+
+def _execution_provenance(
+    *,
+    definition: AgentDefinition,
+    version_number: int,
+    version_row: AgentVersion | None,
+    project_id: UUID,
+    context_snapshot: dict[str, Any],
+    run_id: UUID,
+    qa_status: str | None,
+    learning_record_ids: list[str],
+) -> dict[str, Any]:
+    return {
+        "agent_id": str(definition.id),
+        "agent_version": version_number,
+        "agent_version_id": str(version_row.id) if version_row is not None else None,
+        "project_id": str(project_id),
+        "pem_snapshot_id": context_snapshot.get("pem_snapshot_id"),
+        "pem_version": context_snapshot.get("pem_version"),
+        "run_id": str(run_id),
+        "qa_status": qa_status,
+        "learning_record_ids": learning_record_ids,
+    }
 
 
 def _attachment_entries(attachment_context: Any) -> list[dict[str, Any]]:

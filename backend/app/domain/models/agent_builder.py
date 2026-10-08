@@ -14,6 +14,18 @@ class AgentBuilderAction(StrEnum):
     PUBLISH = "publish"
     ROLLBACK = "rollback"
     DEACTIVATE = "deactivate"
+    DISABLE = "disable"
+    ENABLE = "enable"
+
+
+class AgentProductLifecycle(StrEnum):
+    """Product view of a version. Stored rows stay DRAFT, ACTIVE, INACTIVE, or ARCHIVED."""
+
+    DRAFT = "DRAFT"
+    REVIEW = "REVIEW"
+    APPROVED = "APPROVED"
+    PUBLISHED = "PUBLISHED"
+    ARCHIVED = "ARCHIVED"
 
 
 class AgentBuilderPublicationStatus(StrEnum):
@@ -47,6 +59,33 @@ class AgentVersionTestRecord(BaseModel):
     execution_metadata: dict[str, Any] = Field(default_factory=dict)
     created_by: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+def resolve_product_lifecycle(
+    version_status: str,
+    *,
+    publication_status: str | None = None,
+    approval_status: str | None = None,
+) -> AgentProductLifecycle:
+    """Map persisted version state onto the product lifecycle.
+
+    ACTIVE remains the stored published status. APPROVED is the approval
+    stamp on a version that is not the current published version.
+    """
+
+    if version_status == "ARCHIVED":
+        return AgentProductLifecycle.ARCHIVED
+    if version_status == "ACTIVE":
+        return AgentProductLifecycle.PUBLISHED
+    if version_status == "INACTIVE":
+        if approval_status == "APPROVED":
+            return AgentProductLifecycle.APPROVED
+        return AgentProductLifecycle.ARCHIVED
+    if publication_status == AgentBuilderPublicationStatus.PENDING_APPROVAL.value:
+        return AgentProductLifecycle.REVIEW
+    if approval_status == "APPROVED":
+        return AgentProductLifecycle.APPROVED
+    return AgentProductLifecycle.DRAFT
 
 
 class AgentBuilderPublicationRecord(BaseModel):

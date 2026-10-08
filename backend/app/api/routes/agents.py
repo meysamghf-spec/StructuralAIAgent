@@ -35,8 +35,11 @@ from app.api.schemas.agent_builder import (
     ConfigureAgentRequest,
     CreateBuilderAgentRequest,
     DeactivateAgentRequest,
+    DuplicateAgentRequest,
+    EnableAgentRequest,
     PublishAgentVersionRequest,
     RollbackAgentRequest,
+    SuccessorVersionRequest,
     TestAgentVersionRequest,
     UpdateDraftVersionRequest,
     AgentVersionTestListResponse,
@@ -47,6 +50,7 @@ from app.api.schemas.prompt import (
     PromptTemplateListResponse,
     PromptTemplateResponse,
 )
+from app.application.exceptions import AgentBuilderInvalidStateError
 from app.application.agent_access_service import AgentAccessService
 from app.application.agent_builder_service import AgentBuilderService
 from app.application.agent_registry_service import AgentRegistryService
@@ -100,6 +104,15 @@ def create_builder_agent(
         instructions=body.instructions,
         capability_keys=body.capability_keys,
         created_by=actor_id,
+        purpose=body.purpose,
+        engineering_domain=body.engineering_domain,
+        task_types=body.task_types,
+        element_types=body.element_types,
+        supported_codes=body.supported_codes,
+        input_contract=body.input_contract,
+        output_contract=body.output_contract,
+        allowed_tools=body.allowed_tools,
+        change_summary=body.change_summary,
     )
     return AgentBuilderDetailResponse.from_domain(detail)
 
@@ -217,7 +230,12 @@ def activate_agent_version(
     account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
     agent_access: Annotated[AgentAccessService, Depends(get_agent_access_service)],
 ) -> AgentVersionResponse:
-    _require_agent_mutation(agent_id, account, agent_access)
+    definition = agent_access.require_agent_mutation(agent_id, account)
+    if definition.project_id is not None:
+        raise AgentBuilderInvalidStateError(
+            "A project assistant draft cannot become active without approval.",
+            details={"agent_id": str(agent_id), "version": version},
+        )
     detail = version_service.activate_version(agent_id, version)
     return AgentVersionResponse.from_detail(detail.version, detail.capabilities)
 
@@ -292,6 +310,8 @@ def configure_agent(
         description=body.description,
         agent_type=agent_type,
         configuration=body.configuration,
+        purpose=body.purpose,
+        engineering_domain=body.engineering_domain,
     )
     return AgentDefinitionResponse.from_domain(definition)
 
@@ -393,6 +413,101 @@ def rollback_agent_version(
         actor_id=actor_id,
     )
     return AgentBuilderPublicationResponse.from_domain(publication)
+
+
+@router.post("/{agent_id}/successor", response_model=AgentBuilderDetailResponse)
+def create_successor_version(
+    agent_id: UUID,
+    body: SuccessorVersionRequest,
+    builder_service: Annotated[AgentBuilderService, Depends(get_agent_builder_service)],
+    actor_id: Annotated[str, Depends(get_actor_id)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    agent_access: Annotated[AgentAccessService, Depends(get_agent_access_service)],
+) -> AgentBuilderDetailResponse:
+    _require_agent_mutation(agent_id, account, agent_access)
+    detail = builder_service.create_successor_version(
+        agent_id,
+        body.source_version,
+        change_summary=body.change_summary,
+        created_by=actor_id,
+        instructions=body.instructions,
+    )
+    return AgentBuilderDetailResponse.from_domain(detail)
+
+
+@router.post("/{agent_id}/duplicate", response_model=AgentBuilderDetailResponse)
+def duplicate_builder_agent(
+    agent_id: UUID,
+    body: DuplicateAgentRequest,
+    builder_service: Annotated[AgentBuilderService, Depends(get_agent_builder_service)],
+    actor_id: Annotated[str, Depends(get_actor_id)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    access: Annotated[ProjectAccessService, Depends(get_project_access_service)],
+    agent_access: Annotated[AgentAccessService, Depends(get_agent_access_service)],
+) -> AgentBuilderDetailResponse:
+    _require_agent_mutation(agent_id, account, agent_access)
+    access.require_project(body.project_id, account)
+    detail = builder_service.duplicate_agent(
+        agent_id,
+        project_id=body.project_id,
+        actor_id=actor_id,
+        name=body.name,
+        key=body.key,
+    )
+    return AgentBuilderDetailResponse.from_domain(detail)
+
+
+@router.post("/{agent_id}/disable", response_model=AgentDefinitionResponse)
+def disable_builder_agent(
+    agent_id: UUID,
+    body: DeactivateAgentRequest,
+    builder_service: Annotated[AgentBuilderService, Depends(get_agent_builder_service)],
+    actor_id: Annotated[str, Depends(get_actor_id)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    access: Annotated[ProjectAccessService, Depends(get_project_access_service)],
+    agent_access: Annotated[AgentAccessService, Depends(get_agent_access_service)],
+) -> AgentDefinitionResponse:
+    _require_agent_mutation(agent_id, account, agent_access)
+    access.require_project(body.project_id, account)
+    definition = builder_service.disable_agent(
+        agent_id,
+        project_id=body.project_id,
+        actor_id=actor_id,
+    )
+    return AgentDefinitionResponse.from_domain(definition)
+
+
+@router.post("/{agent_id}/enable", response_model=AgentBuilderPublicationResponse)
+def enable_builder_agent(
+    agent_id: UUID,
+    body: EnableAgentRequest,
+    builder_service: Annotated[AgentBuilderService, Depends(get_agent_builder_service)],
+    actor_id: Annotated[str, Depends(get_actor_id)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    access: Annotated[ProjectAccessService, Depends(get_project_access_service)],
+    agent_access: Annotated[AgentAccessService, Depends(get_agent_access_service)],
+) -> AgentBuilderPublicationResponse:
+    _require_agent_mutation(agent_id, account, agent_access)
+    access.require_project(body.project_id, account)
+    publication = builder_service.request_enable(
+        agent_id,
+        target_version=body.target_version,
+        project_id=body.project_id,
+        actor_id=actor_id,
+    )
+    return AgentBuilderPublicationResponse.from_domain(publication)
+
+
+@router.post("/{agent_id}/archive", response_model=AgentDefinitionResponse)
+def archive_builder_agent(
+    agent_id: UUID,
+    builder_service: Annotated[AgentBuilderService, Depends(get_agent_builder_service)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    agent_access: Annotated[AgentAccessService, Depends(get_agent_access_service)],
+) -> AgentDefinitionResponse:
+    _require_agent_mutation(agent_id, account, agent_access)
+    definition = builder_service.archive_agent(agent_id)
+    return AgentDefinitionResponse.from_domain(definition)
 
 
 @router.post("/{agent_id}/deactivate", response_model=AgentDefinitionResponse)

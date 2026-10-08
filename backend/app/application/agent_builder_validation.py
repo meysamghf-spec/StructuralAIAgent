@@ -8,6 +8,24 @@ from app.domain.models.agent import EngineeringAgentType
 
 SUPPORTED_AGENT_TYPES = frozenset(item.value for item in EngineeringAgentType if item != EngineeringAgentType.PROMPT_GENERATION_AGENT)
 
+_AUTHORITY_BYPASS_FLAGS = frozenset(
+    {
+        "allow_direct_calculations",
+        "overrides_pem",
+        "override_pem",
+        "pem_override",
+        "overrides_geometry",
+        "overrides_loads",
+        "overrides_analysis",
+        "overrides_design",
+        "overrides_code",
+        "overrides_qa",
+        "learning_overrides_pem",
+        "learning_overrides_rules",
+        "learning_overrides_qa",
+    }
+)
+
 ALLOWED_TOOLS_BY_AGENT_TYPE: dict[str, frozenset[str]] = {
     EngineeringAgentType.STRUCTURAL_MODELING_AGENT.value: frozenset(
         {"pem.revision", "project.validate", "project.context"}
@@ -117,14 +135,56 @@ def validate_agent_configuration(
                 )
             )
 
-        if metadata.get("allow_direct_calculations") is True:
+        bypasses = [
+            flag
+            for flag in _AUTHORITY_BYPASS_FLAGS
+            if metadata.get(flag) is True or (definition.configuration or {}).get(flag) is True
+        ]
+        if bypasses:
             issues.append(
                 AgentBuilderValidationIssue(
                     code="UNSAFE_CONFIGURATION",
-                    message="Direct engineering calculations must remain in deterministic services.",
+                    message=(
+                        "Assistant configuration cannot override PEM, current engineering data, "
+                        "code checks, QA, or learning authority: " + ", ".join(sorted(bypasses))
+                    ),
                     severity="ERROR",
                 )
             )
+
+        learning_authority = metadata.get("learning_authority")
+        if learning_authority not in {None, "CONTEXT_ONLY"}:
+            issues.append(
+                AgentBuilderValidationIssue(
+                    code="UNSAFE_CONFIGURATION",
+                    message="Approved learning remains context only and cannot become engineering authority.",
+                    severity="ERROR",
+                )
+            )
+
+        for field_name in ("task_types", "element_types", "supported_codes"):
+            value = metadata.get(field_name, [])
+            if value is None:
+                continue
+            if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+                issues.append(
+                    AgentBuilderValidationIssue(
+                        code="INVALID_CONFIGURATION",
+                        message=f"{field_name} must be a list of strings.",
+                    )
+                )
+
+        for field_name in ("input_contract", "output_contract"):
+            value = metadata.get(field_name, {})
+            if value is None:
+                continue
+            if not isinstance(value, dict):
+                issues.append(
+                    AgentBuilderValidationIssue(
+                        code="INVALID_CONFIGURATION",
+                        message=f"{field_name} must be an object.",
+                    )
+                )
 
     if not capability_keys:
         issues.append(

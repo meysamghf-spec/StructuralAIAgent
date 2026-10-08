@@ -626,9 +626,12 @@ export type AgentBuilderDetail = {
     instructions: string | null;
     configuration_metadata: Record<string, unknown>;
     status: string;
+    created_by?: string | null;
+    created_at?: string;
     capabilities: AgentCapabilitySummary[];
   };
   validation: AgentBuilderValidation;
+  lifecycle?: string;
 };
 
 export type AgentVersionTestSummary = {
@@ -657,10 +660,19 @@ export async function createBuilderAgent(body: {
   key: string;
   name: string;
   description?: string;
+  purpose?: string;
+  engineering_domain?: string;
   agent_type?: EngineeringAgentType;
   project_id?: string;
   instructions?: string;
   capability_keys?: string[];
+  task_types?: string[];
+  element_types?: string[];
+  supported_codes?: string[];
+  allowed_tools?: string[];
+  input_contract?: Record<string, unknown>;
+  output_contract?: Record<string, unknown>;
+  change_summary?: string;
 }): Promise<AgentBuilderDetail> {
   return apiFetch<AgentBuilderDetail>("/api/v1/agents/builder", {
     method: "POST",
@@ -752,4 +764,39 @@ export async function listProjectAgents(projectId: string): Promise<AgentListRes
 
 export async function getBuilderDetail(agentId: string, version: number): Promise<AgentBuilderDetail> {
   return apiFetch<AgentBuilderDetail>(`/api/v1/agents/${agentId}/builder?version=${version}`);
+}
+
+export async function createSuccessorVersion(
+  agentId: string,
+  sourceVersion: number,
+  changeSummary: string,
+): Promise<AgentBuilderDetail> {
+  return apiFetch<AgentBuilderDetail>(`/api/v1/agents/${agentId}/successor`, {
+    method: "POST",
+    body: JSON.stringify({ source_version: sourceVersion, change_summary: changeSummary }),
+  });
+}
+
+export async function duplicateBuilderAgent(
+  agentId: string,
+  projectId: string,
+  name?: string,
+): Promise<AgentBuilderDetail> {
+  return apiFetch<AgentBuilderDetail>(`/api/v1/agents/${agentId}/duplicate`, {
+    method: "POST",
+    body: JSON.stringify({ project_id: projectId, name }),
+  });
+}
+
+export async function disableBuilderAgent(agentId: string, projectId: string): Promise<AgentDefinitionSummary> {
+  return apiFetch<AgentDefinitionSummary>(`/api/v1/agents/${agentId}/disable`, {
+    method: "POST",
+    body: JSON.stringify({ project_id: projectId }),
+  });
+}
+
+export async function archiveBuilderAgent(agentId: string): Promise<AgentDefinitionSummary> {
+  return apiFetch<AgentDefinitionSummary>(`/api/v1/agents/${agentId}/archive`, {
+    method: "POST",
+  });
 }

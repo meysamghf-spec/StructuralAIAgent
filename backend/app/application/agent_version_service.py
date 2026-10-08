@@ -187,6 +187,32 @@ class AgentVersionService:
     ) -> None:
         self._versions.replace_capabilities(agent_version_id, capability_ids)
 
+    def record_publish_approval(
+        self,
+        agent_id: UUID,
+        version: int,
+        *,
+        approval_request_id: UUID,
+        approver: str | None,
+    ) -> AgentVersionDetail:
+        """Stamp approval onto a draft before it is published. Published rows stay immutable."""
+
+        agent_version = self._require_version(agent_id, version)
+        if agent_version.status != AgentVersionStatus.DRAFT:
+            return self.get_version(agent_id, version)
+
+        metadata = dict(agent_version.configuration_metadata)
+        metadata["approval"] = {
+            "status": "APPROVED",
+            "approval_request_id": str(approval_request_id),
+            "approver": approver,
+        }
+        return self.update_draft_version(
+            agent_id,
+            version,
+            configuration_metadata=metadata,
+        )
+
     def deactivate_version(self, agent_id: UUID, version: int) -> AgentVersionDetail:
         definition = self._require_definition(agent_id)
         agent_version = self._require_version(agent_id, version)

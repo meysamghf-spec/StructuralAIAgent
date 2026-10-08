@@ -3,6 +3,8 @@ import {
   getAssistantTypeLabel,
   getLifecycleLabel,
   getLifecycleStage,
+  getProductLifecycle,
+  getProductLifecycleLabel,
   getPublicationStatusLabel,
   getVersionStatusLabel,
 } from "../lib/agent-builder";
@@ -24,5 +26,14 @@ describe("agent builder display helpers", () => {
     expect(getLifecycleStage("DRAFT", false, "PENDING_APPROVAL")).toBe("review");
     expect(getLifecycleStage("ACTIVE", true)).toBe("active");
     expect(getLifecycleLabel("review")).toBe("Review");
+  });
+
+  it("maps persisted version state onto the product lifecycle", () => {
+    expect(getProductLifecycle("DRAFT")).toBe("DRAFT");
+    expect(getProductLifecycle("DRAFT", "PENDING_APPROVAL")).toBe("REVIEW");
+    expect(getProductLifecycle("ACTIVE", null, "APPROVED")).toBe("PUBLISHED");
+    expect(getProductLifecycle("INACTIVE", null, "APPROVED")).toBe("APPROVED");
+    expect(getProductLifecycle("ARCHIVED")).toBe("ARCHIVED");
+    expect(getProductLifecycleLabel("PUBLISHED")).toBe("Published");
   });
 });

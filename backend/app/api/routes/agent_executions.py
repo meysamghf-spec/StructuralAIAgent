@@ -53,13 +53,16 @@ def create_agent_execution(
     access: Annotated[ProjectAccessService, Depends(get_project_access_service)],
 ) -> AgentExecutionResponse:
     access.require_project(body.project_id, account)
+    parameters = dict(body.parameters)
+    parameters.pop("builder_test_mode", None)
+    parameters.pop("agent_version_override", None)
     record = runtime_service.execute(
         AgentExecutionRequest(
             project_id=body.project_id,
             agent_definition_id=body.agent_definition_id,
             agent_type=body.agent_type,
             user_request=body.user_request,
-            parameters=body.parameters,
+            parameters=parameters,
             requested_by=body.requested_by,
             requires_approval=body.requires_approval,
         ),
