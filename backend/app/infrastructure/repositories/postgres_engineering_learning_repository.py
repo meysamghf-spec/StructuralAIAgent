@@ -188,7 +188,10 @@ class PostgresEngineeringLearningRepository:
         task_type: str | None,
         element_type: str | None,
         learning_scope: str | None,
-        limit: int,
+        analysis_type: str | None = None,
+        design_type: str | None = None,
+        apply_operation: bool = False,
+        limit: int = 20,
     ) -> list[LearningRecord]:
         with get_connection() as conn:
             with conn.cursor() as cur:
@@ -210,6 +213,25 @@ class PostgresEngineeringLearningRepository:
                          OR applicability->>'task_type' IS NULL
                          OR applicability->>'task_type' = %s
                       )
+                      AND (
+                            %s::boolean IS FALSE
+                         OR (
+                              (
+                                applicability->>'task_type' IS NULL
+                                OR applicability->>'task_type' = %s
+                                OR applicability->>'task_type' = %s
+                                OR applicability->>'task_type' = %s
+                              )
+                          AND (
+                                applicability->>'analysis_type' IS NULL
+                                OR applicability->>'analysis_type' = %s
+                              )
+                          AND (
+                                applicability->>'design_type' IS NULL
+                                OR applicability->>'design_type' = %s
+                              )
+                            )
+                      )
                     ORDER BY created_at ASC, id ASC
                     LIMIT %s
                     """,
@@ -224,6 +246,12 @@ class PostgresEngineeringLearningRepository:
                         element_type,
                         task_type,
                         task_type,
+                        apply_operation,
+                        task_type,
+                        analysis_type,
+                        design_type,
+                        analysis_type,
+                        design_type,
                         limit,
                     ),
                 )

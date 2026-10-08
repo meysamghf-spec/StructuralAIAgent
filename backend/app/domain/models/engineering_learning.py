@@ -26,6 +26,18 @@ class LearningApprovalStatus(StrEnum):
 UNAVAILABLE = "UNAVAILABLE"
 NOT_CHECKED = "NOT_CHECKED"
 LEARNING_AUTHORITY = "CONTEXT_ONLY"
+EXPERIENCE_HEADING = "APPROVED ENGINEERING EXPERIENCE — CONTEXT ONLY"
+_EXPERIENCE_OUTPUT_KEYS = frozenset(
+    {
+        "approved_engineering_experience",
+        "learning_explanation",
+        "learning_record_ids",
+        "learning_authority",
+        "learning_overrides_pem",
+        "learning_overrides_rules",
+        "learning_overrides_qa",
+    }
+)
 
 
 class LearningRecord(BaseModel):
@@ -95,6 +107,88 @@ def experience_statement(record: LearningRecord) -> str:
     if isinstance(pattern, str) and pattern.strip():
         return pattern.strip()
     return "Approved engineering experience is available as context only."
+
+
+def agent_learning_query(agent_id: str, parameters: dict[str, Any] | None) -> dict[str, Any]:
+    """Map a real agent request onto the existing retrieval filters.
+
+    Analysis and design agents use the operation their handlers actually run.
+    Other agents keep the Phase I filters and do not invent a task type.
+    """
+    params = parameters if isinstance(parameters, dict) else {}
+
+    def text(value: Any) -> str | None:
+        if not isinstance(value, str):
+            return None
+        stripped = value.strip()
+        return stripped or None
+
+    task_type = text(params.get("task_type"))
+    element_type = text(
+        params.get("element_type") or params.get("source_element_type") or params.get("member_type")
+    )
+    analysis_type = text(params.get("analysis_type"))
+    design_type = text(params.get("design_type"))
+    apply_operation = False
+    if agent_id == "ANALYSIS_AGENT":
+        analysis_type = analysis_type or "LATERAL_DRIFT"
+        apply_operation = True
+    elif agent_id == "CONCRETE_DESIGN_AGENT":
+        design_type = design_type or "CONCRETE_MEMBER"
+        apply_operation = True
+    elif agent_id == "STEEL_DESIGN_AGENT":
+        design_type = design_type or "STEEL_MEMBER"
+        apply_operation = True
+    elif analysis_type or design_type:
+        apply_operation = True
+    return {
+        "task_type": task_type,
+        "element_type": element_type,
+        "analysis_type": analysis_type,
+        "design_type": design_type,
+        "apply_operation": apply_operation,
+    }
+
+
+def approved_experience_block(records: list[LearningRecord]) -> dict[str, Any]:
+    """Experience offered to an agent. It is not an engineering result."""
+    return {
+        "heading": EXPERIENCE_HEADING,
+        "authority": LEARNING_AUTHORITY,
+        "overrides_pem": False,
+        "overrides_rules": False,
+        "overrides_qa": False,
+        "records": [experience_use_view(record) for record in records],
+    }
+
+
+def experience_use_view(record: LearningRecord) -> dict[str, Any]:
+    return {
+        "id": str(record.id),
+        "learning_scope": record.learning_scope.value,
+        "applicability": record.applicability,
+        "explanation": experience_statement(record),
+        "provenance": provenance_view(record),
+        "authority": LEARNING_AUTHORITY,
+    }
+
+
+def attach_approved_experience(output: dict[str, Any], records: list[LearningRecord]) -> dict[str, Any]:
+    """Add experience context without replacing calculation fields already in the output."""
+    if not records:
+        return output
+    updated = dict(output)
+    updated["approved_engineering_experience"] = approved_experience_block(records)
+    updated["learning_explanation"] = learning_explanation(records)
+    updated["learning_record_ids"] = [str(record.id) for record in records]
+    updated["learning_authority"] = LEARNING_AUTHORITY
+    updated["learning_overrides_pem"] = False
+    updated["learning_overrides_rules"] = False
+    updated["learning_overrides_qa"] = False
+    for key, value in output.items():
+        if key not in _EXPERIENCE_OUTPUT_KEYS:
+            updated[key] = value
+    return updated
 
 
 def experience_context(record: LearningRecord) -> dict[str, Any]:

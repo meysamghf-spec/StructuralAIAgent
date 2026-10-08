@@ -17,13 +17,16 @@ import {
   getLearningStatusLabel,
   truncateText,
 } from "@/lib/workspace";
+import { useSearchParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
 const OPEN_STATUSES = new Set(["CANDIDATE", "REVIEW"]);
 
 export default function LearningWorkspaceClient() {
+  const searchParams = useSearchParams();
+  const requestedRecordId = searchParams.get("record");
   const { projects, selectedProjectId, setSelectedProjectId, loading, error, setError } =
-    useProjectScope();
+    useProjectScope(searchParams.get("project"));
   const [records, setRecords] = useState<LearningRecordSummary[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [taskId, setTaskId] = useState("");
@@ -115,7 +118,11 @@ export default function LearningWorkspaceClient() {
         {records.length === 0 ? <p className="muted">No learning records in this scope yet.</p> : null}
         <ul className="workspace-list">
           {records.map((record) => (
-            <li key={record.id} className="workspace-list-item">
+            <li
+              key={record.id}
+              className="workspace-list-item"
+              id={`learning-${record.id}`}
+            >
               <div>
                 <span className="status-pill status-available">{getLearningScopeLabel(record.learning_scope)}</span>
                 <span className="status-pill">{getLearningStatusLabel(record.approval_status)}</span>
@@ -128,6 +135,9 @@ export default function LearningWorkspaceClient() {
                   {" · "}
                   {formatWorkspaceDate(record.created_at)}
                 </p>
+                {requestedRecordId === record.id ? (
+                  <p className="muted">Opened from an engineering run. This record is context only.</p>
+                ) : null}
                 <p className="muted">
                   Provenance: task {record.provenance.task_id}, agent {record.provenance.agent_id}, snapshot{" "}
                   {record.provenance.source_snapshot_id}, result {record.provenance.engineering_result_id}, decision{" "}

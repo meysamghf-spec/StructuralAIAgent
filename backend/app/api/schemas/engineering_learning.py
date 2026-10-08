@@ -50,6 +50,16 @@ class LearningCorrectionRequest(BaseModel):
     input_context: dict[str, Any] = Field(default_factory=dict)
 
 
+class LearningFeedbackRequest(BaseModel):
+    execution_id: UUID
+    corrected_result: dict[str, Any]
+    reason: str | None = None
+    learning_scope: LearningScope = LearningScope.PROJECT
+    source_element_ids: list[str] = Field(default_factory=list)
+    source_element_type: str | None = None
+    applicability: dict[str, Any] = Field(default_factory=dict)
+
+
 class LearningDecisionRequest(BaseModel):
     note: str | None = None
     reason: str | None = None

@@ -2,14 +2,24 @@ import { ExecutionProgressStepper } from "@/components/agents/ExecutionProgressS
 import { ApprovalReviewPanel } from "@/components/agents/ApprovalReviewPanel";
 import { RequestPlanPanel } from "@/components/agents/RequestPlanPanel";
 import {
+  approvedExperienceForExecution,
   formatDate,
   getProgressLabel,
   getValidationLabel,
+  learningProvenancePath,
   summarizeExecution,
 } from "@/lib/agent-workspace";
+import { getLearningScopeLabel } from "@/lib/workspace";
 import type { AgentExecutionSummary } from "@/lib/api";
+import Link from "next/link";
 
-function ExecutionResult({ execution }: { execution: AgentExecutionSummary }) {
+function ExecutionResult({
+  execution,
+  projectId,
+}: {
+  execution: AgentExecutionSummary;
+  projectId: string;
+}) {
   const { hasResult, reportAvailable } = summarizeExecution(execution);
   const validationLabel = getValidationLabel(execution.validation_status);
 
@@ -29,7 +39,47 @@ function ExecutionResult({ execution }: { execution: AgentExecutionSummary }) {
       {reportAvailable ? (
         <p className="muted report-line">Decision history report saved to this project.</p>
       ) : null}
+      <LearningContext execution={execution} projectId={projectId} />
     </div>
+  );
+}
+
+function LearningContext({
+  execution,
+  projectId,
+}: {
+  execution: AgentExecutionSummary;
+  projectId: string;
+}) {
+  const experience = approvedExperienceForExecution(execution);
+  if (!experience) {
+    return null;
+  }
+
+  return (
+    <section className="approval-panel" aria-label="Approved engineering experience">
+      <div className="approval-panel-header">
+        <strong>{experience.heading}</strong>
+        <p className="muted">
+          Context only ({experience.authority}). These records are not the engineering result and do not
+          replace the PEM, calculations, or QA.
+        </p>
+      </div>
+      <ul className="workspace-list">
+        {experience.records.map((record) => (
+          <li key={record.id} className="workspace-list-item compact">
+            <div>
+              <span className="status-pill">{getLearningScopeLabel(record.learning_scope)}</span>
+              <span className="status-pill">Context only</span>
+              <p className="result-text">{record.explanation}</p>
+              <p className="muted">
+                <Link href={learningProvenancePath(projectId, record.id)}>Provenance {record.id}</Link>
+              </p>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -83,7 +133,7 @@ export function ExecutionHistoryList({
               />
             ) : null}
 
-            <ExecutionResult execution={execution} />
+            <ExecutionResult execution={execution} projectId={projectId} />
           </li>
         );
       })}
