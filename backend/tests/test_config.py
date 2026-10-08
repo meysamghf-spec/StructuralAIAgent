@@ -152,6 +152,53 @@ def test_production_accepts_configured_providers(monkeypatch: pytest.MonkeyPatch
     Settings().validate_security_configuration()
 
 
+def _secure_production_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("AUTH_REQUIRED", "true")
+    monkeypatch.setenv("PROJECT_ACCESS_ENFORCED", "true")
+    monkeypatch.setenv("AUTH_ALLOW_LEGACY_ACTOR", "false")
+    monkeypatch.setenv("AUTH_JWT_SECRET", "production-test-secret-value")
+    monkeypatch.setenv("ENTITLEMENT_ENFORCEMENT_ENABLED", "true")
+    monkeypatch.setenv("FILE_STORAGE_ROOT", "/tmp/structuralai-test-storage")
+    monkeypatch.setenv("AI_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_API_KEY", "production-test-openai-key")
+    monkeypatch.setenv("EXCHANGE_RATE_PROVIDER", "coingecko")
+    monkeypatch.setenv("CORS_ORIGINS", "https://app.example.com")
+    monkeypatch.setenv("TRUST_PROXY_HEADERS", "false")
+
+
+def test_production_rejects_wildcard_cors(monkeypatch: pytest.MonkeyPatch) -> None:
+    _secure_production_env(monkeypatch)
+    monkeypatch.setenv("CORS_ORIGINS", "*")
+    with pytest.raises(SecurityConfigurationError) as exc_info:
+        Settings().validate_security_configuration()
+    assert (
+        "CORS_ORIGINS must list explicit production origins and must not be *"
+        in exc_info.value.details["issues"]
+    )
+
+
+def test_production_rejects_unscoped_proxy_trust(monkeypatch: pytest.MonkeyPatch) -> None:
+    _secure_production_env(monkeypatch)
+    monkeypatch.setenv("TRUST_PROXY_HEADERS", "true")
+    monkeypatch.delenv("TRUSTED_PROXY_HOSTS", raising=False)
+    with pytest.raises(SecurityConfigurationError) as exc_info:
+        Settings().validate_security_configuration()
+    assert (
+        "TRUSTED_PROXY_HOSTS must list explicit hosts when TRUST_PROXY_HEADERS is true"
+        in exc_info.value.details["issues"]
+    )
+
+
+def test_production_accepts_explicit_proxy_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
+    _secure_production_env(monkeypatch)
+    monkeypatch.setenv("TRUST_PROXY_HEADERS", "true")
+    monkeypatch.setenv("TRUSTED_PROXY_HOSTS", "10.0.0.8")
+    settings = Settings()
+    settings.validate_security_configuration()
+    assert settings.trusted_proxy_host_list == ["10.0.0.8"]
+
+
 def test_development_allows_stub_providers(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("APP_ENV", "development")
     monkeypatch.setenv("AI_PROVIDER", "stub")

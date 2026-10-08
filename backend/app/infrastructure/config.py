@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     run_migrations_on_startup: bool = False
     trust_proxy_headers: bool = False
+    trusted_proxy_hosts: str = ""
 
     auth_required: bool = False
     auth_allow_legacy_actor: bool = True
@@ -118,6 +119,16 @@ class Settings(BaseSettings):
             issues.append(
                 f"EXCHANGE_RATE_PROVIDER '{self.exchange_rate_provider}' is not supported in production"
             )
+
+        origins = self.cors_origin_list
+        if not origins or any(origin == "*" for origin in origins):
+            issues.append("CORS_ORIGINS must list explicit production origins and must not be *")
+        if self.trust_proxy_headers:
+            hosts = self.trusted_proxy_host_list
+            if not hosts or any(host == "*" for host in hosts):
+                issues.append(
+                    "TRUSTED_PROXY_HOSTS must list explicit hosts when TRUST_PROXY_HEADERS is true"
+                )
         return issues
 
     @field_validator("database_url")
@@ -156,6 +167,10 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [item.strip() for item in self.cors_origins.split(",") if item.strip()]
+
+    @property
+    def trusted_proxy_host_list(self) -> list[str]:
+        return [item.strip() for item in self.trusted_proxy_hosts.split(",") if item.strip()]
 
 
 @lru_cache
