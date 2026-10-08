@@ -14,7 +14,7 @@ from uuid import UUID, uuid4
 from app.application.coordination_service import CoordinationService
 from app.application.engineering_brief_mapping import normalize_engineering_brief
 from app.domain.models.building_brief import BriefLanguage, BuildingBrief, OccupancyKind
-from app.domain.models.integration import IntegrationSoftware
+from app.domain.models.integration import IntegrationOperationStatus, IntegrationSoftware
 from app.domain.models.pem import ProjectEngineeringModel
 from app.domain.models.pem_architecture import StructuralSystem
 
@@ -128,14 +128,21 @@ def execute_production_workflow(
     meta = pem_service.get_current_snapshot_meta(project_id) or meta
     coordination = _coordination_record(pem)
     solver = build_structural_solver_integration_service()
+    autocad = _autocad_execution(
+        project_id,
+        pem=pem,
+        snapshot_id=str(meta.id),
+        pem_version=meta.version,
+    )
     external = [
         _solver_execution(solver, project_id, IntegrationSoftware.ETABS, pem_version=meta.version, actor_id=actor_id),
-        _solver_execution(solver, project_id, IntegrationSoftware.SAFE, pem_version=meta.version, actor_id=actor_id),
-        _autocad_execution(project_id, snapshot_id=str(meta.id)),
+        _safe_execution(solver, project_id, pem, pem_version=meta.version, actor_id=actor_id, snapshot_id=str(meta.id)),
+        autocad,
     ]
     drawings = _drawings(DrawingSetQueryService(pem_service), project_id)
     drawings["detail_sheets"] = detail_sheet_status()
-    drawings["autocad_execution"] = False
+    drawings["autocad_execution"] = autocad["executed"] is True
+    drawings["missing_construction_details"] = autocad["provenance"].get("missing_construction_details") or []
     learning = _learning_context(context)
     gates = production_qa_gates(
         pem=pem,
@@ -354,9 +361,11 @@ def production_qa_gates(
         gates.append(
             {
                 "name": f"{item['software'].lower()}_execution",
-                "status": item["status"] if item["executed"] else "REQUIRES_LOCAL_SOFTWARE",
+                "status": item["status"],
                 "authority": "EXTERNAL SOFTWARE RESULT",
                 "executed": item["executed"],
+                "failure_class": (item.get("provenance") or {}).get("failure_class"),
+                "errors": item.get("errors") or [],
             }
         )
     return gates
@@ -369,11 +378,31 @@ def summarize_production_qa(gates: list[dict[str, Any]]) -> dict[str, Any]:
         status = "FAIL"
         reason = "A required model, coordination, or design check failed."
     elif any(item.get("executed") is not True for item in external):
-        status = "UNAVAILABLE"
-        reason = (
-            "ETABS, SAFE, or AutoCAD did not execute. "
-            "A missing external execution is not a QA pass."
-        )
+        missing_inputs = [
+            error
+            for item in external
+            if item.get("failure_class") == "MISSING_INPUTS"
+            for error in (item.get("errors") or [])
+        ]
+        vendor_failures = [
+            item
+            for item in external
+            if item.get("failure_class")
+            in {"MODEL_BUILD_FAILURE", "ANALYSIS_FAILURE", "EXTRACTION_FAILURE", "LICENSING_FAILURE", "EMPTY_DRAWING"}
+        ]
+        if vendor_failures:
+            status = "FAIL"
+            detail = vendor_failures[0].get("errors") or [vendor_failures[0].get("failure_class")]
+            reason = "A vendor operation failed: " + "; ".join(str(item) for item in detail)
+        elif missing_inputs:
+            status = "UNAVAILABLE"
+            reason = "Required SAFE inputs are missing: " + "; ".join(missing_inputs)
+        else:
+            status = "UNAVAILABLE"
+            reason = (
+                "ETABS, SAFE, or AutoCAD did not execute. "
+                "A missing external execution is not a QA pass."
+            )
     elif statuses <= {"PASS", "NOT_APPLICABLE"}:
         status = "PASS"
         reason = "Required checks passed and every requested external application executed."
@@ -477,25 +506,39 @@ def _apply_architecture(
     }
 
 
-def _solver_execution(solver: Any, project_id: UUID, software: IntegrationSoftware, *, pem_version: int, actor_id: str | None) -> dict[str, Any]:
+def _solver_execution(
+    solver: Any,
+    project_id: UUID,
+    software: IntegrationSoftware,
+    *,
+    pem_version: int,
+    actor_id: str | None,
+    parameters: dict[str, Any] | None = None,
+    snapshot_id: str | None = None,
+) -> dict[str, Any]:
     outcome = solver.run_solver_analysis(
         project_id,
         software,
         analysis_type="STATIC",
         pem_version=pem_version,
+        parameters=parameters,
         created_by=actor_id,
     )
-    status = str(outcome.get("status") or outcome.get("solver_status") or "REQUIRES_LOCAL_SOFTWARE")
+    status = str(outcome.get("status") or "REQUIRES_LOCAL_SOFTWARE")
     executed = status == "SUCCESS" and outcome.get("engineering_results_available") is True
-    errors = [] if executed else [str(outcome.get("message") or "The local application did not execute.")]
+    failure_class = outcome.get("failure_class")
+    if status == "SUCCESS" and not executed:
+        status = "FAILED"
+        failure_class = failure_class or "EXTRACTION_FAILURE"
+    errors = [] if executed else [str(outcome.get("message") or failure_class or "The application did not return results.")]
     return execution_contract(
         software=software.value,
-        version=str(outcome.get("solver_status") or ""),
+        version=None if outcome.get("software_version") in (None, "") else str(outcome.get("software_version")),
         execution_id=str(outcome.get("integration_execution_id") or uuid4()),
         executed=executed,
-        status="SUCCESS" if executed else "REQUIRES_LOCAL_SOFTWARE",
-        model_reference=None,
-        input_snapshot_id=None,
+        status=status,
+        model_reference=None if outcome.get("external_model_identity") is None else str(outcome.get("external_model_identity")),
+        input_snapshot_id=snapshot_id,
         output_reference=None,
         warnings=[],
         errors=errors,
@@ -503,32 +546,117 @@ def _solver_execution(solver: Any, project_id: UUID, software: IntegrationSoftwa
             "pem_version": pem_version,
             "project_id": str(project_id),
             "capability_status": outcome.get("capability_status") or outcome.get("solver_status"),
-            "engineering_results_available": False if not executed else True,
+            "engineering_results_available": executed,
+            "analysis_executed": outcome.get("analysis_executed") is True,
+            "failure_class": failure_class,
+            "vendor_export_status": outcome.get("vendor_export_status"),
             "source": "existing_csi_adapter",
         },
     )
 
 
-def _autocad_execution(project_id: UUID, *, snapshot_id: str) -> dict[str, Any]:
-    from app.infrastructure.integrations.autocad_adapter import AutocadAdapter
+def _safe_execution(
+    solver: Any,
+    project_id: UUID,
+    pem: ProjectEngineeringModel,
+    *,
+    pem_version: int,
+    actor_id: str | None,
+    snapshot_id: str,
+) -> dict[str, Any]:
+    from app.application.safe_foundation_workflow import assess_safe_foundation_inputs
 
-    result = AutocadAdapter().generate_drawing(project_id, parameters={"source": "pem", "snapshot_id": snapshot_id})
-    executed = result.status.value == "SUCCESS"
+    assessment = assess_safe_foundation_inputs(pem)
+    if not assessment["ready"]:
+        return execution_contract(
+            software=IntegrationSoftware.SAFE.value,
+            version=None,
+            execution_id=str(uuid4()),
+            executed=False,
+            status="FAILED",
+            model_reference=None,
+            input_snapshot_id=snapshot_id,
+            output_reference=None,
+            warnings=list(assessment["notes"]),
+            errors=list(assessment["missing"]),
+            provenance={
+                "pem_version": pem_version,
+                "project_id": str(project_id),
+                "failure_class": "MISSING_INPUTS",
+                "missing_inputs": assessment["missing"],
+                "preliminary_internal_footing_ids": assessment["preliminary_internal_footing_ids"],
+                "analysis_executed": False,
+                "engineering_results_available": False,
+                "source": "safe_foundation_workflow",
+            },
+        )
+    return _solver_execution(
+        solver,
+        project_id,
+        IntegrationSoftware.SAFE,
+        pem_version=pem_version,
+        actor_id=actor_id,
+        snapshot_id=snapshot_id,
+        parameters={
+            "analysis_workflow": "SAFE_ISOLATED_FOOTING",
+            "foundation_spec": assessment["spec"],
+        },
+    )
+
+
+def _autocad_execution(
+    project_id: UUID,
+    *,
+    pem: ProjectEngineeringModel,
+    snapshot_id: str,
+    pem_version: int,
+) -> dict[str, Any]:
+    from app.application.drawing.drawing_set_service import DrawingSetService
+    from app.infrastructure.integrations.autocad_adapter import AutocadAdapter
+    from app.infrastructure.integrations.autocad_drawing import commands_from_drawing_set
+
+    drawing_set = DrawingSetService().generate(
+        pem,
+        project_id=project_id,
+        pem_version=pem_version,
+        snapshot_id=snapshot_id,
+    )
+    plan = commands_from_drawing_set(drawing_set)
+    result = AutocadAdapter().generate_drawing(
+        project_id,
+        parameters={
+            "source": "pem",
+            "snapshot_id": snapshot_id,
+            "sheet_plan": plan,
+            "output_dir": f"var/drawings/{project_id}",
+        },
+    )
+    executed = result.status == IntegrationOperationStatus.SUCCESS and result.metadata.get("drawing_executed") is True
     return execution_contract(
         software="AUTOCAD",
         version=result.metadata.get("detected_version") or result.metadata.get("version"),
         execution_id=str(uuid4()),
         executed=executed,
-        status="SUCCESS" if executed else "REQUIRES_LOCAL_SOFTWARE",
+        status="SUCCESS" if executed else result.status.value,
         model_reference=None,
         input_snapshot_id=snapshot_id,
-        output_reference=None,
-        warnings=["A platform DXF or PDF sheet is not an AutoCAD execution."],
+        output_reference=result.metadata.get("dwg_path"),
+        warnings=["A platform DXF or PDF sheet is not an AutoCAD execution."]
+        + (
+            []
+            if result.metadata.get("pdf_status") in (None, "EXPORTED", "NOT_SUPPORTED")
+            else [str(result.metadata.get("pdf_error") or "PDF export failed")]
+        ),
         errors=[] if executed else [result.message],
         provenance={
             "project_id": str(project_id),
             "pem_snapshot_id": snapshot_id,
             "adapter_status": result.status.value,
+            "failure_class": result.metadata.get("failure_class"),
+            "geometry_count": result.metadata.get("geometry_count"),
+            "missing_construction_details": result.metadata.get("missing_construction_details") or [],
+            "drawing_executed": executed,
+            "construction_ready": False,
             "source": "autocad_adapter",
         },
     )

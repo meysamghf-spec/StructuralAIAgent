@@ -114,6 +114,7 @@ class StructuralSolverIntegrationService:
         *,
         pem_version: int | None = None,
         created_by: str | None = None,
+        parameters: dict[str, Any] | None = None,
     ) -> IntegrationExecution:
         pem, snapshot_id, version = self._resolve_pem(project_id, pem_version)
         execution = self._executions.create_execution(
@@ -138,6 +139,7 @@ class StructuralSolverIntegrationService:
                     pem_snapshot_id=snapshot_id,
                     pem_version=version,
                     destination_path=destination,
+                    foundation_spec=(parameters or {}).get("foundation_spec"),
                 )
             else:
                 result = self._integration.execute(
@@ -222,14 +224,28 @@ class StructuralSolverIntegrationService:
                 parameters=parameters,
                 created_by=created_by,
             )
+            unavailable_status = {
+                SoftwareAvailabilityStatus.NOT_INSTALLED: IntegrationOperationStatus.NOT_INSTALLED,
+                SoftwareAvailabilityStatus.VERSION_MISMATCH: IntegrationOperationStatus.VERSION_MISMATCH,
+                SoftwareAvailabilityStatus.NOT_ACCESSIBLE: IntegrationOperationStatus.NOT_ACCESSIBLE,
+            }.get(capability.availability, IntegrationOperationStatus.REQUIRES_LOCAL_SOFTWARE)
+            failure_class = (
+                "LICENSING_FAILURE"
+                if unavailable_status == IntegrationOperationStatus.NOT_ACCESSIBLE
+                and "license" in capability.message.lower()
+                else "APPLICATION_UNAVAILABLE"
+            )
             return {
-                "status": IntegrationOperationStatus.REQUIRES_LOCAL_SOFTWARE.value,
+                "status": unavailable_status.value,
                 "capability_status": capability.availability.value,
+                "failure_class": failure_class,
                 "message": capability.message,
                 "engineering_results_available": False,
+                "analysis_executed": False,
                 "integration_execution_id": str(recorded.id),
                 "solver": software.value,
                 "solver_status": capability.availability.value,
+                "software_version": capability.detected_version,
             }
 
         export_execution = self.export_model(
@@ -237,7 +253,30 @@ class StructuralSolverIntegrationService:
             software,
             pem_version=version,
             created_by=created_by,
+            parameters=parameters,
         )
+        export_meta = export_execution.metadata if isinstance(export_execution.metadata, dict) else {}
+        export_outputs = export_execution.outputs if isinstance(export_execution.outputs, dict) else {}
+        integration_result = (export_outputs.get("integration_result") or {}) if isinstance(export_outputs, dict) else {}
+        if isinstance(integration_result, dict):
+            export_meta = {**export_meta, **(integration_result.get("metadata") or {})}
+        vendor_status = export_meta.get("vendor_export_status")
+        if (
+            export_execution.status != IntegrationOperationStatus.SUCCESS
+            or vendor_status != "VENDOR_MODEL_BUILT"
+        ):
+            return {
+                "status": export_execution.status.value,
+                "capability_status": export_execution.status.value,
+                "failure_class": export_meta.get("failure_class") or "MODEL_BUILD_FAILURE",
+                "message": export_execution.message,
+                "engineering_results_available": False,
+                "analysis_executed": False,
+                "integration_execution_id": str(export_execution.id),
+                "solver": software.value,
+                "vendor_export_status": vendor_status,
+                "software_version": export_meta.get("software_version"),
+            }
         external_model_identity = export_execution.metadata.get("external_model_identity")
         if external_model_identity is None:
             outputs = export_execution.outputs.get("integration_result", {})
@@ -282,9 +321,12 @@ class StructuralSolverIntegrationService:
             return {
                 "status": run_result.status.value,
                 "capability_status": run_result.status.value,
+                "failure_class": run_result.metadata.get("failure_class") or "ANALYSIS_FAILURE",
                 "message": run_result.message,
                 "engineering_results_available": False,
+                "analysis_executed": False,
                 "integration_execution_id": str(run_completed.id),
+                "solver": software.value,
             }
 
         extract_execution = self._executions.create_execution(
@@ -390,11 +432,16 @@ class StructuralSolverIntegrationService:
 
         self._record_memory(project_id, extract_completed, created_by)
 
+        extracted = (
+            extract_result.status == IntegrationOperationStatus.SUCCESS and engineering_results_available
+        )
         return {
-            "status": extract_result.status.value,
+            "status": extract_result.status.value if extracted else IntegrationOperationStatus.FAILED.value,
             "capability_status": extract_result.status.value,
+            "failure_class": None if extracted else (extract_result.metadata.get("failure_class") or "EXTRACTION_FAILURE"),
             "message": extract_result.message,
             "engineering_results_available": engineering_results_available,
+            "analysis_executed": True,
             "integration_execution_id": str(extract_completed.id),
             "result_types_present": extract_result.metadata.get("result_types_present", []),
             "parsed_results": parsed,
@@ -404,6 +451,7 @@ class StructuralSolverIntegrationService:
             "validation_status": validation_status,
             "extraction_status": extract_result.metadata.get("extraction_status"),
             "extraction_summary": extract_result.metadata.get("extraction_summary"),
+            "external_model_identity": external_model_identity,
         }
 
     def extract_solver_results(
