@@ -21,7 +21,9 @@ from app.api.schemas.agent_execution import (
 )
 from app.api.schemas.prompt_generation import PlanAgentExecutionRequest, PromptGenerationResponse
 from app.application.agent_runtime_service import AgentRuntimeService
+from app.application.execution_attachment_binding import bind_execution_attachments
 from app.application.project_access_service import ProjectAccessService
+from app.application.service_factory import build_chat_attachment_context_service
 from app.domain.models.agent_runtime import AgentExecutionRequest
 from app.domain.models.project import Project
 from app.domain.models.user import AuthenticatedAccount
@@ -53,7 +55,11 @@ def create_agent_execution(
     access: Annotated[ProjectAccessService, Depends(get_project_access_service)],
 ) -> AgentExecutionResponse:
     access.require_project(body.project_id, account)
-    parameters = dict(body.parameters)
+    parameters = bind_execution_attachments(
+        body.project_id,
+        body.parameters,
+        build_chat_attachment_context_service(),
+    )
     parameters.pop("builder_test_mode", None)
     parameters.pop("agent_version_override", None)
     record = runtime_service.execute(

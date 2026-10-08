@@ -1,3 +1,4 @@
+import { RunDossier } from "@/components/agents/RunDossier";
 import { ExecutionProgressStepper } from "@/components/agents/ExecutionProgressStepper";
 import { ApprovalReviewPanel } from "@/components/agents/ApprovalReviewPanel";
 import { RequestPlanPanel } from "@/components/agents/RequestPlanPanel";
@@ -88,11 +89,15 @@ export function ExecutionHistoryList({
   projectId,
   reviewApprovalId,
   onRefresh,
+  selectedExecutionId,
+  onSelectExecution,
 }: {
   executions: AgentExecutionSummary[];
   projectId: string;
   reviewApprovalId: string | null;
   onRefresh: () => void;
+  selectedExecutionId?: string | null;
+  onSelectExecution?: (executionId: string) => void;
 }) {
   if (executions.length === 0) {
     return <p className="muted">No assistant activity yet for this project.</p>;
@@ -118,6 +123,15 @@ export function ExecutionHistoryList({
                 {getProgressLabel(execution.user_view.progress)}
               </span>
             </div>
+            {onSelectExecution ? (
+              <button
+                className="button secondary"
+                type="button"
+                onClick={() => onSelectExecution(execution.id)}
+              >
+                {selectedExecutionId === execution.id ? "Run record open" : "Open run record"}
+              </button>
+            ) : null}
 
             <ExecutionProgressStepper progress={execution.user_view.progress} />
 
@@ -134,6 +148,7 @@ export function ExecutionHistoryList({
             ) : null}
 
             <ExecutionResult execution={execution} projectId={projectId} />
+            {selectedExecutionId === execution.id ? <RunDossier execution={execution} /> : null}
           </li>
         );
       })}

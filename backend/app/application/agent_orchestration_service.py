@@ -388,6 +388,7 @@ class AgentOrchestrationService:
                 run_id=record.id,
                 qa_status=None,
                 learning_record_ids=_learning_record_ids(learning_retrieval),
+                attachment_file_ids=_bound_attachment_ids(request.parameters),
             ),
         }
         record = self._executions.update(record)
@@ -773,6 +774,7 @@ class AgentOrchestrationService:
                 run_id=record.id,
                 qa_status=None,
                 learning_record_ids=[],
+                attachment_file_ids=_bound_attachment_ids(request.parameters),
             ),
         }
         if engineering_task is not None:
@@ -1088,6 +1090,23 @@ def _learning_record_ids(retrieval: LearningRetrieval | None) -> list[str]:
     return [str(item.id) for item in retrieval.records]
 
 
+def _bound_attachment_ids(parameters: dict[str, Any] | None) -> list[str]:
+    if not isinstance(parameters, dict):
+        return []
+    bundle = parameters.get("attachment_context")
+    ids: list[str] = []
+    if isinstance(bundle, dict):
+        for item in bundle.get("attachments") or []:
+            if isinstance(item, dict) and item.get("file_id"):
+                ids.append(str(item["file_id"]))
+    if ids:
+        return ids
+    raw_ids = parameters.get("attachment_file_ids") or []
+    if isinstance(raw_ids, list):
+        return [str(item) for item in raw_ids if item]
+    return []
+
+
 def _execution_provenance(
     *,
     definition: AgentDefinition,
@@ -1098,6 +1117,7 @@ def _execution_provenance(
     run_id: UUID,
     qa_status: str | None,
     learning_record_ids: list[str],
+    attachment_file_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     return {
         "agent_id": str(definition.id),
@@ -1109,6 +1129,7 @@ def _execution_provenance(
         "run_id": str(run_id),
         "qa_status": qa_status,
         "learning_record_ids": learning_record_ids,
+        "attachment_file_ids": list(attachment_file_ids or []),
     }
 
 

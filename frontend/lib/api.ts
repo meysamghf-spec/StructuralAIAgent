@@ -122,6 +122,19 @@ export type AgentExecutionSummary = {
   updated_at: string;
   user_view: AgentExecutionUserView;
   prompt_generation?: PromptGenerationResult | null;
+  input_request?: {
+    user_request?: string;
+    parameters?: Record<string, unknown>;
+  };
+  context_snapshot?: Record<string, unknown>;
+  output?: Record<string, unknown> | null;
+  agent_result?: {
+    structured_output?: Record<string, unknown>;
+    generated_artifacts?: Array<Record<string, unknown>>;
+    recommendations?: string[];
+    validation_information?: Record<string, unknown>;
+  } | null;
+  error_metadata?: Record<string, unknown>;
   traceability_metadata?: {
     report_id?: string;
     [key: string]: unknown;
@@ -152,8 +165,38 @@ export type CreateAgentExecutionRequest = {
   project_id: string;
   user_request: string;
   agent_type?: EngineeringAgentType;
+  agent_definition_id?: string;
   requires_approval?: boolean;
+  parameters?: {
+    attachment_file_ids?: string[];
+  };
 };
+
+export type CurrentPemIdentity = {
+  version: number;
+  snapshotId: string;
+  name: string | null;
+};
+
+export async function getCurrentPemIdentity(projectId: string): Promise<CurrentPemIdentity | null> {
+  try {
+    const body = await apiFetch<{
+      version: number;
+      snapshot_id: string;
+      pem?: { metadata?: { name?: string | null } };
+    }>(`/api/v1/projects/${projectId}/pem/current`);
+    return {
+      version: body.version,
+      snapshotId: body.snapshot_id,
+      name: body.pem?.metadata?.name ?? null,
+    };
+  } catch (error) {
+    if (error instanceof Error && /not found/i.test(error.message)) {
+      return null;
+    }
+    throw error;
+  }
+}
 
 export async function createAgentExecution(
   body: CreateAgentExecutionRequest,

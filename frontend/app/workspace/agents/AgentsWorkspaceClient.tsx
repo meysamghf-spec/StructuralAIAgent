@@ -6,13 +6,21 @@ import { buildAssistantProfiles } from "@/lib/agent-workspace";
 import {
   apiFetch,
   createAgentExecution,
+  getCurrentPemIdentity,
   listAgentExecutions,
   listAgents,
+  listProjectFiles,
   planAgentExecution,
+  uploadProjectFile,
   type AgentExecutionSummary,
+  type CurrentPemIdentity,
+  type EngineeringAgentType,
+  type ProjectFileSummary,
   type ProjectListResponse,
   type PromptGenerationResult,
 } from "@/lib/api";
+import { filesForProject, productionRunAllowed } from "@/lib/engineering-workspace";
+import { listCadDrawings, type CadDrawing } from "@/lib/cad";
 import { RequestPlanPanel } from "@/components/agents/RequestPlanPanel";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -32,14 +40,35 @@ export default function AgentsWorkspaceClient() {
   const [requestPlan, setRequestPlan] = useState<PromptGenerationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [assistants, setAssistants] = useState(buildAssistantProfiles([]));
+  const [selectedAgentType, setSelectedAgentType] = useState<EngineeringAgentType | "">("");
+  const [pem, setPem] = useState<CurrentPemIdentity | null>(null);
+  const [files, setFiles] = useState<ProjectFileSummary[]>([]);
+  const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
+  const [drawings, setDrawings] = useState<CadDrawing[]>([]);
+  const [selectedExecutionId, setSelectedExecutionId] = useState<string | null>(null);
 
-  const refreshExecutions = useCallback(async (projectId: string) => {
+  const refreshProjectContext = useCallback(async (projectId: string) => {
     if (!projectId) {
       setExecutions([]);
+      setFiles([]);
+      setDrawings([]);
+      setPem(null);
+      setSelectedFileIds([]);
+      setSelectedExecutionId(null);
       return;
     }
-    const response = await listAgentExecutions(projectId);
-    setExecutions(response.executions);
+    const [executionResponse, fileResponse, pemIdentity, drawingResponse] = await Promise.all([
+      listAgentExecutions(projectId),
+      listProjectFiles(projectId),
+      getCurrentPemIdentity(projectId),
+      listCadDrawings(projectId).catch(() => [] as CadDrawing[]),
+    ]);
+    setExecutions(executionResponse.executions);
+    setFiles(filesForProject(fileResponse.files, projectId));
+    setPem(pemIdentity);
+    setDrawings(drawingResponse);
+    setSelectedFileIds([]);
+    setSelectedExecutionId(executionResponse.executions[0]?.id ?? null);
   }, []);
 
   useEffect(() => {
@@ -61,7 +90,7 @@ export default function AgentsWorkspaceClient() {
             : projectResponse.projects[0]?.id ?? "";
         setSelectedProjectId(projectId);
         if (projectId) {
-          await refreshExecutions(projectId);
+          await refreshProjectContext(projectId);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load assistant workspace");
@@ -71,13 +100,13 @@ export default function AgentsWorkspaceClient() {
     }
 
     void loadInitial();
-  }, [initialProjectId, refreshExecutions]);
+  }, [initialProjectId, refreshProjectContext]);
 
   async function handleProjectChange(projectId: string) {
     setSelectedProjectId(projectId);
     setError(null);
     try {
-      await refreshExecutions(projectId);
+      await refreshProjectContext(projectId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load activity history");
     }
@@ -107,13 +136,17 @@ export default function AgentsWorkspaceClient() {
     setSubmitting(true);
     setError(null);
     try {
-      await createAgentExecution({
+      const created = await createAgentExecution({
         project_id: selectedProjectId,
         user_request: requestText.trim(),
+        agent_type: selectedAgentType || undefined,
+        parameters: selectedFileIds.length > 0 ? { attachment_file_ids: selectedFileIds } : undefined,
       });
       setRequestText("");
       setRequestPlan(null);
-      await refreshExecutions(selectedProjectId);
+      setSelectedFileIds([]);
+      await refreshProjectContext(selectedProjectId);
+      setSelectedExecutionId(created.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to submit request");
     } finally {
@@ -125,6 +158,35 @@ export default function AgentsWorkspaceClient() {
     () => projects.find((project) => project.id === selectedProjectId) ?? null,
     [projects, selectedProjectId],
   );
+  const selectedAssistant = useMemo(
+    () => assistants.find((assistant) => assistant.agentType === selectedAgentType) ?? null,
+    [assistants, selectedAgentType],
+  );
+  const canRun = Boolean(selectedProjectId) && productionRunAllowed(selectedAssistant) && !submitting;
+
+  async function handleUpload(selected: FileList | null) {
+    if (!selectedProjectId || !selected?.length) {
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      const uploadedIds: string[] = [];
+      for (const file of Array.from(selected)) {
+        const record = await uploadProjectFile(selectedProjectId, file);
+        if (!record.project_id || record.project_id === selectedProjectId) {
+          uploadedIds.push(record.id);
+        }
+      }
+      const fileResponse = await listProjectFiles(selectedProjectId);
+      setFiles(filesForProject(fileResponse.files, selectedProjectId));
+      setSelectedFileIds((current) => [...new Set([...current, ...uploadedIds])]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <section className="panel-stack">
@@ -132,8 +194,8 @@ export default function AgentsWorkspaceClient() {
         <p className="eyebrow">Engineering Assistants</p>
         <h2>Agent Workspace</h2>
         <p className="subtitle">
-          Ask for structural engineering help, track progress, and review results without managing
-          internal runtime details.
+          Choose a project, an assistant, and the current engineering model. Runs stay traceable to
+          that project, the PEM snapshot, and any approved learning used as context.
         </p>
       </header>
 
@@ -154,6 +216,71 @@ export default function AgentsWorkspaceClient() {
           ))}
         </select>
         {selectedProject ? <p className="muted">Working in {selectedProject.name}</p> : null}
+        <p className="muted">
+          {pem
+            ? `Current model${pem.name ? ` ${pem.name}` : ""} · version ${pem.version} · snapshot ${pem.snapshotId}`
+            : "No current engineering model is stored for this project."}
+        </p>
+      </section>
+
+      <section className="card">
+        <h3>Assistant</h3>
+        <select
+          className="input"
+          value={selectedAgentType}
+          onChange={(event) => setSelectedAgentType(event.target.value as EngineeringAgentType | "")}
+          disabled={!selectedProjectId || submitting}
+        >
+          <option value="">Route from the request</option>
+          {assistants.map((assistant) => (
+            <option key={assistant.id} value={assistant.agentType ?? ""} disabled={!assistant.agentType}>
+              {assistant.title} · {assistant.status}
+            </option>
+          ))}
+        </select>
+        {selectedAssistant && !productionRunAllowed(selectedAssistant) ? (
+          <p className="muted">
+            {selectedAssistant.title} is {selectedAssistant.status.toLowerCase()} and cannot start a new
+            production run. Earlier runs remain in the history below.
+          </p>
+        ) : null}
+      </section>
+
+      <section className="card">
+        <h3>Project files</h3>
+        <p className="muted">Only files stored on this project can be attached to a run.</p>
+        <input
+          className="input"
+          type="file"
+          multiple
+          accept="application/pdf,image/*,.txt,.csv,.xlsx,.xls,.docx"
+          disabled={!selectedProjectId || submitting}
+          onChange={(event) => void handleUpload(event.target.files)}
+        />
+        {files.length === 0 ? (
+          <p className="muted">No project files yet.</p>
+        ) : (
+          <ul className="workspace-list">
+            {files.map((file) => (
+              <li key={file.id} className="workspace-list-item compact">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={selectedFileIds.includes(file.id)}
+                    onChange={(event) => {
+                      setSelectedFileIds((current) =>
+                        event.target.checked
+                          ? [...current, file.id]
+                          : current.filter((id) => id !== file.id),
+                      );
+                    }}
+                  />{" "}
+                  {file.filename}
+                </label>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section className="card">
@@ -183,8 +310,8 @@ export default function AgentsWorkspaceClient() {
             >
               {planning ? "Understanding…" : "Preview understanding"}
             </button>
-            <button className="button" type="submit" disabled={!selectedProjectId || submitting}>
-              {submitting ? "Submitting…" : "Send request"}
+            <button className="button" type="submit" disabled={!canRun || !requestText.trim()}>
+              {submitting ? "Submitting…" : "Run"}
             </button>
           </div>
         </form>
@@ -198,7 +325,40 @@ export default function AgentsWorkspaceClient() {
           <h3>Available assistants</h3>
           <p className="muted">Specialist engineering assistants available in your workspace.</p>
         </header>
-        {loading ? <p className="muted">Loading assistants…</p> : <AgentOverviewGrid assistants={assistants} />}
+        {loading ? (
+          <p className="muted">Loading assistants…</p>
+        ) : (
+          <AgentOverviewGrid
+            assistants={assistants}
+            selectedAgentType={selectedAgentType || null}
+            onSelect={(agentType) => {
+              if (agentType) {
+                setSelectedAgentType(agentType);
+              }
+            }}
+          />
+        )}
+      </section>
+
+      <section>
+        <header className="section-header">
+          <h3>Drawings and schedules</h3>
+          <p className="muted">Generated CAD records for this project. Empty means none have been stored.</p>
+        </header>
+        {drawings.length === 0 ? (
+          <p className="muted">No generated drawings are stored for this project.</p>
+        ) : (
+          <ul className="workspace-list">
+            {drawings.map((drawing) => (
+              <li key={drawing.id} className="workspace-list-item compact">
+                <span>
+                  {drawing.drawing_type} · {drawing.output_format} · {drawing.status}
+                </span>
+                <p className="muted">{drawing.validation_status}</p>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section>
@@ -213,7 +373,9 @@ export default function AgentsWorkspaceClient() {
             executions={executions}
             projectId={selectedProjectId}
             reviewApprovalId={reviewApprovalId}
-            onRefresh={() => void refreshExecutions(selectedProjectId)}
+            onRefresh={() => void refreshProjectContext(selectedProjectId)}
+            selectedExecutionId={selectedExecutionId}
+            onSelectExecution={setSelectedExecutionId}
           />
         )}
       </section>

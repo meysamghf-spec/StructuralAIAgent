@@ -418,6 +418,15 @@ class ProjectFileNotFoundError(ApplicationError):
         )
 
 
+class InvalidExecutionAttachmentError(ApplicationError):
+    def __init__(self, message: str) -> None:
+        super().__init__(
+            "INVALID_EXECUTION_ATTACHMENT",
+            message,
+            status_code=400,
+        )
+
+
 class InvalidUploadError(ApplicationError):
     def __init__(self, message: str) -> None:
         super().__init__(
