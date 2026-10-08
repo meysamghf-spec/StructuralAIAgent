@@ -27,6 +27,7 @@ export type EngineeringChain = {
   resultValidationStatus: string | null;
   capabilityStatus: string | null;
   engineeringResultsAvailable: boolean | null;
+  engineeringDesignResultsAvailable: boolean | null;
   solver: string | null;
   solverStatus: string | null;
   integrationExecutionId: string | null;
@@ -98,7 +99,10 @@ export function buildRunDossier(execution: AgentExecutionSummary): RunDossier {
     authoritative: {
       pemVersion: pemVersion === undefined ? null : (pemVersion as number | string),
       pemSnapshotId,
-      qaStatus: text(trace.qa_status) ?? execution.validation_status,
+      qaStatus: displayedQaStatus(
+        text(trace.qa_status) ?? execution.validation_status,
+        engineeringChain(trace, structured),
+      ),
       validationStatus: execution.validation_status,
       learningOverridesPem,
       learningOverridesRules,
@@ -127,6 +131,46 @@ export function buildRunDossier(execution: AgentExecutionSummary): RunDossier {
   };
 }
 
+const INCOMPLETE_CALCULATION_STATUSES = new Set([
+  "MODEL_NOT_READY",
+  "REQUIRES_SOLVER",
+  "REQUIRES_ANALYSIS",
+  "REQUIRES_LOCAL_SOFTWARE",
+  "NOT_IMPLEMENTED",
+  "UNAVAILABLE",
+  "NOT_AVAILABLE",
+  "PARTIALLY_COMPLETED",
+  "NOT_CHECKED",
+]);
+
+export function calculationWasNotProduced(engineering: EngineeringChain): boolean {
+  if (
+    engineering.engineeringResultsAvailable === true ||
+    engineering.engineeringDesignResultsAvailable === true
+  ) {
+    return false;
+  }
+  if (
+    engineering.engineeringResultsAvailable === false ||
+    engineering.engineeringDesignResultsAvailable === false
+  ) {
+    return true;
+  }
+  return (
+    engineering.capabilityStatus != null && INCOMPLETE_CALCULATION_STATUSES.has(engineering.capabilityStatus)
+  );
+}
+
+export function displayedQaStatus(
+  qaStatus: string | null,
+  engineering: EngineeringChain,
+): string | null {
+  if (qaStatus === "PASS" && calculationWasNotProduced(engineering)) {
+    return "NOT_RUN";
+  }
+  return qaStatus;
+}
+
 export function parameterPemIsNotAuthoritative(execution: AgentExecutionSummary): boolean {
   const trace = record(execution.traceability_metadata);
   const parameters = record(execution.input_request?.parameters);
@@ -151,6 +195,12 @@ function engineeringChain(
     capabilityStatus: text(firstDefined(trace.capability_status, structured.capability_status)),
     engineeringResultsAvailable: availabilityFlag(
       firstDefined(trace.engineering_results_available, structured.engineering_results_available),
+    ),
+    engineeringDesignResultsAvailable: availabilityFlag(
+      firstDefined(
+        trace.engineering_design_results_available,
+        structured.engineering_design_results_available,
+      ),
     ),
     solver: text(firstDefined(trace.solver, structured.solver)),
     solverStatus: text(firstDefined(trace.solver_status, structured.solver_status)),

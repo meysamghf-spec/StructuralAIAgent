@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { AssistantProfile } from "../lib/agent-workspace";
 import {
   buildRunDossier,
+  calculationWasNotProduced,
+  displayedQaStatus,
   filesForProject,
   parameterPemIsNotAuthoritative,
   productionRunAllowed,
@@ -180,6 +182,25 @@ describe("engineering workspace", () => {
     expect(dossier.engineering.solverStatus).toBe("REQUIRES_LOCAL_SOFTWARE");
     expect(dossier.engineering.integrationExecutionId).toBe("integration-1");
     expect(dossier.engineering.engineeringResultsAvailable).toBe(false);
+  });
+
+  it("does not present a QA pass when no calculation was produced", () => {
+    const dossier = buildRunDossier(
+      execution({
+        validation_status: "PASS",
+        traceability_metadata: {
+          qa_status: "PASS",
+          capability_status: "REQUIRES_ANALYSIS",
+          engineering_design_results_available: false,
+          design_run_id: "design-1",
+        },
+      }),
+    );
+    expect(calculationWasNotProduced(dossier.engineering)).toBe(true);
+    expect(dossier.engineering.engineeringDesignResultsAvailable).toBe(false);
+    expect(dossier.engineering.designRunId).toBe("design-1");
+    expect(displayedQaStatus("PASS", dossier.engineering)).toBe("NOT_RUN");
+    expect(dossier.authoritative.qaStatus).toBe("NOT_RUN");
   });
 
   it("reports a learning override instead of treating it as the PEM", () => {

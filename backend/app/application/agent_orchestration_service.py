@@ -28,6 +28,7 @@ from app.application.engineering_agent_handlers import (
     new_trace_result_id,
 )
 from app.application.engineering_learning_service import EngineeringLearningService
+from app.application.agent_qa import resolve_agent_qa_status
 from app.application.engineering_workflow_trace import engineering_workflow_trace
 from app.application.engineering_task_workflow_service import EngineeringTaskWorkflowService
 from app.application.engineering_task_execution_service import EngineeringTaskExecutionService
@@ -916,39 +917,11 @@ class AgentOrchestrationService:
         return handler
 
     def _validate_result(self, agent_result: AgentResult) -> AgentValidationStatus:
-        orchestration_status = agent_result.validation_information.get("orchestration_status")
-        if orchestration_status in {"ERROR", "FAIL", "FAILED"}:
-            return AgentValidationStatus.ERROR
-        if orchestration_status in {"WARNING", "WARN"}:
-            return AgentValidationStatus.WARNING
-
-        capability_status = str(agent_result.validation_information.get("capability_status", "")).upper()
-        if capability_status in {"NOT_IMPLEMENTED", "NOT_AVAILABLE", "REQUIRES_LOCAL_SOFTWARE", "FAILED"}:
-            return AgentValidationStatus.REQUIRES_ENGINEER_REVIEW
-        if capability_status in {"MISSING_REQUIRED_INPUT", "INVALID_INPUT", "UNSUPPORTED_CODE"}:
-            return AgentValidationStatus.WARNING
-        if capability_status in {"ERROR", "FAIL"}:
-            return AgentValidationStatus.ERROR
-        if capability_status in {"WARNING", "WARN"}:
-            return AgentValidationStatus.WARNING
-
-        validation_status = agent_result.validation_information.get("validation_status")
-        if validation_status == "ERROR":
-            return AgentValidationStatus.ERROR
-        if validation_status == "FAIL":
-            return AgentValidationStatus.ERROR
-        if validation_status in {"WARNING", "REQUIRES_ENGINEER_REVIEW"}:
-            return AgentValidationStatus.WARNING
-        if validation_status == "PASS":
-            return AgentValidationStatus.PASS
-
-        if agent_result.validation_information.get("stub"):
-            return AgentValidationStatus.REQUIRES_ENGINEER_REVIEW
-        if agent_result.validation_information.get("fabricated_results"):
-            return AgentValidationStatus.ERROR
-        if agent_result.confidence is not None and agent_result.confidence < 0.5:
-            return AgentValidationStatus.WARNING
-        return AgentValidationStatus.PASS
+        return resolve_agent_qa_status(
+            validation_information=agent_result.validation_information,
+            structured_output=agent_result.structured_output,
+            confidence=agent_result.confidence,
+        )
 
     def _apply_orchestration(
         self,

@@ -1,5 +1,9 @@
 import { getValidationLabel } from "@/lib/agent-workspace";
-import { buildRunDossier, parameterPemIsNotAuthoritative } from "@/lib/engineering-workspace";
+import {
+  buildRunDossier,
+  calculationWasNotProduced,
+  parameterPemIsNotAuthoritative,
+} from "@/lib/engineering-workspace";
 import type { AgentExecutionSummary } from "@/lib/api";
 import { downloadProjectFile } from "@/lib/api";
 import Link from "next/link";
@@ -43,11 +47,7 @@ export function RunDossier({ execution }: { execution: AgentExecutionSummary }) 
 
       <section aria-label="Engineering calculation">
         <p className="result-label">Calculation</p>
-        {dossier.engineering.engineeringResultsAvailable === false ||
-        dossier.engineering.capabilityStatus === "MODEL_NOT_READY" ||
-        dossier.engineering.capabilityStatus === "REQUIRES_SOLVER" ||
-        dossier.engineering.capabilityStatus === "NOT_IMPLEMENTED" ||
-        dossier.engineering.capabilityStatus === "UNAVAILABLE" ? (
+        {calculationWasNotProduced(dossier.engineering) ? (
           <p className="muted">
             No engineering calculation was produced
             {dossier.engineering.capabilityStatus ? ` (${dossier.engineering.capabilityStatus})` : ""}.
