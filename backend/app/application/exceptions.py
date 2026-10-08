@@ -341,6 +341,19 @@ class CapabilityNotFoundError(ApplicationError):
         )
 
 
+class AgentNotExecutableError(ApplicationError):
+    def __init__(self, agent_id: UUID, message: str, *, details: dict | None = None) -> None:
+        payload = {"agent_id": str(agent_id)}
+        if details:
+            payload.update(details)
+        super().__init__(
+            "AGENT_NOT_EXECUTABLE",
+            message,
+            status_code=409,
+            details=payload,
+        )
+
+
 class AgentBuilderInvalidStateError(ApplicationError):
     def __init__(self, message: str, *, details: dict | None = None) -> None:
         super().__init__(

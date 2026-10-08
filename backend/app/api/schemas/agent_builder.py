@@ -22,16 +22,27 @@ class CreateBuilderAgentRequest(BaseModel):
     key: str = Field(..., min_length=1, max_length=128)
     name: str = Field(..., min_length=1, max_length=255)
     description: str | None = None
+    purpose: str | None = None
+    engineering_domain: str | None = None
     agent_type: str | None = None
     project_id: UUID | None = None
     instructions: str | None = None
     capability_keys: list[str] = Field(default_factory=list)
     configuration: dict[str, Any] = Field(default_factory=dict)
+    task_types: list[str] = Field(default_factory=list)
+    element_types: list[str] = Field(default_factory=list)
+    supported_codes: list[str] = Field(default_factory=list)
+    allowed_tools: list[str] = Field(default_factory=list)
+    input_contract: dict[str, Any] = Field(default_factory=dict)
+    output_contract: dict[str, Any] = Field(default_factory=dict)
+    change_summary: str | None = None
 
 
 class ConfigureAgentRequest(BaseModel):
     name: str | None = None
     description: str | None = None
+    purpose: str | None = None
+    engineering_domain: str | None = None
     agent_type: str | None = None
     configuration: dict[str, Any] | None = None
 
@@ -60,6 +71,23 @@ class DeactivateAgentRequest(BaseModel):
     project_id: UUID
 
 
+class DuplicateAgentRequest(BaseModel):
+    project_id: UUID
+    name: str | None = None
+    key: str | None = Field(default=None, max_length=128)
+
+
+class SuccessorVersionRequest(BaseModel):
+    source_version: int = Field(..., ge=1)
+    change_summary: str = Field(..., min_length=1)
+    instructions: str | None = None
+
+
+class EnableAgentRequest(BaseModel):
+    project_id: UUID
+    target_version: int = Field(..., ge=1)
+
+
 class AgentBuilderValidationIssueResponse(BaseModel):
     code: str
     message: str
@@ -86,6 +114,7 @@ class AgentBuilderDetailResponse(BaseModel):
     agent: AgentDefinitionResponse
     version: AgentVersionResponse
     validation: AgentBuilderValidationResponse
+    lifecycle: str
 
     @classmethod
     def from_domain(cls, detail: AgentBuilderVersionDetail) -> AgentBuilderDetailResponse:
@@ -96,6 +125,7 @@ class AgentBuilderDetailResponse(BaseModel):
                 detail.version.capabilities,
             ),
             validation=AgentBuilderValidationResponse.from_domain(detail.validation),
+            lifecycle=detail.lifecycle.value,
         )
 
 

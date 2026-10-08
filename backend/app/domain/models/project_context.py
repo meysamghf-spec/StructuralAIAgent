@@ -41,6 +41,7 @@ class ProjectContextAssembly(BaseModel):
     project_id: UUID
     project_name: str
     pem_version: int | None = None
+    pem_snapshot_id: UUID | None = None
     code_configuration: CodeConfiguration | None = None
     unit_configuration: UnitConfiguration | None = None
     memory_total_count: int

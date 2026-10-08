@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 class AgentDefinitionStatus(StrEnum):
     DRAFT = "DRAFT"
     ACTIVE = "ACTIVE"
+    DISABLED = "DISABLED"
     ARCHIVED = "ARCHIVED"
 
 

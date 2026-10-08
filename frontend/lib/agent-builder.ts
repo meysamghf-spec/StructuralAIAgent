@@ -71,6 +71,48 @@ export function getLifecycleStage(
   return "draft";
 }
 
+export type ProductLifecycle = "DRAFT" | "REVIEW" | "APPROVED" | "PUBLISHED" | "ARCHIVED";
+
+export function getProductLifecycle(
+  versionStatus: string,
+  publicationStatus?: string | null,
+  approvalStatus?: string | null,
+): ProductLifecycle {
+  if (versionStatus === "ARCHIVED") {
+    return "ARCHIVED";
+  }
+  if (versionStatus === "ACTIVE") {
+    return "PUBLISHED";
+  }
+  if (versionStatus === "INACTIVE") {
+    return approvalStatus === "APPROVED" ? "APPROVED" : "ARCHIVED";
+  }
+  if (publicationStatus === "PENDING_APPROVAL") {
+    return "REVIEW";
+  }
+  if (approvalStatus === "APPROVED") {
+    return "APPROVED";
+  }
+  return "DRAFT";
+}
+
+export function getProductLifecycleLabel(lifecycle: string): string {
+  switch (lifecycle) {
+    case "DRAFT":
+      return "Draft";
+    case "REVIEW":
+      return "Review";
+    case "APPROVED":
+      return "Approved";
+    case "PUBLISHED":
+      return "Published";
+    case "ARCHIVED":
+      return "Archived";
+    default:
+      return lifecycle;
+  }
+}
+
 export function getLifecycleLabel(stage: BuilderLifecycleStage): string {
   switch (stage) {
     case "draft":

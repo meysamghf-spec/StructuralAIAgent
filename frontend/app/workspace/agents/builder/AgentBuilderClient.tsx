@@ -4,14 +4,17 @@ import { ProjectScopePanel } from "@/components/workspace/ProjectScopePanel";
 import {
   AVAILABLE_TOOL_OPTIONS,
   getAssistantTypeLabel,
-  getLifecycleLabel,
-  getLifecycleStage,
+  getProductLifecycleLabel,
   getPublicationStatusLabel,
   getVersionStatusLabel,
 } from "@/lib/agent-builder";
 import {
   apiFetch,
+  archiveBuilderAgent,
   createBuilderAgent,
+  createSuccessorVersion,
+  disableBuilderAgent,
+  duplicateBuilderAgent,
   getBuilderDetail,
   listAgentCapabilities,
   listBuilderPublications,
@@ -27,7 +30,7 @@ import {
   type EngineeringAgentType,
   type ProjectListResponse,
 } from "@/lib/api";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 
 const ASSISTANT_TYPES: EngineeringAgentType[] = [
   "VALIDATION_AGENT",
@@ -54,8 +57,16 @@ export default function AgentBuilderClient() {
   );
   const [publications, setPublications] = useState<AgentBuilderPublicationSummary[]>([]);
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [purpose, setPurpose] = useState("");
   const [assistantType, setAssistantType] = useState<EngineeringAgentType>("VALIDATION_AGENT");
   const [instructions, setInstructions] = useState("");
+  const [taskTypes, setTaskTypes] = useState("project_validation");
+  const [elementTypes, setElementTypes] = useState("PROJECT");
+  const [supportedCodes, setSupportedCodes] = useState("");
+  const [inputContract, setInputContract] = useState("Current project PEM");
+  const [outputContract, setOutputContract] = useState("Validation findings");
+  const [changeSummary, setChangeSummary] = useState("Initial draft");
   const [selectedTools, setSelectedTools] = useState<string[]>(["project.validate"]);
   const [selectedCapabilities, setSelectedCapabilities] = useState<string[]>([]);
   const [testRequest, setTestRequest] = useState("Validate the current project configuration.");
@@ -131,10 +142,20 @@ export default function AgentBuilderClient() {
       const created = await createBuilderAgent({
         key: `${name.trim().toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`,
         name: name.trim(),
+        description: description.trim(),
+        purpose: purpose.trim(),
+        engineering_domain: assistantType,
         agent_type: assistantType,
         project_id: selectedProjectId,
         instructions: instructions.trim(),
         capability_keys: selectedCapabilities,
+        task_types: splitList(taskTypes),
+        element_types: splitList(elementTypes),
+        supported_codes: splitList(supportedCodes),
+        allowed_tools: selectedTools,
+        input_contract: { summary: inputContract.trim() },
+        output_contract: { summary: outputContract.trim() },
+        change_summary: changeSummary.trim() || "Initial draft",
       });
       setDetail(created);
       setSelectedAgentId(created.agent.id);
@@ -161,6 +182,12 @@ export default function AgentBuilderClient() {
         configuration_metadata: {
           allowed_tools: selectedTools,
           model_configuration: detail.version.configuration_metadata.model_configuration ?? {},
+          task_types: splitList(taskTypes),
+          element_types: splitList(elementTypes),
+          supported_codes: splitList(supportedCodes),
+          input_contract: { summary: inputContract.trim() },
+          output_contract: { summary: outputContract.trim() },
+          change_summary: changeSummary.trim() || "Draft update",
         },
         capability_keys: selectedCapabilities,
       });
@@ -265,6 +292,14 @@ export default function AgentBuilderClient() {
       const loaded = await getBuilderDetail(agentId, versionNumber);
       setDetail(loaded);
       setInstructions(loaded.version.instructions ?? "");
+      setDescription(loaded.agent.description ?? "");
+      setPurpose(String(loaded.agent.configuration.purpose ?? ""));
+      setTaskTypes(joinList(loaded.version.configuration_metadata.task_types));
+      setElementTypes(joinList(loaded.version.configuration_metadata.element_types));
+      setSupportedCodes(joinList(loaded.version.configuration_metadata.supported_codes));
+      setInputContract(contractSummary(loaded.version.configuration_metadata.input_contract));
+      setOutputContract(contractSummary(loaded.version.configuration_metadata.output_contract));
+      setChangeSummary(String(loaded.version.configuration_metadata.change_summary ?? ""));
       setSelectedCapabilities(loaded.version.capabilities.map((item) => item.key));
       const tools = loaded.version.configuration_metadata.allowed_tools;
       setSelectedTools(Array.isArray(tools) ? tools.map(String) : ["project.validate"]);
@@ -274,17 +309,79 @@ export default function AgentBuilderClient() {
     }
   }
 
-  const lifecycle = useMemo(() => {
-    if (!detail) {
-      return "draft" as const;
+  const lifecycle = detail?.lifecycle ?? "DRAFT";
+
+  async function handleSuccessor() {
+    if (!detail || !changeSummary.trim()) {
+      return;
     }
-    const pendingPublication = publications.find((item) => item.status === "PENDING_APPROVAL");
-    return getLifecycleStage(
-      detail.version.status,
-      tests.length > 0,
-      pendingPublication?.status ?? null,
-    );
-  }, [detail, publications, tests.length]);
+    setBusy(true);
+    setError(null);
+    try {
+      const created = await createSuccessorVersion(detail.agent.id, detail.version.version, changeSummary.trim());
+      setDetail(created);
+      setInstructions(created.version.instructions ?? "");
+      setMessage(`Draft version ${created.version.version} created. It is not published.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create a new version");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDuplicate() {
+    if (!detail || !selectedProjectId) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const created = await duplicateBuilderAgent(detail.agent.id, selectedProjectId);
+      setDetail(created);
+      setSelectedAgentId(created.agent.id);
+      const agentResponse = await listProjectAgents(selectedProjectId);
+      setAgents(agentResponse.agents);
+      setMessage("Duplicate saved as a new draft.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to duplicate assistant");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDisable() {
+    if (!detail || !selectedProjectId) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await disableBuilderAgent(detail.agent.id, selectedProjectId);
+      const agentResponse = await listProjectAgents(selectedProjectId);
+      setAgents(agentResponse.agents);
+      setMessage("Assistant disabled. Existing runs remain available.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to disable assistant");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleArchive() {
+    if (!detail) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await archiveBuilderAgent(detail.agent.id);
+      setMessage("Assistant archived. Historical runs were kept.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to archive assistant");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <section className="panel-stack">
@@ -321,7 +418,26 @@ export default function AgentBuilderClient() {
             />
           </label>
           <label>
+            Description
+            <input
+              className="input"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              disabled={busy}
+            />
+          </label>
+          <label>
             Purpose
+            <input
+              className="input"
+              value={purpose}
+              onChange={(event) => setPurpose(event.target.value)}
+              placeholder="What engineering job this assistant performs"
+              disabled={busy}
+            />
+          </label>
+          <label>
+            Engineering domain
             <select
               className="input"
               value={assistantType}
@@ -401,11 +517,18 @@ export default function AgentBuilderClient() {
             <div>
               <h3>{detail.agent.name}</h3>
               <p className="muted">
-                {getAssistantTypeLabel(detail.agent.agent_type)} ·{" "}
+                {getAssistantTypeLabel(detail.agent.agent_type)} · Version {detail.version.version} ·{" "}
                 {getVersionStatusLabel(detail.version.status)}
+                {detail.version.created_by ? ` · ${detail.version.created_by}` : ""}
+              </p>
+              <p className="muted">
+                {String(detail.agent.configuration.purpose ?? "Purpose not set")}
+                {detail.version.configuration_metadata.approval
+                  ? " · Approval recorded"
+                  : ""}
               </p>
             </div>
-            <span className={`progress-badge progress-${lifecycle}`}>{getLifecycleLabel(lifecycle)}</span>
+            <span className="progress-badge">{getProductLifecycleLabel(lifecycle)}</span>
           </div>
 
           <div className="builder-grid">
@@ -417,6 +540,30 @@ export default function AgentBuilderClient() {
                 value={instructions}
                 onChange={(event) => setInstructions(event.target.value)}
               />
+            </label>
+            <label>
+              Change summary
+              <input className="input" value={changeSummary} onChange={(event) => setChangeSummary(event.target.value)} />
+            </label>
+            <label>
+              Task types
+              <input className="input" value={taskTypes} onChange={(event) => setTaskTypes(event.target.value)} />
+            </label>
+            <label>
+              Element types
+              <input className="input" value={elementTypes} onChange={(event) => setElementTypes(event.target.value)} />
+            </label>
+            <label>
+              Supported codes
+              <input className="input" value={supportedCodes} onChange={(event) => setSupportedCodes(event.target.value)} />
+            </label>
+            <label>
+              Input contract
+              <input className="input" value={inputContract} onChange={(event) => setInputContract(event.target.value)} />
+            </label>
+            <label>
+              Output contract
+              <input className="input" value={outputContract} onChange={(event) => setOutputContract(event.target.value)} />
             </label>
             <fieldset>
               <legend>Available tools</legend>
@@ -472,6 +619,18 @@ export default function AgentBuilderClient() {
             <button className="button" type="button" disabled={busy} onClick={() => void handlePublish()}>
               Request publish
             </button>
+            <button className="button secondary" type="button" disabled={busy} onClick={() => void handleSuccessor()}>
+              New version
+            </button>
+            <button className="button secondary" type="button" disabled={busy} onClick={() => void handleDuplicate()}>
+              Duplicate as draft
+            </button>
+            <button className="button secondary" type="button" disabled={busy} onClick={() => void handleDisable()}>
+              Disable
+            </button>
+            <button className="button secondary" type="button" disabled={busy} onClick={() => void handleArchive()}>
+              Archive
+            </button>
           </div>
 
           <div className="builder-grid">
@@ -521,4 +680,22 @@ export default function AgentBuilderClient() {
       ) : null}
     </section>
   );
+}
+
+function splitList(value: string): string[] {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function joinList(value: unknown): string {
+  return Array.isArray(value) ? value.map(String).join(", ") : "";
+}
+
+function contractSummary(value: unknown): string {
+  if (value && typeof value === "object" && "summary" in value) {
+    return String((value as { summary?: unknown }).summary ?? "");
+  }
+  return "";
 }

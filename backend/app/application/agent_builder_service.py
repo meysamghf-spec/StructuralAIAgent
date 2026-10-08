@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from app.application.agent_builder_validation import validate_agent_configuration
 from app.application.agent_registry_service import AgentRegistryService
@@ -33,7 +34,9 @@ from app.domain.models.agent_builder import (
     AgentBuilderPublicationRecord,
     AgentBuilderPublicationStatus,
     AgentBuilderValidationResult,
+    AgentProductLifecycle,
     AgentVersionTestRecord,
+    resolve_product_lifecycle,
 )
 from app.domain.models.agent_runtime import AgentExecutionRecord, AgentExecutionRequest
 from app.domain.models.human_approval import ApprovalTargetType
@@ -50,6 +53,7 @@ class AgentBuilderVersionDetail:
     definition: AgentDefinition
     version: AgentVersionDetail
     validation: AgentBuilderValidationResult | None = None
+    lifecycle: AgentProductLifecycle = AgentProductLifecycle.DRAFT
 
 
 class AgentBuilderService:
@@ -88,19 +92,45 @@ class AgentBuilderService:
         instructions: str | None = None,
         capability_keys: list[str] | None = None,
         created_by: str | None = None,
+        purpose: str | None = None,
+        engineering_domain: str | None = None,
+        task_types: list[str] | None = None,
+        element_types: list[str] | None = None,
+        supported_codes: list[str] | None = None,
+        input_contract: dict | None = None,
+        output_contract: dict | None = None,
+        allowed_tools: list[str] | None = None,
+        change_summary: str | None = None,
     ) -> AgentBuilderVersionDetail:
+        identity = dict(configuration or {})
+        identity.setdefault("enabled", True)
+        if purpose is not None:
+            identity["purpose"] = purpose
+        if engineering_domain is not None:
+            identity["engineering_domain"] = engineering_domain
+        elif agent_type is not None:
+            identity.setdefault("engineering_domain", agent_type.value)
         definition = self._registry.create_agent(
             key=key,
             name=name,
             description=description,
             agent_type=agent_type,
-            configuration=configuration,
+            configuration=identity,
             project_id=project_id,
         )
         version_detail = self._versions.create_version(
             definition.id,
             instructions=instructions,
-            configuration_metadata={"allowed_tools": [], "model_configuration": {}},
+            configuration_metadata={
+                "allowed_tools": list(allowed_tools or []),
+                "model_configuration": {},
+                "task_types": list(task_types or []),
+                "element_types": list(element_types or []),
+                "supported_codes": list(supported_codes or []),
+                "input_contract": dict(input_contract or {}),
+                "output_contract": dict(output_contract or {}),
+                "change_summary": change_summary or "Initial draft",
+            },
             capability_keys=capability_keys or [],
             created_by=created_by,
         )
@@ -122,6 +152,8 @@ class AgentBuilderService:
         description: str | None = None,
         agent_type: EngineeringAgentType | None = None,
         configuration: dict | None = None,
+        purpose: str | None = None,
+        engineering_domain: str | None = None,
     ) -> AgentDefinition:
         definition = self._registry.get_agent(agent_id)
         if definition.status == AgentDefinitionStatus.ARCHIVED:
@@ -129,12 +161,19 @@ class AgentBuilderService:
                 "Archived assistants cannot be configured.",
                 details={"agent_id": str(agent_id)},
             )
+        merged = dict(definition.configuration)
+        if configuration is not None:
+            merged.update(configuration)
+        if purpose is not None:
+            merged["purpose"] = purpose
+        if engineering_domain is not None:
+            merged["engineering_domain"] = engineering_domain
         updated = self._definitions.update(
             agent_id,
             name=name,
             description=description,
             agent_type=agent_type,
-            configuration=configuration,
+            configuration=merged,
         )
         assert updated is not None
         return updated
@@ -149,9 +188,15 @@ class AgentBuilderService:
         capability_keys: list[str] | None = None,
     ) -> AgentBuilderVersionDetail:
         definition = self._registry.get_agent(agent_id)
+        self._reject_archived(definition)
         agent_version = self._versions.get_version(agent_id, version)
         if agent_version.version.status != AgentVersionStatus.DRAFT:
             raise AgentVersionImmutableError(agent_id, version)
+
+        if configuration_metadata is not None:
+            merged_metadata = dict(agent_version.version.configuration_metadata)
+            merged_metadata.update(copy.deepcopy(configuration_metadata))
+            configuration_metadata = merged_metadata
 
         updated_version = self._versions.update_draft_version(
             agent_id,
@@ -193,6 +238,8 @@ class AgentBuilderService:
         actor_id: str,
     ) -> AgentVersionTestRecord:
         definition = self._registry.get_agent(agent_id)
+        self._reject_archived(definition)
+        self._reject_disabled(definition)
         self._ensure_project_scope(definition, project_id)
         detail = self._versions.get_version(agent_id, version)
         if detail.version.status not in {AgentVersionStatus.DRAFT, AgentVersionStatus.INACTIVE}:
@@ -264,6 +311,8 @@ class AgentBuilderService:
         actor_id: str,
     ) -> AgentBuilderPublicationRecord:
         definition = self._registry.get_agent(agent_id)
+        self._reject_archived(definition)
+        self._reject_disabled(definition)
         self._ensure_project_scope(definition, project_id)
         detail = self._versions.get_version(agent_id, version)
         validation = self.validate_version(agent_id, version)
@@ -276,29 +325,14 @@ class AgentBuilderService:
                 details={"agent_id": str(agent_id), "version": version},
             )
 
-        requires_approval = requires_approval_for_target(
+        if not requires_approval_for_target(
             ApprovalTargetType.AGENT_ACTION,
             "agent.version.publish",
-        )
-        if not requires_approval:
-            self._versions.activate_version(agent_id, version, created_by=actor_id)
-            publication = self._publications.create(
-                agent_definition_id=agent_id,
-                agent_version=version,
-                project_id=project_id,
-                action=AgentBuilderAction.PUBLISH.value,
-                status=AgentBuilderPublicationStatus.COMPLETED.value,
-                metadata={"auto_activated": True},
-                created_by=actor_id,
+        ):
+            raise AgentBuilderInvalidStateError(
+                "Publishing an assistant requires the approval workflow.",
+                details={"agent_id": str(agent_id), "version": version},
             )
-            record_approval_to_agent_version(
-                self._traceability,
-                project_id=project_id,
-                approval_id=publication.id,
-                version_id=detail.version.id,
-                metadata={"action": "publish", "auto_activated": True},
-            )
-            return publication
 
         approval = self._approval.create_request(
             project_id,
@@ -342,6 +376,7 @@ class AgentBuilderService:
         actor_id: str,
     ) -> AgentBuilderPublicationRecord:
         definition = self._registry.get_agent(agent_id)
+        self._reject_archived(definition)
         self._ensure_project_scope(definition, project_id)
         detail = self._versions.get_version(agent_id, target_version)
         if detail.version.status not in {
@@ -405,6 +440,153 @@ class AgentBuilderService:
         )
         return self._registry.get_agent(agent_id)
 
+    def create_successor_version(
+        self,
+        agent_id: UUID,
+        source_version: int,
+        *,
+        change_summary: str,
+        created_by: str | None = None,
+        instructions: str | None = None,
+    ) -> AgentBuilderVersionDetail:
+        definition = self._registry.get_agent(agent_id)
+        self._reject_archived(definition)
+        if not change_summary.strip():
+            raise AgentBuilderInvalidStateError(
+                "A change summary is required for a new assistant version.",
+                details={"agent_id": str(agent_id)},
+            )
+        source = self._versions.get_version(agent_id, source_version)
+        metadata = copy.deepcopy(source.version.configuration_metadata)
+        metadata.pop("approval", None)
+        metadata["change_summary"] = change_summary.strip()
+        capability_keys = [capability.key for capability in source.capabilities]
+        created = self._versions.create_version(
+            agent_id,
+            instructions=instructions if instructions is not None else source.version.instructions,
+            configuration_metadata=metadata,
+            capability_keys=capability_keys,
+            created_by=created_by,
+        )
+        return self._build_detail(definition, created)
+
+    def duplicate_agent(
+        self,
+        agent_id: UUID,
+        *,
+        project_id: UUID,
+        actor_id: str,
+        name: str | None = None,
+        key: str | None = None,
+    ) -> AgentBuilderVersionDetail:
+        definition = self._registry.get_agent(agent_id)
+        self._ensure_project_scope(definition, project_id)
+        source_version_number = definition.current_version or 1
+        source = self._versions.get_version(agent_id, source_version_number)
+        identity = copy.deepcopy(definition.configuration)
+        identity["enabled"] = True
+        identity.pop("approval", None)
+        identity["duplicated_from_agent_id"] = str(definition.id)
+        metadata = copy.deepcopy(source.version.configuration_metadata)
+        metadata.pop("approval", None)
+        metadata["change_summary"] = f"Duplicated from {definition.name} version {source_version_number}"
+        duplicate_key = (key or f"{definition.key}-copy-{uuid4().hex[:8]}")[:128]
+        duplicate_name = name or f"{definition.name} copy"
+        created = self.create_agent(
+            key=duplicate_key,
+            name=duplicate_name,
+            description=definition.description,
+            agent_type=definition.agent_type,
+            configuration=identity,
+            project_id=definition.project_id or project_id,
+            instructions=source.version.instructions,
+            capability_keys=[capability.key for capability in source.capabilities],
+            created_by=actor_id,
+            purpose=identity.get("purpose") if isinstance(identity.get("purpose"), str) else None,
+            engineering_domain=(
+                identity.get("engineering_domain")
+                if isinstance(identity.get("engineering_domain"), str)
+                else None
+            ),
+            task_types=_string_list(metadata.get("task_types")),
+            element_types=_string_list(metadata.get("element_types")),
+            supported_codes=_string_list(metadata.get("supported_codes")),
+            input_contract=metadata.get("input_contract") if isinstance(metadata.get("input_contract"), dict) else {},
+            output_contract=metadata.get("output_contract") if isinstance(metadata.get("output_contract"), dict) else {},
+            allowed_tools=_string_list(metadata.get("allowed_tools")),
+            change_summary=str(metadata.get("change_summary") or "Duplicated draft"),
+        )
+        return created
+
+    def disable_agent(
+        self,
+        agent_id: UUID,
+        *,
+        project_id: UUID,
+        actor_id: str,
+    ) -> AgentDefinition:
+        definition = self._registry.get_agent(agent_id)
+        self._ensure_project_scope(definition, project_id)
+        self._reject_archived(definition)
+        active = self._versions.get_active_version(agent_id)
+        disabled_version = active.version.version if active is not None else (definition.current_version or 1)
+        if active is not None:
+            self._versions.deactivate_version(agent_id, active.version.version)
+        self._set_enabled(agent_id, enabled=False, status=AgentDefinitionStatus.DISABLED)
+        self._publications.create(
+            agent_definition_id=agent_id,
+            agent_version=disabled_version,
+            project_id=project_id,
+            action=AgentBuilderAction.DISABLE.value,
+            status=AgentBuilderPublicationStatus.COMPLETED.value,
+            metadata={"historical_runs_retained": True},
+            created_by=actor_id,
+        )
+        return self._registry.get_agent(agent_id)
+
+    def request_enable(
+        self,
+        agent_id: UUID,
+        *,
+        target_version: int,
+        project_id: UUID,
+        actor_id: str,
+    ) -> AgentBuilderPublicationRecord:
+        definition = self._registry.get_agent(agent_id)
+        self._ensure_project_scope(definition, project_id)
+        self._reject_archived(definition)
+        detail = self._versions.get_version(agent_id, target_version)
+        if detail.version.status not in {AgentVersionStatus.INACTIVE, AgentVersionStatus.ARCHIVED}:
+            raise AgentBuilderInvalidStateError(
+                "Enable must restore a previously approved version.",
+                details={"agent_id": str(agent_id), "target_version": target_version},
+            )
+        approval = self._approval.create_request(
+            project_id,
+            requester=actor_id,
+            target_type=ApprovalTargetType.AGENT_ACTION,
+            target_action="agent.rollback",
+            summary=f"Enable assistant '{definition.name}' at version {target_version}",
+            target_object_type="agent_version",
+            target_object_id=detail.version.id,
+            metadata={
+                "agent_definition_id": str(agent_id),
+                "target_version": target_version,
+            },
+        )
+        return self._publications.create(
+            agent_definition_id=agent_id,
+            agent_version=target_version,
+            project_id=project_id,
+            action=AgentBuilderAction.ENABLE.value,
+            status=AgentBuilderPublicationStatus.PENDING_APPROVAL.value,
+            approval_request_id=approval.id,
+            created_by=actor_id,
+        )
+
+    def archive_agent(self, agent_id: UUID) -> AgentDefinition:
+        return self._registry.archive_agent(agent_id)
+
     def list_publications(self, agent_id: UUID) -> list[AgentBuilderPublicationRecord]:
         self._registry.get_agent(agent_id)
         return self._publications.list_for_definition(agent_id)
@@ -427,13 +609,65 @@ class AgentBuilderService:
     ) -> AgentBuilderVersionDetail:
         if validation is None:
             validation = self.validate_version(definition.id, version_detail.version.version)
+        publications = self._publications.list_for_definition(definition.id)
+        publication_status = None
+        for publication in publications:
+            if (
+                publication.agent_version == version_detail.version.version
+                and publication.action == AgentBuilderAction.PUBLISH.value
+            ):
+                publication_status = publication.status
+                break
+        approval = (version_detail.version.configuration_metadata or {}).get("approval") or {}
+        approval_status = approval.get("status") if isinstance(approval, dict) else None
+        lifecycle = resolve_product_lifecycle(
+            version_detail.version.status.value,
+            publication_status=publication_status,
+            approval_status=approval_status if isinstance(approval_status, str) else None,
+        )
         return AgentBuilderVersionDetail(
             definition=definition,
             version=version_detail,
             validation=validation,
+            lifecycle=lifecycle,
         )
+
+    def _set_enabled(
+        self,
+        agent_id: UUID,
+        *,
+        enabled: bool,
+        status: AgentDefinitionStatus,
+    ) -> None:
+        definition = self._registry.get_agent(agent_id)
+        configuration = dict(definition.configuration)
+        configuration["enabled"] = enabled
+        self._definitions.update(agent_id, configuration=configuration)
+        self._definitions.update_status(agent_id, status)
+
+    @staticmethod
+    def _reject_archived(definition: AgentDefinition) -> None:
+        if definition.status == AgentDefinitionStatus.ARCHIVED:
+            raise InvalidLifecycleTransitionError(
+                "Archived assistants cannot be changed.",
+                details={"agent_id": str(definition.id)},
+            )
+
+    @staticmethod
+    def _reject_disabled(definition: AgentDefinition) -> None:
+        if definition.status == AgentDefinitionStatus.DISABLED or definition.configuration.get("enabled") is False:
+            raise AgentBuilderInvalidStateError(
+                "This assistant is disabled and cannot start new work.",
+                details={"agent_id": str(definition.id)},
+            )
 
     @staticmethod
     def _ensure_project_scope(definition: AgentDefinition, project_id: UUID) -> None:
         if definition.project_id is not None and definition.project_id != project_id:
             raise ProjectAgentScopeError(definition.id, project_id)
+
+
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]
