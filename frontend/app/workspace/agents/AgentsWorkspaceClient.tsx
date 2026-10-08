@@ -23,6 +23,7 @@ import { filesForProject, productionRunAllowed } from "@/lib/engineering-workspa
 import { listCadDrawings, type CadDrawing } from "@/lib/cad";
 import { RequestPlanPanel } from "@/components/agents/RequestPlanPanel";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
 export default function AgentsWorkspaceClient() {
@@ -343,7 +344,12 @@ export default function AgentsWorkspaceClient() {
       <section>
         <header className="section-header">
           <h3>Drawings and schedules</h3>
-          <p className="muted">Generated CAD records for this project. Empty means none have been stored.</p>
+          <p className="muted">
+            Generated CAD records for this project. Empty means none have been stored.{" "}
+            {selectedProjectId ? (
+              <Link href={`/workspace/cad?project=${selectedProjectId}`}>Open the PEM drawing set</Link>
+            ) : null}
+          </p>
         </header>
         {drawings.length === 0 ? (
           <p className="muted">No generated drawings are stored for this project.</p>
