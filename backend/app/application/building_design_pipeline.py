@@ -7,6 +7,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from app.application.building_design_assembler import AssembledBuilding, BuildingDesignAssembler
+from app.domain.models.building_brief import BuildingBrief
 from app.application.cad_generation_service import CadGenerationService
 from app.application.code_engine_service import CodeEngineService
 from app.application.human_approval_service import HumanApprovalService
@@ -94,6 +95,50 @@ class BuildingDesignPipeline:
             project_name=project.name,
             max_iterations=max_iterations,
         )
+        return self._commit_assembled(
+            project_id,
+            assembled,
+            brief_text=brief_text,
+            created_by=created_by,
+            generate_drawings=generate_drawings,
+        )
+
+    def generate_from_structured_brief(
+        self,
+        project_id: UUID,
+        brief: BuildingBrief,
+        *,
+        created_by: str | None = None,
+        max_iterations: int = 5,
+        generate_drawings: bool = True,
+    ) -> BuildingPipelineResult:
+        """Persist a model built from explicit brief fields, not a re-parsed sentence."""
+        project = self._projects.get_project(project_id)
+        if project is None:
+            raise ProjectNotFoundError(project_id)
+        assembled = self._assembler.assemble(
+            brief,
+            project_id=project_id,
+            project_name=project.name,
+            max_iterations=max_iterations,
+        )
+        return self._commit_assembled(
+            project_id,
+            assembled,
+            brief_text=brief.raw_text,
+            created_by=created_by,
+            generate_drawings=generate_drawings,
+        )
+
+    def _commit_assembled(
+        self,
+        project_id: UUID,
+        assembled: AssembledBuilding,
+        *,
+        brief_text: str,
+        created_by: str | None,
+        generate_drawings: bool,
+    ) -> BuildingPipelineResult:
         if assembled.status == "WAITING_FOR_INPUT":
             return BuildingPipelineResult(
                 assembled=assembled,

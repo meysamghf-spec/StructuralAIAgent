@@ -98,7 +98,25 @@ class CoordinationService:
             start = points.get(member.start_point_id or "")
             end = points.get(member.end_point_id or "")
             if start is None or end is None:
+                conflicts.append(
+                    CoordinationConflict(
+                        "WARNING",
+                        "MISSING_SUPPORT",
+                        f"{member.id} is missing a start or end point.",
+                        [member.id],
+                    )
+                )
                 continue
+            span = ((end.x - start.x) ** 2 + (end.y - start.y) ** 2) ** 0.5
+            if span > 8.0:
+                conflicts.append(
+                    CoordinationConflict(
+                        "WARNING",
+                        "EXCESSIVE_SPAN",
+                        f"{member.id} spans {span:.2f} m, which exceeds the 8 m review threshold.",
+                        [member.id],
+                    )
+                )
             for plan in building.floor_plans:
                 if plan.level_id != member.level_id:
                     continue
@@ -112,6 +130,33 @@ class CoordinationService:
                                 [member.id, door.id],
                             )
                         )
+                for space in plan.spaces:
+                    if space.usage not in (SpaceUsage.STAIR, SpaceUsage.ELEVATOR):
+                        continue
+                    if _segment_crosses_opening(start, end, space.boundary.points):
+                        conflicts.append(
+                            CoordinationConflict(
+                                "WARNING",
+                                "BEAM_THROUGH_OPENING",
+                                f"{member.id} crosses {space.usage.value} opening {space.id}.",
+                                [member.id, space.id],
+                            )
+                        )
+        slab_levels = {
+            member.level_id
+            for member in structural.members.members
+            if member.member_type is MemberType.SLAB and member.level_id
+        }
+        for plan in building.floor_plans:
+            if plan.level_id and plan.level_id not in slab_levels and plan.boundary.area > 0:
+                conflicts.append(
+                    CoordinationConflict(
+                        "WARNING",
+                        "UNSUPPORTED_FLOOR",
+                        f"{plan.name} has no slab member at level {plan.level_id}.",
+                        [plan.id],
+                    )
+                )
         hard = sum(1 for item in conflicts if item.severity == "HARD_CONFLICT")
         soft = sum(1 for item in conflicts if item.severity == "SOFT_CONFLICT")
         return CoordinationResult(conflicts=conflicts, hard_count=hard, soft_count=soft)
@@ -142,6 +187,16 @@ def _on_boundary(point: PointDefinition, vertices, tol: float = 0.20) -> bool:
         if _dist_point_segment(point.x, point.y, a.x, a.y, b.x, b.y) <= tol:
             return True
     return False
+
+
+def _segment_crosses_opening(start: PointDefinition, end: PointDefinition, vertices) -> bool:
+    midpoint = PointDefinition(
+        id="mid",
+        x=(start.x + end.x) / 2.0,
+        y=(start.y + end.y) / 2.0,
+        z=0.0,
+    )
+    return _inside_polygon(midpoint, vertices) and not _on_boundary(midpoint, vertices, tol=0.05)
 
 
 def _segment_near_point(start: PointDefinition, end: PointDefinition, x: float, y: float, tol: float) -> bool:

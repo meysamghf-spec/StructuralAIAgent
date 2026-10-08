@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { AgentExecutionSummary } from "../lib/api";
 import {
+  buildArchitecturalBriefPayload,
   buildEngineeringBriefPayload,
+  emptyArchitecturalBrief,
   emptyEngineeringBrief,
   structuralWorkflowGlance,
 } from "../lib/structural-workflow";
@@ -81,5 +83,18 @@ describe("engineering brief payload", () => {
     expect(payload.design_code.origin).toBe("UNAVAILABLE");
     expect(Object.keys(payload)).toContain("seismic_assumptions");
     expect(Object.keys(payload)).toContain("wind_assumptions");
+  });
+
+  it("sends the architectural brief with provenance and leaves blanks unavailable", () => {
+    const fields = emptyArchitecturalBrief();
+    fields.plot_length_m = { value: "22", origin: "USER_PROVIDED" };
+    fields.stairs = { value: "required", origin: "USER_PROVIDED" };
+    fields.accessibility = { value: "  ", origin: "ASSUMED" };
+    const payload = buildArchitecturalBriefPayload(fields);
+    expect(payload.plot_length_m).toEqual({ value: "22", origin: "USER_PROVIDED" });
+    expect(payload.stairs).toEqual({ value: "required", origin: "USER_PROVIDED" });
+    expect(payload.accessibility).toEqual({ value: null, origin: "UNAVAILABLE" });
+    expect(payload.elevator.origin).toBe("UNAVAILABLE");
+    expect(Object.keys(payload)).toContain("facade");
   });
 });

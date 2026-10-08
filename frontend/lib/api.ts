@@ -174,6 +174,7 @@ export type CreateAgentExecutionRequest = {
     apply_to_pem?: boolean;
     solver?: string;
     engineering_brief?: Record<string, string | number | boolean | null | { value: string | number | boolean | null; origin: string }>;
+    architectural_brief?: Record<string, string | number | boolean | null | { value: string | number | boolean | null; origin: string }>;
   };
 };
 
