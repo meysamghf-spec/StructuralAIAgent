@@ -91,10 +91,16 @@ def run_concrete_beam_design(
             "checks": [],
         }
 
-    width_in = float(parameters.get("width_in") or section.width or 12.0)
-    depth_in = float(parameters.get("depth_in") or section.depth or 18.0)
-    fc_psi = float(material.compressive_strength or 4000.0)
-    fy_psi = float(parameters.get("rebar_fy_psi", 60000.0))
+    assumptions: list[str] = []
+    width_in = _dimension_inches(parameters, section, "width_in", "width", 12.0, assumptions, "width")
+    depth_in = _dimension_inches(parameters, section, "depth_in", "depth", 18.0, assumptions, "depth")
+    fc_psi = _concrete_fc_psi(material, assumptions)
+    fy_psi, fy_note = _rebar_fy_psi(pem, parameters)
+    if fy_note:
+        assumptions.append(fy_note)
+    unit_note = engineering_results.get("design_unit_assumption")
+    if isinstance(unit_note, str) and unit_note:
+        assumptions.append(unit_note)
 
     checks: list[dict[str, Any]] = []
     governing_utilization = 0.0
@@ -149,6 +155,7 @@ def run_concrete_beam_design(
         "checks": checks,
         "governing_utilization": round(governing_utilization, 4),
         "calculation_method": "deterministic_code_engine",
+        "assumptions": assumptions,
     }
 
 
@@ -434,6 +441,82 @@ def select_target_member(
         if member.member_type in member_types:
             return member
     return None
+
+
+def _dimension_inches(
+    parameters: dict[str, Any],
+    section: BeamSection | ColumnSection | None,
+    parameter_name: str,
+    axis: str,
+    default: float,
+    assumptions: list[str],
+    label: str,
+) -> float:
+    explicit = parameters.get(parameter_name)
+    if isinstance(explicit, (int, float)) and not isinstance(explicit, bool):
+        return float(explicit)
+    converted = _section_inches(section, axis)
+    if converted is not None:
+        if section is not None and section.metadata.get("units") == "m":
+            assumptions.append(f"Beam {label} was converted from metres to inches.")
+        return converted
+    assumptions.append(f"Beam {label} was assumed as {default:g} in because the section has no {label}.")
+    return default
+
+
+def _concrete_fc_psi(material: ConcreteMaterial, assumptions: list[str]) -> float:
+    units = material.metadata.get("units") if isinstance(material.metadata, dict) else None
+    strength_unit = units.get("strength") if isinstance(units, dict) else None
+    if material.compressive_strength is None:
+        assumptions.append("Concrete f'c was assumed as 4000 psi because the material has no strength.")
+        return 4000.0
+    if strength_unit == "MPa":
+        psi = float(material.compressive_strength) * 145.0377377
+        assumptions.append(
+            f"Concrete f'c was converted from {material.compressive_strength} MPa to {psi:.1f} psi."
+        )
+        return psi
+    return float(material.compressive_strength)
+
+
+def _rebar_fy_psi(pem: ProjectEngineeringModel, parameters: dict[str, Any]) -> tuple[float, str | None]:
+    explicit = parameters.get("rebar_fy_psi")
+    if isinstance(explicit, (int, float)) and not isinstance(explicit, bool):
+        return float(explicit), None
+    bars = pem.structural_model.materials.reinforcement
+    if not bars or bars[0].yield_strength is None:
+        return 60000.0, (
+            "Reinforcement fy was assumed as 60000 psi because the PEM has no reinforcement yield strength."
+        )
+    bar = bars[0]
+    units = bar.metadata.get("units") if isinstance(bar.metadata, dict) else None
+    strength_unit = units.get("strength") if isinstance(units, dict) else None
+    if strength_unit == "MPa" and bar.yield_strength is not None:
+        psi = float(bar.yield_strength) * 145.0377377
+        return psi, (
+            f"Reinforcement fy was converted from {bar.yield_strength} MPa on {bar.id} to {psi:.1f} psi."
+        )
+    return float(bar.yield_strength or 60000.0), None
+
+
+def _section_inches(section: BeamSection | ColumnSection | None, axis: str) -> float | None:
+    if section is None:
+        return None
+    raw = getattr(section, axis, None)
+    if raw is None:
+        return None
+    if section.metadata.get("units") == "m":
+        return float(raw) * 39.3700787
+    return float(raw)
+
+
+def _stress_psi(value: float | None, metadata: dict[str, Any], *, default: float) -> float:
+    if value is None:
+        return default
+    units = metadata.get("units") if isinstance(metadata, dict) else None
+    if isinstance(units, dict) and units.get("strength") == "MPa":
+        return float(value) * 145.0377377
+    return float(value)
 
 
 def _find_beam_section(pem: ProjectEngineeringModel, section_id: str) -> BeamSection | None:

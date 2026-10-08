@@ -1199,6 +1199,7 @@ class StructuralEngineeringAgentHandler:
             user_request=user_request,
             parameters=parameters,
             actor_id=context.get("actor_id") if isinstance(context.get("actor_id"), str) else None,
+            context=context,
         )
         pem_record = package.get("pem") if isinstance(package.get("pem"), dict) else {}
         if pem_record.get("version") is not None:

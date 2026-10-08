@@ -11,6 +11,7 @@ _VENDOR_TYPE_MAP = {
     "joint_reactions": "joint_reactions",
     "member_forces": "frame_forces",
     "frame_force": "frame_forces",
+    "frame_forces": "frame_forces",
     "joint_displacements": "joint_displacements",
     "joint_displ": "joint_displacements",
     "story_drifts": "story_drifts",

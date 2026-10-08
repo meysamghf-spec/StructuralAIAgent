@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { AgentExecutionSummary } from "../lib/api";
-import { structuralWorkflowGlance } from "../lib/structural-workflow";
+import {
+  buildEngineeringBriefPayload,
+  emptyEngineeringBrief,
+  structuralWorkflowGlance,
+} from "../lib/structural-workflow";
 
 function execution(workflow: Record<string, unknown> | undefined): AgentExecutionSummary {
   return {
@@ -61,5 +65,21 @@ describe("structural workflow glance", () => {
     expect(glance?.design).toBe("NOT_RUN");
     expect(glance?.qa).toBe("NOT_RUN");
     expect(glance?.output).toBe("Not generated");
+  });
+});
+
+describe("engineering brief payload", () => {
+  it("sends each field with provenance and leaves blanks unavailable", () => {
+    const fields = emptyEngineeringBrief();
+    fields.project_type = { value: "residential", origin: "USER_PROVIDED" };
+    fields.story_heights = { value: "3, 3, 3", origin: "ASSUMED" };
+    fields.loads = { value: "   ", origin: "CALCULATED" };
+    const payload = buildEngineeringBriefPayload(fields);
+    expect(payload.project_type).toEqual({ value: "residential", origin: "USER_PROVIDED" });
+    expect(payload.story_heights).toEqual({ value: "3, 3, 3", origin: "ASSUMED" });
+    expect(payload.loads).toEqual({ value: null, origin: "UNAVAILABLE" });
+    expect(payload.design_code.origin).toBe("UNAVAILABLE");
+    expect(Object.keys(payload)).toContain("seismic_assumptions");
+    expect(Object.keys(payload)).toContain("wind_assumptions");
   });
 });
