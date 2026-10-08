@@ -12,6 +12,7 @@ import {
 import {
   downloadDrawingSetPdf,
   getDrawingSetIndex,
+  groupDrawingSet,
   pendingSheetsAreAbsent,
   sheetAvailabilityLabel,
   type DrawingSetIndex,
@@ -51,28 +52,59 @@ export default function CadWorkspaceClient() {
   const { projects, selectedProjectId, setSelectedProjectId, loading, error, setError } =
     useProjectScope(searchParams.get("project"));
   const [capability, setCapability] = useState<CadCapability | null>(null);
+  const [capabilityState, setCapabilityState] = useState<"loading" | "ready" | "unavailable">("loading");
   const [drawings, setDrawings] = useState<CadDrawing[]>([]);
   const [drawingType, setDrawingType] = useState("FRAMING_PLAN");
   const [outputFormat, setOutputFormat] = useState<"DXF" | "DWG">("DXF");
   const [busy, setBusy] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [drawingSet, setDrawingSet] = useState<DrawingSetIndex | null>(null);
+  const [drawingSetError, setDrawingSetError] = useState<string | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const loadCadContext = useCallback(async () => {
-    const capabilityData = await getAutocadCapability();
-    setCapability(capabilityData);
+    setCapabilityState("loading");
+    const capabilityPromise = getAutocadCapability()
+      .then((capabilityData) => {
+        setCapability(capabilityData);
+        setCapabilityState("ready");
+      })
+      .catch(() => {
+        setCapability(null);
+        setCapabilityState("unavailable");
+      });
     if (!selectedProjectId) {
       setDrawings([]);
       setDrawingSet(null);
+      setDrawingSetError(null);
+      setHistoryError(null);
+      await capabilityPromise;
       return;
     }
-    const [drawingData, drawingSetData] = await Promise.all([
-      listCadDrawings(selectedProjectId),
-      getDrawingSetIndex(selectedProjectId),
+    await Promise.all([
+      capabilityPromise,
+      listCadDrawings(selectedProjectId).then(
+        (drawingData) => {
+          setDrawings(drawingData);
+          setHistoryError(null);
+        },
+        (err: unknown) => {
+          setDrawings([]);
+          setHistoryError(err instanceof Error ? err.message : "CAD history could not be loaded");
+        },
+      ),
+      getDrawingSetIndex(selectedProjectId).then(
+        (drawingSetData) => {
+          setDrawingSet(drawingSetData);
+          setDrawingSetError(null);
+        },
+        (err: unknown) => {
+          setDrawingSet(null);
+          setDrawingSetError(err instanceof Error ? err.message : "PEM drawing set could not be loaded");
+        },
+      ),
     ]);
-    setDrawings(drawingData);
-    setDrawingSet(drawingSetData);
   }, [selectedProjectId]);
 
   useEffect(() => {
@@ -113,7 +145,7 @@ export default function CadWorkspaceClient() {
         selectedProjectId={selectedProjectId}
         onProjectChange={setSelectedProjectId}
         loading={loading}
-        description="Generate engineering drawings from your validated model. DXF export works without AutoCAD."
+        description="The PEM drawing set is generated from the current project snapshot. A separate CAD export can be DXF without AutoCAD."
       />
 
       {error ? <p className="workspace-error">{error}</p> : null}
@@ -129,39 +161,23 @@ export default function CadWorkspaceClient() {
             </p>
           </>
         ) : (
-          <p>Checking AutoCAD availability…</p>
+          <p>
+            {capabilityState === "loading"
+              ? "Checking AutoCAD availability…"
+              : "AutoCAD status was not loaded. DXF export and the PEM drawing set do not require it."}
+          </p>
         )}
       </section>
 
       <section className="workspace-card" aria-label="PEM drawing set">
         <h2>Drawing set from the current PEM</h2>
+        {drawingSetError ? <p className="workspace-error">{drawingSetError}</p> : null}
         {drawingSet && drawingSet.project_id === selectedProjectId ? (
           <>
             <p className="workspace-meta">
               PEM version {drawingSet.pem_version} · snapshot {drawingSet.pem_snapshot_id}
             </p>
-            <ul className="workspace-list">
-              {drawingSet.sheets.map((sheet) => (
-                <li key={sheet.sheet_number} className="workspace-list-item">
-                  <strong>
-                    {sheet.sheet_number} {sheet.title}
-                  </strong>
-                  <div>{sheetAvailabilityLabel(sheet.availability)}</div>
-                </li>
-              ))}
-            </ul>
-            {pendingSheetsAreAbsent(drawingSet.sheets, drawingSet.pending_sheets) ? (
-              <ul className="workspace-list">
-                {drawingSet.pending_sheets.map((sheet) => (
-                  <li key={sheet.sheet_number} className="workspace-list-item">
-                    <strong>
-                      {sheet.sheet_number} {sheet.title}
-                    </strong>
-                    <div>{sheetAvailabilityLabel(sheet.availability)}</div>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
+            <DrawingSetGroupsView index={drawingSet} />
             <button
               type="button"
               disabled={pdfBusy}
@@ -178,6 +194,8 @@ export default function CadWorkspaceClient() {
               {pdfBusy ? "Preparing PDF…" : "Download drawing set PDF"}
             </button>
           </>
+        ) : drawingSetError ? null : selectedProjectId ? (
+          <p>Reading the current PEM drawing set…</p>
         ) : (
           <p>Select a project to read its PEM drawing set.</p>
         )}
@@ -219,7 +237,8 @@ export default function CadWorkspaceClient() {
 
       <section className="workspace-card">
         <h2>Drawing history</h2>
-        {drawings.length === 0 ? (
+        {historyError ? <p className="workspace-error">{historyError}</p> : null}
+        {historyError ? null : drawings.length === 0 ? (
           <p>No drawings yet. Generate a framing, column, beam, or slab plan to get started.</p>
         ) : (
           <ul className="workspace-list">
@@ -237,6 +256,53 @@ export default function CadWorkspaceClient() {
           </ul>
         )}
       </section>
+    </div>
+  );
+}
+
+function DrawingSetGroupsView({ index }: { index: DrawingSetIndex }) {
+  const groups = groupDrawingSet(index);
+  return (
+    <>
+      <SheetGroup title="Schedules" sheets={groups.schedules} />
+      <SheetGroup title="Structural sheets" sheets={groups.structural} />
+      <SheetGroup title="Architectural sheets" sheets={groups.architectural} />
+      {pendingSheetsAreAbsent(index.sheets, groups.pending) ? (
+        <div>
+          <h3>Not generated</h3>
+          <ul className="workspace-list">
+            {groups.pending.map((sheet) => (
+              <li key={sheet.sheet_number} className="workspace-list-item">
+                <strong>
+                  {sheet.sheet_number} {sheet.title}
+                </strong>
+                <div>{sheetAvailabilityLabel(sheet.availability)}</div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function SheetGroup({ title, sheets }: { title: string; sheets: DrawingSetIndex["sheets"] }) {
+  if (sheets.length === 0) {
+    return null;
+  }
+  return (
+    <div>
+      <h3>{title}</h3>
+      <ul className="workspace-list">
+        {sheets.map((sheet) => (
+          <li key={sheet.sheet_number} className="workspace-list-item">
+            <strong>
+              {sheet.sheet_number} {sheet.title}
+            </strong>
+            <div>{sheetAvailabilityLabel(sheet.availability)}</div>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

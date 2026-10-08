@@ -44,6 +44,24 @@ export function sheetAvailabilityLabel(availability: string): string {
   return availability;
 }
 
+export type DrawingSetGroups = {
+  schedules: DrawingSheetIndexItem[];
+  structural: DrawingSheetIndexItem[];
+  architectural: DrawingSheetIndexItem[];
+  pending: PendingDrawingSheet[];
+};
+
+export function groupDrawingSet(index: DrawingSetIndex): DrawingSetGroups {
+  return {
+    schedules: index.sheets.filter((sheet) => sheet.schedule_family),
+    structural: index.sheets.filter(
+      (sheet) => !sheet.schedule_family && sheet.discipline === "STRUCTURAL",
+    ),
+    architectural: index.sheets.filter((sheet) => sheet.discipline === "ARCHITECTURAL"),
+    pending: index.pending_sheets,
+  };
+}
+
 export function pendingSheetsAreAbsent(
   sheets: { sheet_number: string }[],
   pending: { sheet_number: string; availability: string }[],
