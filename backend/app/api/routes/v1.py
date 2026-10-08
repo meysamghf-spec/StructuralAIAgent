@@ -14,6 +14,7 @@ from app.api.routes.engineering import router as engineering_router
 from app.api.routes.engineering_learning import router as engineering_learning_router
 from app.api.routes.engineering_results import router as engineering_results_router
 from app.api.routes.cad import router as cad_router
+from app.api.routes.drawing_set import router as drawing_set_router
 from app.api.routes.files import router as files_router
 from app.api.routes.human_approval import router as human_approval_router
 from app.api.routes.integrations import router as integrations_router
@@ -57,4 +58,5 @@ v1_router.include_router(engineering_router)
 v1_router.include_router(engineering_learning_router)
 v1_router.include_router(engineering_results_router)
 v1_router.include_router(cad_router)
+v1_router.include_router(drawing_set_router)
 v1_router.include_router(payments_router)

@@ -10,12 +10,20 @@ import {
   type CadDrawing,
 } from "@/lib/cad";
 import {
+  downloadDrawingSetPdf,
+  getDrawingSetIndex,
+  pendingSheetsAreAbsent,
+  sheetAvailabilityLabel,
+  type DrawingSetIndex,
+} from "@/lib/drawing-set";
+import {
   getCadNextStep,
   getCadStatusLabel,
   getCadValidationLabel,
   getDrawingTypeLabel,
 } from "@/lib/cad-workspace";
 import { formatWorkspaceDate } from "@/lib/workspace";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 const DRAWING_TYPES = [
@@ -39,13 +47,16 @@ const DRAWING_TYPES = [
 ];
 
 export default function CadWorkspaceClient() {
+  const searchParams = useSearchParams();
   const { projects, selectedProjectId, setSelectedProjectId, loading, error, setError } =
-    useProjectScope();
+    useProjectScope(searchParams.get("project"));
   const [capability, setCapability] = useState<CadCapability | null>(null);
   const [drawings, setDrawings] = useState<CadDrawing[]>([]);
   const [drawingType, setDrawingType] = useState("FRAMING_PLAN");
   const [outputFormat, setOutputFormat] = useState<"DXF" | "DWG">("DXF");
   const [busy, setBusy] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [drawingSet, setDrawingSet] = useState<DrawingSetIndex | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const loadCadContext = useCallback(async () => {
@@ -53,10 +64,15 @@ export default function CadWorkspaceClient() {
     setCapability(capabilityData);
     if (!selectedProjectId) {
       setDrawings([]);
+      setDrawingSet(null);
       return;
     }
-    const drawingData = await listCadDrawings(selectedProjectId);
+    const [drawingData, drawingSetData] = await Promise.all([
+      listCadDrawings(selectedProjectId),
+      getDrawingSetIndex(selectedProjectId),
+    ]);
     setDrawings(drawingData);
+    setDrawingSet(drawingSetData);
   }, [selectedProjectId]);
 
   useEffect(() => {
@@ -114,6 +130,56 @@ export default function CadWorkspaceClient() {
           </>
         ) : (
           <p>Checking AutoCAD availability…</p>
+        )}
+      </section>
+
+      <section className="workspace-card" aria-label="PEM drawing set">
+        <h2>Drawing set from the current PEM</h2>
+        {drawingSet && drawingSet.project_id === selectedProjectId ? (
+          <>
+            <p className="workspace-meta">
+              PEM version {drawingSet.pem_version} · snapshot {drawingSet.pem_snapshot_id}
+            </p>
+            <ul className="workspace-list">
+              {drawingSet.sheets.map((sheet) => (
+                <li key={sheet.sheet_number} className="workspace-list-item">
+                  <strong>
+                    {sheet.sheet_number} {sheet.title}
+                  </strong>
+                  <div>{sheetAvailabilityLabel(sheet.availability)}</div>
+                </li>
+              ))}
+            </ul>
+            {pendingSheetsAreAbsent(drawingSet.sheets, drawingSet.pending_sheets) ? (
+              <ul className="workspace-list">
+                {drawingSet.pending_sheets.map((sheet) => (
+                  <li key={sheet.sheet_number} className="workspace-list-item">
+                    <strong>
+                      {sheet.sheet_number} {sheet.title}
+                    </strong>
+                    <div>{sheetAvailabilityLabel(sheet.availability)}</div>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <button
+              type="button"
+              disabled={pdfBusy}
+              onClick={() => {
+                setPdfBusy(true);
+                setError(null);
+                void downloadDrawingSetPdf(drawingSet.project_id, drawingSet.pem_version)
+                  .catch((err: unknown) => {
+                    setError(err instanceof Error ? err.message : "Drawing set download failed");
+                  })
+                  .finally(() => setPdfBusy(false));
+              }}
+            >
+              {pdfBusy ? "Preparing PDF…" : "Download drawing set PDF"}
+            </button>
+          </>
+        ) : (
+          <p>Select a project to read its PEM drawing set.</p>
         )}
       </section>
 
