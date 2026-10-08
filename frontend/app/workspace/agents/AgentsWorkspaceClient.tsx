@@ -21,7 +21,11 @@ import {
 } from "@/lib/api";
 import { filesForProject, productionRunAllowed } from "@/lib/engineering-workspace";
 import {
+  ARCHITECTURAL_BRIEF_FIELDS,
+  applyBriefPatch,
+  buildArchitecturalBriefPayload,
   buildEngineeringBriefPayload,
+  emptyArchitecturalBrief,
   emptyEngineeringBrief,
   ENGINEERING_BRIEF_FIELDS,
   BRIEF_ORIGINS,
@@ -58,6 +62,7 @@ export default function AgentsWorkspaceClient() {
   const [selectedExecutionId, setSelectedExecutionId] = useState<string | null>(null);
   const [applyBrief, setApplyBrief] = useState(false);
   const [engineeringBrief, setEngineeringBrief] = useState(emptyEngineeringBrief);
+  const [architecturalBrief, setArchitecturalBrief] = useState(emptyArchitecturalBrief);
 
   const refreshProjectContext = useCallback(async (projectId: string) => {
     if (!projectId) {
@@ -183,16 +188,14 @@ export default function AgentsWorkspaceClient() {
     key: EngineeringBriefFieldKey,
     patch: { value?: string; origin?: BriefOrigin },
   ) {
-    setEngineeringBrief((current) => {
-      const next = { ...current[key], ...patch };
-      if (patch.value !== undefined && patch.origin === undefined) {
-        next.origin = patch.value.trim() ? (current[key].origin === "UNAVAILABLE" ? "USER_PROVIDED" : current[key].origin) : "UNAVAILABLE";
-      }
-      if (!next.value.trim()) {
-        next.origin = "UNAVAILABLE";
-      }
-      return { ...current, [key]: next };
-    });
+    setEngineeringBrief((current) => applyBriefPatch(current, key, patch));
+  }
+
+  function updateArchitecturalField(
+    key: string,
+    patch: { value?: string; origin?: BriefOrigin },
+  ) {
+    setArchitecturalBrief((current) => applyBriefPatch(current, key, patch));
   }
 
   async function runStructuralAction(operation: string) {
@@ -208,8 +211,12 @@ export default function AgentsWorkspaceClient() {
         agent_type: "STRUCTURAL_ENGINEERING_AGENT",
         parameters: {
           operation,
-          apply_to_pem: operation === "prepare" || operation === "workflow" ? applyBrief : false,
+          apply_to_pem:
+            operation === "prepare" || operation === "workflow" || operation === "production"
+              ? applyBrief
+              : false,
           engineering_brief: buildEngineeringBriefPayload(engineeringBrief),
+          architectural_brief: buildArchitecturalBriefPayload(architecturalBrief),
         },
       });
       await refreshProjectContext(selectedProjectId);
@@ -303,6 +310,7 @@ export default function AgentsWorkspaceClient() {
           {(
             [
               ["workflow", "Run workflow"],
+              ["production", "Run production package"],
               ["prepare", "Prepare"],
               ["validate", "Validate"],
               ["analyze", "Analyze"],
@@ -328,8 +336,36 @@ export default function AgentsWorkspaceClient() {
             checked={applyBrief}
             onChange={(event) => setApplyBrief(event.target.checked)}
           />{" "}
-          Prepare and Run workflow may write this brief into the PEM. A chat message alone does not.
+          Prepare, Run workflow, and Run production package may write this brief into the PEM. A chat message alone does not.
         </label>
+        <form className="brief-form" aria-label="Architectural brief">
+          {ARCHITECTURAL_BRIEF_FIELDS.map((field) => (
+            <label key={field.key} className="brief-field">
+              <span>{field.label}</span>
+              <span className="brief-field-controls">
+                <input
+                  className="input"
+                  value={architecturalBrief[field.key].value}
+                  onChange={(event) => updateArchitecturalField(field.key, { value: event.target.value })}
+                />
+                <select
+                  className="input"
+                  aria-label={`${field.label} provenance`}
+                  value={architecturalBrief[field.key].origin}
+                  onChange={(event) =>
+                    updateArchitecturalField(field.key, { origin: event.target.value as BriefOrigin })
+                  }
+                >
+                  {BRIEF_ORIGINS.map((origin) => (
+                    <option key={origin} value={origin}>
+                      {origin}
+                    </option>
+                  ))}
+                </select>
+              </span>
+            </label>
+          ))}
+        </form>
         <form className="brief-form" aria-label="Engineering brief">
           {ENGINEERING_BRIEF_FIELDS.map((field) => (
             <label key={field.key} className="brief-field">

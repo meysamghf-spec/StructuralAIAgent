@@ -221,6 +221,17 @@ def execute_structural_workflow(
 ) -> dict[str, Any]:
     params = parameters if isinstance(parameters, dict) else {}
     operation = str(params.get("operation") or "workflow").strip().lower()
+    if operation == "production":
+        from app.application.production_engineering_workflow import execute_production_workflow
+
+        return execute_production_workflow(
+            services=services,
+            project_id=project_id,
+            user_request=user_request,
+            parameters=params,
+            actor_id=actor_id,
+            context=context,
+        )
     brief = normalize_engineering_brief(params)
     from app.application.service_factory import build_pem_service
 

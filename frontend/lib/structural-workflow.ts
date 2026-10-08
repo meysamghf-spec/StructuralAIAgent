@@ -48,8 +48,76 @@ export function emptyEngineeringBrief(): Record<EngineeringBriefFieldKey, BriefF
 export function buildEngineeringBriefPayload(
   fields: Record<string, BriefFieldState>,
 ): Record<string, { value: string | null; origin: BriefOrigin }> {
+  return buildBriefPayload(fields, ENGINEERING_BRIEF_FIELDS);
+}
+
+export const ARCHITECTURAL_BRIEF_FIELDS = [
+  { key: "project_type", label: "Project type" },
+  { key: "location", label: "Location" },
+  { key: "plot_length_m", label: "Plot length (m)" },
+  { key: "plot_width_m", label: "Plot width (m)" },
+  { key: "frontage_m", label: "Frontage (m)" },
+  { key: "setback_front_m", label: "Front setback (m)" },
+  { key: "setback_rear_m", label: "Rear setback (m)" },
+  { key: "setback_side_m", label: "Side setback (m)" },
+  { key: "number_of_floors", label: "Number of floors" },
+  { key: "story_heights", label: "Floor heights" },
+  { key: "required_rooms", label: "Required rooms" },
+  { key: "room_areas", label: "Room areas" },
+  { key: "circulation", label: "Circulation" },
+  { key: "parking_space_count", label: "Parking" },
+  { key: "stairs", label: "Stairs" },
+  { key: "elevator", label: "Elevator" },
+  { key: "shafts", label: "Shafts" },
+  { key: "entrances", label: "Entrances" },
+  { key: "accessibility", label: "Accessibility" },
+  { key: "architectural_preferences", label: "Architectural preferences" },
+  { key: "facade", label: "Facade" },
+  { key: "engineer_notes", label: "Engineer notes" },
+  { key: "units", label: "Units" },
+  { key: "has_piloti", label: "Piloti" },
+  { key: "apartments_per_floor", label: "Apartments per floor" },
+  { key: "bedrooms_per_apartment", label: "Bedrooms" },
+  { key: "structural_system", label: "Structural system" },
+] as const;
+
+export function applyBriefPatch<T extends Record<string, BriefFieldState>>(
+  current: T,
+  key: string,
+  patch: { value?: string; origin?: BriefOrigin },
+): T {
+  const next = { ...current[key], ...patch };
+  if (patch.value !== undefined && patch.origin === undefined) {
+    next.origin = patch.value.trim()
+      ? current[key].origin === "UNAVAILABLE"
+        ? "USER_PROVIDED"
+        : current[key].origin
+      : "UNAVAILABLE";
+  }
+  if (!next.value.trim()) {
+    next.origin = "UNAVAILABLE";
+  }
+  return { ...current, [key]: next };
+}
+
+export function emptyArchitecturalBrief(): Record<string, BriefFieldState> {
+  return Object.fromEntries(
+    ARCHITECTURAL_BRIEF_FIELDS.map((field) => [field.key, { value: "", origin: "UNAVAILABLE" as const }]),
+  );
+}
+
+export function buildArchitecturalBriefPayload(
+  fields: Record<string, BriefFieldState>,
+): Record<string, { value: string | null; origin: BriefOrigin }> {
+  return buildBriefPayload(fields, ARCHITECTURAL_BRIEF_FIELDS);
+}
+
+function buildBriefPayload(
+  fields: Record<string, BriefFieldState>,
+  catalog: readonly { key: string }[],
+): Record<string, { value: string | null; origin: BriefOrigin }> {
   const payload: Record<string, { value: string | null; origin: BriefOrigin }> = {};
-  for (const field of ENGINEERING_BRIEF_FIELDS) {
+  for (const field of catalog) {
     const current = fields[field.key] ?? { value: "", origin: "UNAVAILABLE" as const };
     const value = current.value.trim();
     payload[field.key] = {
