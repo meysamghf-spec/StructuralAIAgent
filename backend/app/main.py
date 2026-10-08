@@ -39,7 +39,8 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     if settings.trust_proxy_headers:
-        app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
+        hosts = settings.trusted_proxy_host_list or ["*"]
+        app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=hosts)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
