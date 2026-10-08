@@ -87,6 +87,7 @@ class Settings(BaseSettings):
             issues.append("AUTH_JWT_SECRET must not use the development default in production")
         if not self.file_storage_root.strip():
             issues.append("FILE_STORAGE_ROOT must be configured in production")
+        issues.extend(self._production_provider_issues())
         if issues:
             from app.application.exceptions import SecurityConfigurationError
 
@@ -94,6 +95,30 @@ class Settings(BaseSettings):
                 "Insecure production security configuration",
                 issues=issues,
             )
+
+    def _production_provider_issues(self) -> list[str]:
+        """Stub providers must not answer or price anything in production."""
+        issues: list[str] = []
+        ai_provider = self.ai_provider.strip().lower()
+        if ai_provider in {"", "stub"}:
+            issues.append("AI_PROVIDER must not be stub in production")
+        elif ai_provider in {"openai", "openai_compatible", "openai-compatible"}:
+            api_key = self.openai_api_key.get_secret_value().strip() if self.openai_api_key else ""
+            if not api_key:
+                issues.append(
+                    "OPENAI_API_KEY must be configured when AI_PROVIDER is OpenAI-compatible"
+                )
+        else:
+            issues.append(f"AI_PROVIDER '{self.ai_provider}' is not supported in production")
+
+        rate_provider = self.exchange_rate_provider.strip().lower()
+        if rate_provider in {"", "stub"}:
+            issues.append("EXCHANGE_RATE_PROVIDER must not be stub in production")
+        elif rate_provider != "coingecko":
+            issues.append(
+                f"EXCHANGE_RATE_PROVIDER '{self.exchange_rate_provider}' is not supported in production"
+            )
+        return issues
 
     @field_validator("database_url")
     @classmethod
