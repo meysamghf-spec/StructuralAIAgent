@@ -28,6 +28,7 @@ from app.application.engineering_agent_handlers import (
     new_trace_result_id,
 )
 from app.application.engineering_learning_service import EngineeringLearningService
+from app.application.engineering_workflow_trace import engineering_workflow_trace
 from app.application.engineering_task_workflow_service import EngineeringTaskWorkflowService
 from app.application.engineering_task_execution_service import EngineeringTaskExecutionService
 from app.application.entitlement_authorization_service import EntitlementAuthorizationService
@@ -518,6 +519,7 @@ class AgentOrchestrationService:
                 "qa_status": validation_status.value,
                 "run_id": str(record.id),
                 **learning_trace,
+                **engineering_workflow_trace(agent_result.structured_output),
             }
 
             record_request_to_agent_execution(

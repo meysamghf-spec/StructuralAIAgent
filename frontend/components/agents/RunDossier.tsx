@@ -41,6 +41,50 @@ export function RunDossier({ execution }: { execution: AgentExecutionSummary }) 
         </p>
       </section>
 
+      <section aria-label="Engineering calculation">
+        <p className="result-label">Calculation</p>
+        {dossier.engineering.engineeringResultsAvailable === false ||
+        dossier.engineering.capabilityStatus === "MODEL_NOT_READY" ||
+        dossier.engineering.capabilityStatus === "REQUIRES_SOLVER" ||
+        dossier.engineering.capabilityStatus === "NOT_IMPLEMENTED" ||
+        dossier.engineering.capabilityStatus === "UNAVAILABLE" ? (
+          <p className="muted">
+            No engineering calculation was produced
+            {dossier.engineering.capabilityStatus ? ` (${dossier.engineering.capabilityStatus})` : ""}.
+          </p>
+        ) : (
+          <p className="muted">
+            {dossier.engineering.capabilityStatus
+              ? `Capability ${dossier.engineering.capabilityStatus}.`
+              : "No calculation record is attached to this run."}
+          </p>
+        )}
+        {dossier.engineering.analysisRunId ? (
+          <p className="muted">
+            <Link href={`/workspace/analysis?project=${execution.project_id}`}>
+              Analysis run {dossier.engineering.analysisRunId}
+            </Link>
+          </p>
+        ) : null}
+        {dossier.engineering.designRunId ? (
+          <p className="muted">
+            <Link href={`/workspace/design?project=${execution.project_id}`}>
+              Design run {dossier.engineering.designRunId}
+            </Link>
+          </p>
+        ) : null}
+        {dossier.engineering.resultSetId ? (
+          <p className="muted">
+            <Link href={`/workspace/results?project=${execution.project_id}`}>
+              Result set {dossier.engineering.resultSetId}
+            </Link>
+          </p>
+        ) : null}
+        {dossier.engineering.resultValidationStatus ? (
+          <p className="muted">Result validation {dossier.engineering.resultValidationStatus}</p>
+        ) : null}
+      </section>
+
       <section aria-label="Learning context">
         <p className="result-label">Learning context</p>
         {dossier.learning ? (

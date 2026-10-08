@@ -146,6 +146,24 @@ describe("engineering workspace", () => {
     expect(parameterPemIsNotAuthoritative(execution())).toBe(true);
   });
 
+  it("shows an analysis run that did not produce a calculation", () => {
+    const dossier = buildRunDossier(
+      execution({
+        traceability_metadata: {
+          analysis_run_id: "analysis-1",
+          capability_status: "MODEL_NOT_READY",
+          engineering_results_available: false,
+          pem_snapshot_id: "snapshot-1",
+          pem_version: 1,
+        },
+      }),
+    );
+    expect(dossier.engineering.analysisRunId).toBe("analysis-1");
+    expect(dossier.engineering.engineeringResultsAvailable).toBe(false);
+    expect(dossier.engineering.capabilityStatus).toBe("MODEL_NOT_READY");
+    expect(dossier.authoritative.pemSnapshotId).toBe("snapshot-1");
+  });
+
   it("reports a learning override instead of treating it as the PEM", () => {
     const dossier = buildRunDossier(
       execution({
