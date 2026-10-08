@@ -396,6 +396,82 @@ export async function getProjectMemoryContext(projectId: string): Promise<Memory
   return apiFetch<MemoryContextResponse>(`/api/v1/projects/${projectId}/memory/context`);
 }
 
+export type LearningProvenance = {
+  learning_record_id: string;
+  task_id: string;
+  agent_id: string;
+  source_snapshot_id: string;
+  source_element_ids: string[];
+  source_element_type: string;
+  engineering_result_id: string;
+  qa_result: string;
+  human_decision: string;
+  learning_scope: string;
+  project_id: string;
+  owner_account_id: string;
+};
+
+export type LearningRecordSummary = {
+  id: string;
+  project_id: string | null;
+  owner_account_id: string;
+  agent_id: string | null;
+  task_id: string | null;
+  approval_status: string;
+  learning_scope: string;
+  engineering_reason: string | null;
+  validation_result: string;
+  applicability: Record<string, unknown>;
+  provenance: LearningProvenance;
+  reviewed_by: string | null;
+  created_at: string;
+};
+
+export type LearningListResponse = {
+  records: LearningRecordSummary[];
+};
+
+export type LearningUseSummary = {
+  learning_record_id: string;
+  explanation: string;
+  created_at: string;
+};
+
+export async function listLearningRecords(projectId: string): Promise<LearningListResponse> {
+  return apiFetch<LearningListResponse>(`/api/v1/projects/${projectId}/learning`);
+}
+
+export async function reviewLearningRecord(projectId: string, recordId: string): Promise<LearningRecordSummary> {
+  return apiFetch<LearningRecordSummary>(`/api/v1/projects/${projectId}/learning/${recordId}/review`, {
+    method: "POST",
+  });
+}
+
+export async function approveLearningRecord(projectId: string, recordId: string): Promise<LearningRecordSummary> {
+  return apiFetch<LearningRecordSummary>(`/api/v1/projects/${projectId}/learning/${recordId}/approve`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export async function rejectLearningRecord(
+  projectId: string,
+  recordId: string,
+  reason: string,
+): Promise<LearningRecordSummary> {
+  return apiFetch<LearningRecordSummary>(`/api/v1/projects/${projectId}/learning/${recordId}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export async function getLearningUsedByTask(
+  projectId: string,
+  taskId: string,
+): Promise<{ task_id: string; uses: LearningUseSummary[] }> {
+  return apiFetch(`/api/v1/projects/${projectId}/learning/tasks/${taskId}`);
+}
+
 export type TraceabilityLinkSummary = {
   id: string;
   source_type: string;

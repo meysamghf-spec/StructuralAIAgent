@@ -805,3 +805,46 @@ class StructuralAnalysisFailedError(ApplicationError):
             status_code=422,
             details=details,
         )
+
+
+class LearningRecordNotFoundError(ApplicationError):
+    def __init__(self, record_id: UUID, *, project_id: UUID | None = None) -> None:
+        details = {"record_id": str(record_id)}
+        if project_id is not None:
+            details["project_id"] = str(project_id)
+        super().__init__(
+            "LEARNING_RECORD_NOT_FOUND",
+            "Learning record not found",
+            status_code=404,
+            details=details,
+        )
+
+
+class LearningInvalidStateError(ApplicationError):
+    def __init__(self, record_id: UUID, *, current_status: str) -> None:
+        super().__init__(
+            "LEARNING_INVALID_STATE",
+            "Learning record is not in a valid state for this operation",
+            status_code=409,
+            details={"record_id": str(record_id), "current_status": current_status},
+        )
+
+
+class LearningAuthorizationError(ApplicationError):
+    def __init__(self, record_id: UUID) -> None:
+        super().__init__(
+            "LEARNING_FORBIDDEN",
+            "You are not authorized to review this learning record",
+            status_code=403,
+            details={"record_id": str(record_id)},
+        )
+
+
+class LearningSafetyError(ApplicationError):
+    def __init__(self, message: str, *, details: dict | None = None) -> None:
+        super().__init__(
+            "LEARNING_SAFETY_REJECTED",
+            message,
+            status_code=422,
+            details=details,
+        )

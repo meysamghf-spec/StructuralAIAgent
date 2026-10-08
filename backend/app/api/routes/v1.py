@@ -11,6 +11,7 @@ from app.api.routes.chat import router as chat_router
 from app.api.routes.conversations import router as conversations_router
 from app.api.routes.code_engine import router as code_engine_router
 from app.api.routes.engineering import router as engineering_router
+from app.api.routes.engineering_learning import router as engineering_learning_router
 from app.api.routes.engineering_results import router as engineering_results_router
 from app.api.routes.cad import router as cad_router
 from app.api.routes.files import router as files_router
@@ -53,6 +54,7 @@ v1_router.include_router(integrations_router)
 v1_router.include_router(ai_gateway_router)
 v1_router.include_router(orchestration_router)
 v1_router.include_router(engineering_router)
+v1_router.include_router(engineering_learning_router)
 v1_router.include_router(engineering_results_router)
 v1_router.include_router(cad_router)
 v1_router.include_router(payments_router)

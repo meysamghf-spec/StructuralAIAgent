@@ -585,6 +585,7 @@ describe("responsive sidebar behavior", () => {
     expect(source).toContain('href="/workspace/approvals"');
     expect(source).toContain('href="/workspace/reports"');
     expect(source).toContain('href="/workspace/memory"');
+    expect(source).toContain('href="/workspace/learning"');
     expect(source).toContain('href="/workspace/traceability"');
     expect(source).toContain('href="/workspace/agents"');
     expect(source).toContain('href="/workspace/agents/builder"');

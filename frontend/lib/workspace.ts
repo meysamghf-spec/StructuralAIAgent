@@ -110,6 +110,34 @@ export function getMemoryTypeLabel(type: string): string {
   return MEMORY_TYPE_LABELS[type] ?? "Project note";
 }
 
+export function getLearningScopeLabel(scope: string): string {
+  switch (scope) {
+    case "PROJECT":
+      return "Project";
+    case "ENGINEER":
+      return "Engineer";
+    case "GLOBAL":
+      return "Global";
+    default:
+      return scope;
+  }
+}
+
+export function getLearningStatusLabel(status: string): string {
+  switch (status) {
+    case "CANDIDATE":
+      return "Candidate";
+    case "REVIEW":
+      return "In review";
+    case "APPROVED":
+      return "Approved";
+    case "REJECTED":
+      return "Rejected";
+    default:
+      return status;
+  }
+}
+
 export function getReportTypeLabel(type: string): string {
   return REPORT_TYPE_LABELS[type] ?? "Engineering report";
 }

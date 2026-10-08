@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { href: "/workspace/model", label: "Model" },
   { href: "/workspace/files", label: "Files" },
   { href: "/workspace/memory", label: "Memory" },
+  { href: "/workspace/learning", label: "Learning" },
   { href: "/workspace/agents", label: "Assistants" },
   { href: "/workspace/agents/builder", label: "Assistant Builder" },
   { href: "/workspace/approvals", label: "Approvals" },
