@@ -1,4 +1,5 @@
 import { getValidationLabel } from "@/lib/agent-workspace";
+import { structuralWorkflowGlance } from "@/lib/structural-workflow";
 import {
   buildRunDossier,
   calculationWasNotProduced,
@@ -11,6 +12,7 @@ import Link from "next/link";
 export function RunDossier({ execution }: { execution: AgentExecutionSummary }) {
   const dossier = buildRunDossier(execution);
   const validationLabel = getValidationLabel(dossier.authoritative.validationStatus);
+  const workflow = structuralWorkflowGlance(execution);
 
   return (
     <div className="run-dossier" aria-label="Engineering run record">
@@ -23,6 +25,17 @@ export function RunDossier({ execution }: { execution: AgentExecutionSummary }) 
         <p className="result-label">Agent result</p>
         <p className="result-text">{dossier.agentResult ?? "No engineering result yet."}</p>
       </section>
+
+      {workflow ? (
+        <section aria-label="Structural workflow">
+          <p className="result-label">Structural workflow</p>
+          <p className="muted">
+            Model {workflow.model} · Analysis {workflow.analysis} · Design {workflow.design} · QA{" "}
+            {workflow.qa} · Output {workflow.output}
+          </p>
+          <p className="muted">Approval {workflow.approval}</p>
+        </section>
+      ) : null}
 
       <section className="approval-panel" aria-label="Authoritative project data">
         <strong>Authoritative project data</strong>

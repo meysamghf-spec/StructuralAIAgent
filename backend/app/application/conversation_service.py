@@ -73,6 +73,7 @@ _AGENT_WORKSPACE_LINKS: dict[EngineeringAgentType, str] = {
     EngineeringAgentType.REPORTING_AGENT: "/workspace/reports",
     EngineeringAgentType.DOCUMENT_INTERPRETATION_AGENT: "/workspace/files",
     EngineeringAgentType.PROMPT_GENERATION_AGENT: "/workspace/agents",
+    EngineeringAgentType.STRUCTURAL_ENGINEERING_AGENT: "/workspace/agents",
 }
 
 
