@@ -67,6 +67,9 @@ from app.domain.models.agent_runtime import (
 from app.domain.models.engineering_learning import (
     LEARNING_AUTHORITY,
     LearningRetrieval,
+    agent_learning_query,
+    approved_experience_block,
+    attach_approved_experience,
     experience_context,
 )
 from app.domain.models.human_approval import ApprovalTargetType
@@ -500,6 +503,9 @@ class AgentOrchestrationService:
                     "learning_record_ids": [str(item.id) for item in learning_retrieval.records],
                     "learning_explanation": learning_retrieval.explanation,
                     "learning_authority": LEARNING_AUTHORITY,
+                    "approved_engineering_experience": approved_experience_block(
+                        learning_retrieval.records
+                    ),
                 }
             record.traceability_metadata = {
                 **record.traceability_metadata,
@@ -996,17 +1002,22 @@ class AgentOrchestrationService:
         if self._learning is None:
             return None
         parameters = request.parameters if isinstance(request.parameters, dict) else {}
-        task_type = parameters.get("task_type")
-        element_type = parameters.get("element_type")
+        query = agent_learning_query(agent_id, parameters)
         retrieval = self._learning.retrieve(
             project_id=request.project_id,
             account_id=account_id,
             agent_id=agent_id,
-            task_type=task_type if isinstance(task_type, str) else None,
-            element_type=element_type if isinstance(element_type, str) else None,
+            task_type=query["task_type"],
+            element_type=query["element_type"],
+            analysis_type=query["analysis_type"],
+            design_type=query["design_type"],
+            apply_operation=query["apply_operation"],
         )
         if not retrieval.records:
             return retrieval
+        context_snapshot["approved_engineering_experience"] = approved_experience_block(
+            retrieval.records
+        )
         context_snapshot["approved_learning"] = [
             experience_context(record) for record in retrieval.records
         ]
@@ -1022,14 +1033,7 @@ class AgentOrchestrationService:
     ) -> AgentResult:
         if retrieval is None or not retrieval.records:
             return agent_result
-        output = dict(agent_result.structured_output)
-        record_ids = [str(record.id) for record in retrieval.records]
-        output["learning_explanation"] = retrieval.explanation
-        output["learning_record_ids"] = record_ids
-        output["learning_authority"] = retrieval.authority
-        output["learning_overrides_pem"] = False
-        output["learning_overrides_rules"] = False
-        output["learning_overrides_qa"] = False
+        output = attach_approved_experience(agent_result.structured_output, retrieval.records)
         recommendations = list(agent_result.recommendations)
         recommendations.append(retrieval.explanation)
         return agent_result.model_copy(

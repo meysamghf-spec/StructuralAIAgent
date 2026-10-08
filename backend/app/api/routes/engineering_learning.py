@@ -7,17 +7,24 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
 
-from app.api.deps import get_accessible_project, get_current_account, get_engineering_learning_service
+from app.api.deps import (
+    get_accessible_project,
+    get_agent_runtime_service,
+    get_current_account,
+    get_engineering_learning_service,
+)
 from app.api.schemas.engineering_learning import (
     LearningCorrectionRequest,
     LearningCreateRequest,
     LearningDecisionRequest,
+    LearningFeedbackRequest,
     LearningListResponse,
     LearningRecordResponse,
     LearningRetrievalResponse,
     LearningUseListResponse,
     LearningUseResponse,
 )
+from app.application.agent_runtime_service import AgentRuntimeService
 from app.application.engineering_learning_service import EngineeringLearningService
 from app.domain.models.engineering_learning import LearningScope
 from app.domain.models.user import AuthenticatedAccount
@@ -88,6 +95,33 @@ def capture_correction(
         validation_result=body.validation_result,
         engineering_result_id=body.engineering_result_id,
         input_context=body.input_context,
+    )
+    return LearningRecordResponse.from_domain(record)
+
+
+@router.post(
+    "/feedback",
+    response_model=LearningRecordResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def capture_engineering_result_feedback(
+    project_id: UUID,
+    body: LearningFeedbackRequest,
+    learning_service: Annotated[EngineeringLearningService, Depends(get_engineering_learning_service)],
+    runtime: Annotated[AgentRuntimeService, Depends(get_agent_runtime_service)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+) -> LearningRecordResponse:
+    execution = runtime.get_execution(body.execution_id)
+    record = learning_service.candidate_from_engineering_result(
+        project_id=project_id,
+        owner_account_id=account.account_id,
+        execution=execution,
+        corrected_result=body.corrected_result,
+        reason=body.reason,
+        learning_scope=body.learning_scope,
+        source_element_ids=body.source_element_ids,
+        source_element_type=body.source_element_type,
+        applicability=body.applicability,
     )
     return LearningRecordResponse.from_domain(record)
 

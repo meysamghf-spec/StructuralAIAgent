@@ -5,6 +5,8 @@ import {
   getProgressLabel,
   getValidationLabel,
   isTerminalProgress,
+  approvedExperienceForExecution,
+  learningProvenancePath,
   summarizeExecution,
 } from "../lib/agent-workspace";
 import type { AgentDefinitionSummary, AgentExecutionSummary } from "../lib/api";
@@ -124,5 +126,51 @@ describe("agent workspace helpers", () => {
     const summary = summarizeExecution(execution);
     expect(summary.hasResult).toBe(true);
     expect(getProgressLabel(execution.user_view.progress)).toBe("Completed");
+  });
+
+  it("reads approved experience as context only and links to provenance", () => {
+    const execution: AgentExecutionSummary = {
+      id: "exec-4",
+      project_id: "project-1",
+      agent_definition_id: "agent-1",
+      agent_version: 1,
+      execution_status: "COMPLETED",
+      approval_request_id: null,
+      validation_status: "NOT_RUN",
+      created_by: "engineer",
+      created_at: "2026-01-01T12:00:00Z",
+      updated_at: "2026-01-01T12:05:00Z",
+      user_view: {
+        progress: "completed",
+        requires_approval: false,
+        approval_request_id: null,
+        final_result: "Connect an analysis solver adapter before treating results as engineering conclusions.",
+        summary: "Analyze the lateral system",
+      },
+      traceability_metadata: {
+        approved_engineering_experience: {
+          heading: "APPROVED ENGINEERING EXPERIENCE — CONTEXT ONLY",
+          authority: "CONTEXT_ONLY",
+          records: [
+            {
+              id: "learning-1",
+              learning_scope: "PROJECT",
+              applicability: { analysis_type: "LATERAL_DRIFT" },
+              explanation: "Call out diaphragm confirmation.",
+              authority: "CONTEXT_ONLY",
+            },
+          ],
+        },
+      },
+    };
+
+    const experience = approvedExperienceForExecution(execution);
+    expect(experience?.heading).toBe("APPROVED ENGINEERING EXPERIENCE — CONTEXT ONLY");
+    expect(experience?.authority).toBe("CONTEXT_ONLY");
+    expect(experience?.records[0]?.id).toBe("learning-1");
+    expect(learningProvenancePath("project-1", "learning-1")).toBe(
+      "/workspace/learning?project=project-1&record=learning-1",
+    );
+    expect(approvedExperienceForExecution({ traceability_metadata: {} })).toBeNull();
   });
 });

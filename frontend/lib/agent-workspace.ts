@@ -182,6 +182,51 @@ export function buildAssistantProfiles(agents: AgentDefinitionSummary[]): Assist
     });
 }
 
+export type ApprovedExperienceRecord = {
+  id: string;
+  learning_scope: string;
+  applicability: Record<string, unknown>;
+  explanation: string;
+  authority: string;
+  provenance?: {
+    learning_record_id?: string;
+    task_id?: string;
+    source_snapshot_id?: string;
+  };
+};
+
+export type ApprovedEngineeringExperience = {
+  heading: string;
+  authority: string;
+  records: ApprovedExperienceRecord[];
+};
+
+export function learningProvenancePath(projectId: string, recordId: string): string {
+  return `/workspace/learning?project=${encodeURIComponent(projectId)}&record=${encodeURIComponent(recordId)}`;
+}
+
+export function approvedExperienceForExecution(
+  execution: Pick<AgentExecutionSummary, "traceability_metadata">,
+): ApprovedEngineeringExperience | null {
+  const metadata = execution.traceability_metadata;
+  if (!metadata || typeof metadata !== "object") {
+    return null;
+  }
+  const experience = metadata.approved_engineering_experience;
+  if (!experience || typeof experience !== "object") {
+    return null;
+  }
+  const block = experience as Partial<ApprovedEngineeringExperience>;
+  if (!Array.isArray(block.records) || block.records.length === 0) {
+    return null;
+  }
+  return {
+    heading: block.heading ?? "APPROVED ENGINEERING EXPERIENCE — CONTEXT ONLY",
+    authority: block.authority ?? "CONTEXT_ONLY",
+    records: block.records,
+  };
+}
+
 export function summarizeExecution(execution: AgentExecutionSummary): {
   title: string;
   subtitle: string;

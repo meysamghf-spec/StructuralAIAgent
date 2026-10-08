@@ -6,11 +6,13 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from app.application.exceptions import (
+    AgentExecutionNotFoundError,
     LearningAuthorizationError,
     LearningInvalidStateError,
     LearningRecordNotFoundError,
     LearningSafetyError,
 )
+from app.domain.models.agent_runtime import AgentExecutionRecord
 from app.domain.models.engineering_learning import (
     LEARNING_AUTHORITY,
     NOT_CHECKED,
@@ -232,6 +234,9 @@ class EngineeringLearningService:
         task_type: str | None = None,
         element_type: str | None = None,
         learning_scope: LearningScope | None = None,
+        analysis_type: str | None = None,
+        design_type: str | None = None,
+        apply_operation: bool = False,
         limit: int = 20,
     ) -> LearningRetrieval:
         records = self._records.retrieve_approved(
@@ -241,6 +246,9 @@ class EngineeringLearningService:
             task_type=_clean(task_type),
             element_type=_clean(element_type),
             learning_scope=learning_scope.value if learning_scope is not None else None,
+            analysis_type=_clean(analysis_type),
+            design_type=_clean(design_type),
+            apply_operation=apply_operation,
             limit=_clamp_limit(limit),
         )
         return LearningRetrieval(
@@ -252,6 +260,60 @@ class EngineeringLearningService:
             overrides_pem=False,
             overrides_rules=False,
             overrides_qa=False,
+        )
+
+    def candidate_from_engineering_result(
+        self,
+        *,
+        project_id: UUID,
+        owner_account_id: str,
+        execution: AgentExecutionRecord,
+        corrected_result: dict[str, Any],
+        reason: str | None = None,
+        learning_scope: LearningScope = LearningScope.PROJECT,
+        source_element_ids: list[str] | None = None,
+        source_element_type: str | None = None,
+        applicability: dict[str, Any] | None = None,
+    ) -> LearningRecord:
+        """Store an engineer correction of a real result as a candidate. Never approve it."""
+        if execution.project_id != project_id:
+            raise AgentExecutionNotFoundError(execution.id)
+        if not isinstance(execution.output, dict):
+            raise LearningSafetyError(
+                "No engineering result is available to correct.",
+                details={"execution_id": str(execution.id)},
+            )
+        metadata = execution.traceability_metadata if isinstance(execution.traceability_metadata, dict) else {}
+        agent_id = metadata.get("selected_agent_type")
+        result_id = metadata.get("result_trace_id")
+        context = execution.context_snapshot if isinstance(execution.context_snapshot, dict) else {}
+        snapshot_id = context.get("source_snapshot_id")
+        stored_applicability = dict(applicability or {})
+        for key in ("analysis_type", "design_type"):
+            value = execution.output.get(key)
+            if isinstance(value, str) and value.strip() and key not in stored_applicability:
+                stored_applicability[key] = value.strip()
+        validation = (
+            execution.validation_status.value
+            if execution.validation_status is not None
+            else NOT_CHECKED
+        )
+        return self.record_correction(
+            project_id=project_id,
+            owner_account_id=owner_account_id,
+            original_output=execution.output,
+            corrected_result=corrected_result,
+            reason=reason,
+            learning_scope=learning_scope,
+            agent_id=agent_id if isinstance(agent_id, str) else None,
+            task_id=execution.id,
+            source_snapshot_id=snapshot_id if _is_uuid(snapshot_id) else None,
+            source_element_ids=source_element_ids,
+            source_element_type=source_element_type,
+            applicability=stored_applicability,
+            validation_result=validation,
+            engineering_result_id=result_id if isinstance(result_id, str) else None,
+            input_context={"source": "engineering_result_feedback", "qa_status": validation},
         )
 
     def record_use(
@@ -356,6 +418,18 @@ class EngineeringLearningService:
                 "Learning cannot turn NOT_CHECKED into PASS.",
                 details={"qa_status": NOT_CHECKED, "validation_result": validation_result},
             )
+
+
+def _is_uuid(value: Any) -> bool:
+    if isinstance(value, UUID):
+        return True
+    if not isinstance(value, str):
+        return False
+    try:
+        UUID(value)
+    except ValueError:
+        return False
+    return True
 
 
 def _clamp_limit(limit: int) -> int:

@@ -384,7 +384,7 @@ def test_traceable_correction_is_consumed_by_the_analysis_agent(db_session) -> N
         source_element_type="DIAPHRAGM",
         engineering_result_id=str(first.traceability_metadata.get("result_trace_id")),
         validation_result=str(first.validation_status.value),
-        applicability={"pattern": "Pattern A", "task_type": "lateral"},
+        applicability={"pattern": "Pattern A", "analysis_type": "LATERAL_DRIFT"},
     )
     assert correction.approval_status == LearningApprovalStatus.CANDIDATE
     provenance = service.provenance(correction.id, project_id=boot.project.id, account_id="engineer-a")

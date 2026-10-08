@@ -58,6 +58,9 @@ def _context_summary(context: dict[str, Any]) -> dict[str, Any]:
         summary["learning_explanation"] = context.get("learning_explanation")
         summary["learning_record_ids"] = list(record_ids)
         summary["learning_authority"] = context.get("learning_authority", "CONTEXT_ONLY")
+        experience = context.get("approved_engineering_experience")
+        if isinstance(experience, dict) and experience.get("heading"):
+            summary["approved_engineering_experience_heading"] = experience["heading"]
     return summary
 
 
