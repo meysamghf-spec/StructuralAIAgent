@@ -111,3 +111,11 @@ def test_engineering_report_separates_implementation_status() -> None:
     assert report["classification"]["REQUIRES_ENGINEER_REVIEW"] is True
     assert "NOT_CHECKED" in report["classification"]
     assert report["code_compliance"]["ACI 318-25"] == "PARTIAL_IMPLEMENTATION"
+    assert isinstance(report["19_limitations"], list)
+    assert report["10_analysis_method"]["fidelity"]
+    assert report["final_engineering_readiness"]["final_engineering_approval"] is False
+    assert report["learning_context"]["heading"] == "LEARNING CONTEXT"
+    assert report["learning_context"]["approved_engineering_result"] is False
+    assert {item["software"] for item in report["external_software_executions"]} == {"ETABS", "SAFE", "AUTOCAD"}
+    assert all(item["status"] == "NOT_EXECUTED" for item in report["external_software_executions"])
+    assert report["authority"]["AUTHORITATIVE ENGINEERING INPUT"]["source"] == "current PEM snapshot"

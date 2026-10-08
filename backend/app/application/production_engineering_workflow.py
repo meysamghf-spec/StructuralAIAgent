@@ -163,6 +163,13 @@ def execute_production_workflow(
         learning=learning,
         change=change,
     )
+    if change.get("applied") is True:
+        pem, meta, report = _store_report(
+            project_id=project_id,
+            pem=pem,
+            report=report,
+            actor_id=actor_id,
+        )
     external_failed = [item["software"] for item in external if item["executed"] is not True]
     return {
         "operation": "production",
@@ -563,51 +570,62 @@ def _external_analysis_view(external: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _production_report(**kwargs: Any) -> dict[str, Any]:
+    from app.application.engineering_report_service import EngineeringReportService
+
     pem: ProjectEngineeringModel = kwargs["pem"]
-    learning = kwargs["learning"]
-    return {
-        "1_project_information": {"name": pem.metadata.name, "request": kwargs["user_request"]},
-        "2_architectural_brief": kwargs["brief"],
-        "3_architectural_assumptions": [
-            item for item in kwargs["brief_notes"] if item.get("origin") in {"ASSUMED", "DERIVED"}
-        ],
-        "4_structural_system": pem.structural_system,
-        "5_materials": [item.name for item in pem.structural_model.materials.concrete + pem.structural_model.materials.steel],
-        "6_geometry": {
-            "floors": len(pem.building_model.floor_plans),
-            "members": len(pem.structural_model.members.members),
-        },
-        "7_loads": [item.name for item in pem.structural_model.load_cases],
-        "8_load_combinations": [item.name for item in pem.structural_model.load_combinations],
-        "9_analysis_software": "internal preliminary analysis; ETABS is recorded separately",
-        "10_analysis_execution_status": kwargs["internal_analysis"].get("status"),
-        "11_design_software": "existing internal design engine; ETABS and SAFE design are recorded separately",
-        "12_design_execution_status": kwargs["qa"]["status"],
-        "13_design_checks": kwargs["design_checks"],
-        "14_qa": kwargs["qa"],
-        "15_learning_context": learning,
-        "16_pem_provenance": {
-            "heading": "AUTHORITATIVE ENGINEERING INPUT",
-            "pem_version": kwargs["meta_version"],
-            "pem_snapshot_id": kwargs["snapshot_id"],
-            "change": kwargs["change"],
-        },
-        "17_drawing_package": kwargs["drawings"],
-        "18_external_software_execution_records": kwargs["external"],
-        "19_warnings": kwargs["coordination"]["conflicts"],
-        "20_final_engineering_readiness": {
-            "status": kwargs["qa"]["status"],
-            "final_engineering_approval": False,
-            "statement": "Learning context did not approve this package.",
-        },
-        "authority": {
-            "AUTHORITATIVE ENGINEERING INPUT": "current PEM snapshot",
-            "DERIVED": "values marked DERIVED in the architectural notes",
-            "ASSUMED": "values marked ASSUMED in the architectural notes",
-            "LEARNING CONTEXT": learning,
-            "EXTERNAL SOFTWARE RESULT": kwargs["external"],
-        },
-    }
+    report = EngineeringReportService().generate(
+        pem,
+        architectural_brief=kwargs["brief"],
+        external_executions=kwargs["external"],
+        learning=kwargs["learning"],
+        drawings=kwargs["drawings"],
+        qa_package=kwargs["qa"],
+        snapshot_id=kwargs["snapshot_id"],
+        pem_version=kwargs["meta_version"],
+        coordination_warnings=kwargs["coordination"]["conflicts"],
+        design_checks=kwargs["design_checks"],
+    )
+    report["1_project_information"]["request"] = kwargs["user_request"]
+    report["2_architectural_brief"] = kwargs["brief"]
+    report["3_architectural_assumptions"] = [
+        item for item in kwargs["brief_notes"] if item.get("origin") in {"ASSUMED", "DERIVED"}
+    ]
+    report["14_qa"] = kwargs["qa"]
+    report["17_drawing_package"] = kwargs["drawings"]
+    report["16_pem_provenance"]["change"] = kwargs["change"]
+    return report
+
+
+def _store_report(
+    *,
+    project_id: UUID,
+    pem: ProjectEngineeringModel,
+    report: dict[str, Any],
+    actor_id: str | None,
+) -> tuple[ProjectEngineeringModel, Any, dict[str, Any]]:
+    from app.application.service_factory import build_pem_revision_service, build_pem_service
+    from app.domain.models.revision import RevisionChangeType
+
+    updated = pem.model_copy(deep=True)
+    updated.engineering_report = report
+    saved = build_pem_revision_service().update_pem(
+        project_id,
+        updated,
+        change_type=RevisionChangeType.PEM_UPDATE,
+        summary="Store the engineering report for this production run",
+        created_by=actor_id,
+        metadata={"source": "engineering_report"},
+    )
+    service = build_pem_service()
+    current = service.get_current_pem(project_id) or updated
+    meta = service.get_current_snapshot_meta(project_id)
+    stored = current.engineering_report
+    provenance = stored.setdefault("16_pem_provenance", {})
+    provenance["report_snapshot_id"] = str(saved.snapshot_id)
+    provenance["report_pem_version"] = saved.pem_version
+    if current.engineering_report is not stored:
+        current.engineering_report = stored
+    return current, meta, stored
 
 
 def _engineer_message(change: dict[str, Any], qa: dict[str, Any], missing_software: list[str]) -> str:
