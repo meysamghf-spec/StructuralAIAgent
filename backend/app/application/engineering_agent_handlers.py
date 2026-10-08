@@ -23,6 +23,7 @@ from app.application.aisc_steel_beam_check import is_aisc_steel_beam_check_reque
 from app.application.building_brief_parser import BuildingBriefParser
 from app.application.demo_rc_beam_analysis import analyze_simply_supported_rc_beam
 from app.application.engineering_agent_services import EngineeringAgentServices
+from app.application.structural_engineering_workflow import execute_structural_workflow
 from app.domain.models.reporting import ReportGenerationRequest, ReportType
 
 
@@ -1176,6 +1177,84 @@ class DocumentInterpretationAgentHandler:
         )
 
 
+class StructuralEngineeringAgentHandler:
+    """Project workflow agent. It reports unimplemented work instead of inventing it."""
+
+    agent_type = EngineeringAgentType.STRUCTURAL_ENGINEERING_AGENT
+
+    def __init__(self, services: EngineeringAgentServices) -> None:
+        self._services = services
+
+    def execute(
+        self,
+        *,
+        user_request: str,
+        parameters: dict[str, Any],
+        context: dict[str, Any],
+    ) -> AgentResult:
+        project_id = UUID(str(context["project_id"]))
+        package = execute_structural_workflow(
+            services=self._services,
+            project_id=project_id,
+            user_request=user_request,
+            parameters=parameters,
+            actor_id=context.get("actor_id") if isinstance(context.get("actor_id"), str) else None,
+        )
+        pem_record = package.get("pem") if isinstance(package.get("pem"), dict) else {}
+        if pem_record.get("version") is not None:
+            context["pem_version"] = pem_record["version"]
+        if pem_record.get("snapshot_id"):
+            context["pem_snapshot_id"] = pem_record["snapshot_id"]
+        qa_status = str(package["qa"]["status"])
+        analysis = package["analysis"]
+        executed = analysis.get("executed") is True
+        validation_status = None
+        capability_status = "NOT_RUN"
+        if package["model_readiness"]["status"] == "NOT_READY" and not executed:
+            capability_status = "MODEL_NOT_READY"
+        if qa_status == "PASS" and executed:
+            capability_status = "PASS"
+            validation_status = "PASS"
+        elif qa_status == "FAIL":
+            capability_status = "FAIL"
+            validation_status = "FAIL"
+        elif qa_status == "NOT_APPLICABLE":
+            capability_status = "NOT_CHECKED"
+        design_available = qa_status == "PASS"
+        return AgentResult(
+            structured_output=_base_output(
+                agent_type=self.agent_type,
+                action="structural_workflow",
+                user_request=user_request,
+                parameters=parameters,
+                context=context,
+                capability_status=capability_status,
+                status_message=str(package["engineer_message"]),
+                payload={
+                    "structural_workflow": package,
+                    "engineering_results_available": executed,
+                    "engineering_design_results_available": design_available,
+                    "analysis_run_id": analysis.get("analysis_run_id"),
+                    "solver": analysis.get("solver"),
+                    "solver_status": analysis.get("solver_status"),
+                    "integration_execution_id": analysis.get("integration_execution_id"),
+                    "learning_authority": "CONTEXT_ONLY",
+                    "learning_overrides_pem": False,
+                    "learning_overrides_rules": False,
+                    "learning_overrides_qa": False,
+                },
+            ),
+            confidence=0.4,
+            recommendations=[str(package["engineer_message"])],
+            validation_information={
+                "capability_status": capability_status,
+                "validation_status": validation_status,
+                "requires_approval": False,
+                "workflow_qa": qa_status,
+            },
+        )
+
+
 def build_engineering_agent_handlers(
     services: EngineeringAgentServices | None = None,
 ) -> dict[EngineeringAgentType, EngineeringAgentHandler]:
@@ -1196,6 +1275,7 @@ def build_engineering_agent_handlers(
         CadAgentHandler(services),
         ReportingAgentHandler(services),
         DocumentInterpretationAgentHandler(services),
+        StructuralEngineeringAgentHandler(services),
     ]
     return {handler.agent_type: handler for handler in handlers}
 

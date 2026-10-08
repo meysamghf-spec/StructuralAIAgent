@@ -20,6 +20,15 @@ _LATIN_KEYWORD_PATTERN_CACHE: dict[str, re.Pattern[str]] = {}
 AGENT_INTENT_ROUTING: list[tuple[tuple[str, ...], EngineeringAgentType, str]] = [
     (
         (
+            "structural engineering agent",
+            "structural workflow",
+            "run the structural workflow",
+        ),
+        EngineeringAgentType.STRUCTURAL_ENGINEERING_AGENT,
+        "Run the structural engineering workflow on the current project",
+    ),
+    (
+        (
             "design this building",
             "design the building",
             "building brief",

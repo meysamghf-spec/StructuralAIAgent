@@ -78,6 +78,12 @@ const ASSISTANT_CATALOG: Record<
     description: "Understand engineer requests and route work to the right specialist assistant.",
     capabilities: ["Request understanding", "Task routing", "Context planning"],
   },
+  STRUCTURAL_ENGINEERING_AGENT: {
+    title: "Structural Engineering Agent",
+    description:
+      "Runs the project workflow from the engineering brief through the current PEM, analysis, design checks, QA, drawings, and report.",
+    capabilities: ["Brief and readiness", "Internal analysis", "Beam checks", "Schedules and report"],
+  },
 };
 
 const PROGRESS_LABELS: Record<AgentExecutionUserView["progress"], string> = {

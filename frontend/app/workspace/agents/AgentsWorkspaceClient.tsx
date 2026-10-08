@@ -20,6 +20,7 @@ import {
   type PromptGenerationResult,
 } from "@/lib/api";
 import { filesForProject, productionRunAllowed } from "@/lib/engineering-workspace";
+import { structuralWorkflowGlance } from "@/lib/structural-workflow";
 import { listCadDrawings, type CadDrawing } from "@/lib/cad";
 import { RequestPlanPanel } from "@/components/agents/RequestPlanPanel";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
@@ -47,6 +48,7 @@ export default function AgentsWorkspaceClient() {
   const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
   const [drawings, setDrawings] = useState<CadDrawing[]>([]);
   const [selectedExecutionId, setSelectedExecutionId] = useState<string | null>(null);
+  const [applyBrief, setApplyBrief] = useState(false);
 
   const refreshProjectContext = useCallback(async (projectId: string) => {
     if (!projectId) {
@@ -164,6 +166,34 @@ export default function AgentsWorkspaceClient() {
     [assistants, selectedAgentType],
   );
   const canRun = Boolean(selectedProjectId) && productionRunAllowed(selectedAssistant) && !submitting;
+  const selectedExecution =
+    executions.find((execution) => execution.id === selectedExecutionId) ?? executions[0] ?? null;
+  const workflowGlance = structuralWorkflowGlance(selectedExecution);
+
+  async function runStructuralAction(operation: string) {
+    if (!selectedProjectId) {
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      const created = await createAgentExecution({
+        project_id: selectedProjectId,
+        user_request: `Run structural workflow: ${operation}`,
+        agent_type: "STRUCTURAL_ENGINEERING_AGENT",
+        parameters: {
+          operation,
+          apply_to_pem: operation === "prepare" ? applyBrief : false,
+        },
+      });
+      await refreshProjectContext(selectedProjectId);
+      setSelectedExecutionId(created.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The structural workflow could not be started");
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   async function handleUpload(selected: FileList | null) {
     if (!selectedProjectId || !selected?.length) {
@@ -222,6 +252,57 @@ export default function AgentsWorkspaceClient() {
             ? `Current model${pem.name ? ` ${pem.name}` : ""} · version ${pem.version} · snapshot ${pem.snapshotId}`
             : "No current engineering model is stored for this project."}
         </p>
+        <div className="workflow-glance" aria-label="Structural workflow status">
+          {(
+            [
+              ["Project", selectedProject?.name ?? "None"],
+              ["Agent", "Structural Engineering Agent"],
+              ["Agent version", selectedExecution ? String(selectedExecution.agent_version) : "—"],
+              ["PEM version", pem ? String(pem.version) : "—"],
+              ["Model", workflowGlance?.model ?? "Not run"],
+              ["Analysis", workflowGlance?.analysis ?? "Not run"],
+              ["Design", workflowGlance?.design ?? "Not run"],
+              ["QA", workflowGlance?.qa ?? "Not run"],
+              ["Output", workflowGlance?.output ?? "Not generated"],
+            ] as const
+          ).map(([label, value]) => (
+            <p key={label} className="status-pill">
+              {label}: {value}
+            </p>
+          ))}
+        </div>
+        <p className="muted">{workflowGlance?.message ?? "No structural workflow has been run for this project."}</p>
+        <p className="muted">Approval: {workflowGlance?.approval ?? "Not approved"}</p>
+        <div className="button-row">
+          {(
+            [
+              ["prepare", "Prepare"],
+              ["validate", "Validate"],
+              ["analyze", "Analyze"],
+              ["design", "Design"],
+              ["qa", "QA"],
+              ["outputs", "Generate outputs"],
+            ] as const
+          ).map(([operation, label]) => (
+            <button
+              key={operation}
+              type="button"
+              className="button secondary"
+              disabled={!selectedProjectId || submitting}
+              onClick={() => void runStructuralAction(operation)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <label className="muted">
+          <input
+            type="checkbox"
+            checked={applyBrief}
+            onChange={(event) => setApplyBrief(event.target.checked)}
+          />{" "}
+          Prepare may write a complete brief into the PEM. A chat message alone does not.
+        </label>
       </section>
 
       <section className="card">

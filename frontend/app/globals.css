@@ -320,6 +320,20 @@ a {
   color: #e2e8f0;
 }
 
+.workflow-glance {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.75rem 0;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+
 .status-available {
   background: #14532d;
   color: #bbf7d0;

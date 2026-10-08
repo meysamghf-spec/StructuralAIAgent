@@ -64,7 +64,8 @@ export type EngineeringAgentType =
   | "CAD_AGENT"
   | "REPORTING_AGENT"
   | "DOCUMENT_INTERPRETATION_AGENT"
-  | "PROMPT_GENERATION_AGENT";
+  | "PROMPT_GENERATION_AGENT"
+  | "STRUCTURAL_ENGINEERING_AGENT";
 
 export type AgentDefinitionSummary = {
   id: string;
@@ -169,6 +170,10 @@ export type CreateAgentExecutionRequest = {
   requires_approval?: boolean;
   parameters?: {
     attachment_file_ids?: string[];
+    operation?: string;
+    apply_to_pem?: boolean;
+    solver?: string;
+    engineering_brief?: Record<string, string | number | boolean | null>;
   };
 };
 

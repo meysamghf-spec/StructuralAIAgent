@@ -19,6 +19,7 @@ const ASSISTANT_TYPE_LABELS: Record<EngineeringAgentType, string> = {
   REPORTING_AGENT: "Engineering reports",
   DOCUMENT_INTERPRETATION_AGENT: "Document review",
   PROMPT_GENERATION_AGENT: "Request planning",
+  STRUCTURAL_ENGINEERING_AGENT: "Structural engineering",
 };
 
 const VERSION_STATUS_LABELS: Record<string, string> = {
