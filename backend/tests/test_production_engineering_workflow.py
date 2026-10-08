@@ -194,6 +194,13 @@ def test_production_package_does_not_claim_external_success(api_client: TestClie
     assert report["16_pem_provenance"]["heading"] == "AUTHORITATIVE ENGINEERING INPUT"
     assert report["18_external_software_execution_records"]
     assert report["20_final_engineering_readiness"]["final_engineering_approval"] is False
+    assert isinstance(report["19_limitations"], list)
+    assert report["10_analysis_method"]["solver"] != "ETABS"
+    assert report["authority"]["LEARNING CONTEXT"]["approved_engineering_result"] is False
+    stored = pem.engineering_report
+    assert stored["18_external_software_execution_records"]
+    assert all(item["executed"] is False for item in stored["external_software_executions"])
+    assert "qualified engineer" in stored["disclaimer"]
     assert body["output"]["learning_overrides_pem"] is False
     assert body["output"]["learning_overrides_qa"] is False
     other = build_pem_service().get_current_pem(UUID(other_id))

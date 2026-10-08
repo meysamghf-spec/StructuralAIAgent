@@ -16,6 +16,15 @@ class EngineeringReportService:
         *,
         analysis: BuildingAnalysisResult | None = None,
         design: PreliminaryDesignResult | None = None,
+        architectural_brief: dict[str, Any] | None = None,
+        external_executions: list[dict[str, Any]] | None = None,
+        learning: dict[str, Any] | None = None,
+        drawings: dict[str, Any] | None = None,
+        qa_package: dict[str, Any] | None = None,
+        snapshot_id: str | None = None,
+        pem_version: int | None = None,
+        coordination_warnings: list[dict[str, Any]] | None = None,
+        design_checks: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         structural = pem.structural_model
         building = pem.building_model
@@ -89,6 +98,44 @@ class EngineeringReportService:
                 "External solvers (ETABS/SAP2000/SAFE) remain required for final construction documents.",
             ],
             "input_provenance": [item.model_dump(mode="json") for item in structural.input_provenance],
+            "authority": _authority(
+                snapshot_id=snapshot_id,
+                pem_version=pem_version,
+                derived=_provenance(structural, "DERIVED"),
+                assumed=_provenance(structural, "ASSUMED", "DEFAULT"),
+                learning=learning,
+                external_executions=external_executions,
+            ),
+            "architectural_brief": architectural_brief if architectural_brief is not None else (pem.requirements or {}).get("brief"),
+            "derived_values": _provenance(structural, "DERIVED"),
+            "assumed_values": _provenance(structural, "ASSUMED", "DEFAULT"),
+            "analysis_software": {
+                "internal": "preliminary linear-static analysis stored on the PEM",
+                "ETABS": _software_status(external_executions, "ETABS"),
+            },
+            "analysis_execution_status": {
+                "internal": report_analysis_status(analysis, structural),
+                "ETABS": _software_status(external_executions, "ETABS"),
+            },
+            "design_software": {
+                "internal": "existing preliminary and beam design checks",
+                "ETABS": _software_status(external_executions, "ETABS"),
+                "SAFE": _software_status(external_executions, "SAFE"),
+            },
+            "design_execution_status": {
+                "internal_check_count": len(design_checks if design_checks is not None else structural.design_checks),
+                "ETABS": _software_status(external_executions, "ETABS"),
+                "SAFE": _software_status(external_executions, "SAFE"),
+            },
+            "learning_context": _learning(learning),
+            "drawing_package": drawings,
+            "external_software_executions": external_executions or _default_external(),
+            "coordination_warnings": coordination_warnings or [],
+            "final_engineering_readiness": {
+                "status": (qa_package or {}).get("status", "NOT_RUN"),
+                "final_engineering_approval": False,
+                "statement": "Learning context did not produce or approve an engineering result.",
+            },
             "classification": {
                 "IMPLEMENTED": [
                     "3D direct-stiffness frame analysis",
@@ -117,7 +164,101 @@ class EngineeringReportService:
                 "REQUIRES_ENGINEER_REVIEW": True,
             },
         }
+        report["15_learning_context"] = report["learning_context"]
+        report["16_pem_provenance"] = report["authority"]["AUTHORITATIVE ENGINEERING INPUT"]
+        report["18_external_software_execution_records"] = report["external_software_executions"]
+        report["19_warnings"] = report["coordination_warnings"]
+        report["20_final_engineering_readiness"] = report["final_engineering_readiness"]
         return report
+
+
+def report_analysis_status(analysis: BuildingAnalysisResult | None, structural) -> dict[str, Any]:
+    configuration = structural.analysis_model.configuration or {}
+    return {
+        "solver": configuration.get("solver"),
+        "status": analysis.status if analysis else configuration.get("last_analysis_status"),
+        "executed": (analysis.status if analysis else configuration.get("last_analysis_status")) == "SUCCESS",
+        "label": "INTERNAL",
+    }
+
+
+def _provenance(structural, *origins: str) -> list[dict[str, Any]]:
+    items = []
+    for item in structural.input_provenance:
+        if item.origin.value in origins:
+            items.append(
+                {
+                    "field": item.field,
+                    "value": item.value,
+                    "origin": item.origin.value,
+                    "note": item.note,
+                }
+            )
+    return items
+
+
+def _learning(learning: dict[str, Any] | None) -> dict[str, Any]:
+    record_ids = []
+    if isinstance(learning, dict) and isinstance(learning.get("record_ids"), list):
+        record_ids = [str(item) for item in learning["record_ids"]]
+    return {
+        "heading": "LEARNING CONTEXT",
+        "authority": "CONTEXT_ONLY",
+        "record_ids": record_ids,
+        "used": bool(record_ids),
+        "produced_engineering_result": False,
+        "approved_engineering_result": False,
+        "overrides_pem": False,
+        "overrides_calculations": False,
+        "overrides_qa": False,
+        "statement": "Approved learning is context only. It did not produce or approve an engineering result.",
+    }
+
+
+def _default_external() -> list[dict[str, Any]]:
+    return [
+        {
+            "software": name,
+            "executed": False,
+            "status": "NOT_EXECUTED",
+            "errors": [f"{name} was not invoked for this report."],
+            "provenance": {"source": "engineering_report"},
+        }
+        for name in ("ETABS", "SAFE", "AUTOCAD")
+    ]
+
+
+def _software_status(executions: list[dict[str, Any]] | None, software: str) -> dict[str, Any]:
+    for item in executions or []:
+        if item.get("software") == software:
+            return {
+                "executed": item.get("executed") is True,
+                "status": item.get("status") or "NOT_EXECUTED",
+            }
+    return {"executed": False, "status": "NOT_EXECUTED"}
+
+
+def _authority(
+    *,
+    snapshot_id: str | None,
+    pem_version: int | None,
+    derived: list[dict[str, Any]],
+    assumed: list[dict[str, Any]],
+    learning: dict[str, Any] | None,
+    external_executions: list[dict[str, Any]] | None,
+) -> dict[str, Any]:
+    return {
+        "AUTHORITATIVE ENGINEERING INPUT": {
+            "heading": "AUTHORITATIVE ENGINEERING INPUT",
+            "source": "current PEM snapshot",
+            "pem_version": pem_version,
+            "pem_snapshot_id": snapshot_id,
+        },
+        "DERIVED": derived,
+        "ASSUMED": assumed,
+        "LEARNING CONTEXT": _learning(learning),
+        "EXTERNAL SOFTWARE RESULT": external_executions or _default_external(),
+    }
 
 
 def _cases_meta(structural, category: str) -> dict[str, Any]:
