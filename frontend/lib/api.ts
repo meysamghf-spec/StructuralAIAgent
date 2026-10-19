@@ -241,8 +241,8 @@ export async function rejectAgentRequest(
   projectId: string,
   approvalRequestId: string,
   rejectionReason: string,
-): Promise<void> {
-  await apiFetch(`/api/v1/approvals/${approvalRequestId}/reject?project_id=${projectId}`, {
+): Promise<ApprovalSummary> {
+  return apiFetch<ApprovalSummary>(`/api/v1/approvals/${approvalRequestId}/reject?project_id=${projectId}`, {
     method: "POST",
     body: JSON.stringify({
       approver: "authenticated-user",
@@ -265,7 +265,26 @@ export type ApprovalSummary = {
   rejection_reason: string | null;
   requested_at: string;
   resolved_at: string | null;
+  metadata?: Record<string, unknown>;
+  revision_outcome?: string | null;
+  next_approval_id?: string | null;
+  revision_message?: string | null;
 };
+
+export type RevisionChange = { key: string; old: unknown; new: unknown };
+
+/** Engineering-run approvals grouped into revision chains (root -> rev 2 -> ...), newest chain first. */
+export function revisionChains(items: ApprovalSummary[]): ApprovalSummary[][] {
+  const runs = items.filter((a) => a.metadata && typeof a.metadata.module_kind === "string");
+  const byRoot = new Map<string, ApprovalSummary[]>();
+  for (const a of runs) {
+    const root = String(a.metadata?.root_approval_id ?? a.id);
+    byRoot.set(root, [...(byRoot.get(root) ?? []), a]);
+  }
+  return [...byRoot.values()]
+    .map((c) => c.sort((x, y) => Number(x.metadata?.revision ?? 1) - Number(y.metadata?.revision ?? 1)))
+    .sort((a, b) => (b[b.length - 1].requested_at > a[a.length - 1].requested_at ? 1 : -1));
+}
 
 export type ApprovalListResponse = {
   requests: ApprovalSummary[];

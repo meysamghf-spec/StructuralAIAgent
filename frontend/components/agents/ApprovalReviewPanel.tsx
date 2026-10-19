@@ -13,7 +13,7 @@ export function ApprovalReviewPanel({
 }: {
   projectId: string;
   approvalRequestId: string;
-  onResolved: () => void;
+  onResolved: (message?: string) => void;
 }) {
   const { user } = useAuth();
   const [note, setNote] = useState("");
@@ -44,8 +44,8 @@ export function ApprovalReviewPanel({
     setBusy(true);
     setError(null);
     try {
-      await rejectAgentRequest(projectId, approvalRequestId, reason.trim());
-      onResolved();
+      const res = await rejectAgentRequest(projectId, approvalRequestId, reason.trim());
+      onResolved(res?.revision_message ?? undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Rejection failed");
     } finally {

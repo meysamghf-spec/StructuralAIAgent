@@ -1,6 +1,7 @@
 """Conversation and chat orchestration service."""
 
 from __future__ import annotations
+import logging
 
 from queue import Queue
 from threading import Event, Thread
@@ -76,6 +77,8 @@ _AGENT_WORKSPACE_LINKS: dict[EngineeringAgentType, str] = {
     EngineeringAgentType.PROMPT_GENERATION_AGENT: "/workspace/agents",
     EngineeringAgentType.STRUCTURAL_ENGINEERING_AGENT: "/workspace/agents",
 }
+
+logger = logging.getLogger(__name__)
 
 
 class ConversationService:
@@ -502,6 +505,7 @@ class ConversationService:
                 build_human_approval_service(), conversation.project_id, account.account_id, payload,
                 conversation_id=str(conversation.id))
         except Exception:  # noqa: BLE001 - the chat answer must not fail because of the approval item
+            logger.exception("run approval creation failed")
             return
         if approval is not None:
             assistant_metadata["run_approval_id"] = str(approval.id)

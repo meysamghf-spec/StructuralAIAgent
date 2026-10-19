@@ -79,3 +79,19 @@ def test_drift_intent():
     adapter = em.adapter_for("frame3d_analysis")
     inp, a, _ = em.parse_changes(adapter, "drift too high", {"column_b_m": 0.4, "column_h_m": 0.4, "beam_h_m": 0.45})
     assert inp == {"column_b_m": 0.45, "column_h_m": 0.45, "beam_h_m": 0.5} and a == {}
+
+
+def test_view_commands_do_not_create_approvals_and_kaavar_alias():
+    from app.application import detailing_assumptions as da
+    from app.application.revision_workflow import create_run_approval
+
+    rec, _ = da.parse_assumptions("کاور ۵۰ میلیمتر")
+    assert rec["cover_mm"] == 50
+
+    class Svc:
+        def create_request(self, *a, **k):  # pragma: no cover - must not be called
+            raise AssertionError("no approval for view commands")
+
+    for extra in ({"assumptions_command": "show"}, {"animate_mode": 2}):
+        payload = {"kind": "frame3d_analysis", "status": "completed", "inputs": {}, **extra}
+        assert create_run_approval(Svc(), None, "u", payload) is None

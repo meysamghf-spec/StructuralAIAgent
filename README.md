@@ -164,7 +164,7 @@ Proprietary — internal development.
 - Sticky sidebar with its own scroll; EN/فا UI toggle. Creating/opening a project goes to `/?project=<id>` (chat with the project selected); the current project is shared by all pages.
 - Collapsible project chat dock (💬, bottom-right) on every /projects and /workspace page — same thread and result cards (3D viewer included).
 - Model page: quick 3D-frame form (geometry, sections, materials, loads, 2800, Mabhas 9, allowable bearing, import from last chat frame) → `POST /api/v1/frame3d/run` (same engine as chat). Analysis/Results/Design pages show the same result card + 3D viewer; old PEM tools are collapsed under "Advanced".
-- Hidden from the menu (code kept; `NEXT_PUBLIC_SHOW_ALL_PAGES=1` shows them): Optimization, Learning, Traceability, Upgrades, AI Assistant.
+- All pages are listed in the sidebar (no hidden pages, no env flag).
 
 ### Phase 8: every sidebar page shows the project's content
 - CAD: built-in DXF viewer (plans.dxf incl. foundation plan sheet, frame3d.dxf) with layer toggles, sheet/story selector, pan/zoom, fit, downloads (DXF/e2k/f2k) — no AutoCAD needed.

@@ -24,11 +24,11 @@ describe("manual frame form", () => {
 });
 
 describe("navigation and project chat", () => {
-  it("hides stub pages unless the flag is set", () => {
-    const shown = visibleNavItems(false).map((i) => i.href);
+  it("lists every page (no hidden pages, no env flag)", () => {
+    const shown = visibleNavItems().map((i) => i.href);
     expect(shown).toContain("/workspace/model");
-    expect(shown).not.toContain("/workspace/optimization");
-    expect(visibleNavItems(true)).toHaveLength(NAV_ITEMS.length);
+    expect(shown).toContain("/workspace/optimization");
+    expect(visibleNavItems()).toHaveLength(NAV_ITEMS.length);
   });
   it("builds project chat links and translates the shell", () => {
     expect(projectChatHref("a b")).toBe("/?project=a%20b");

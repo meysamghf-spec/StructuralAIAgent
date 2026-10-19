@@ -3,7 +3,7 @@
 import { ApprovalReviewPanel } from "@/components/agents/ApprovalReviewPanel";
 import { ProjectScopePanel } from "@/components/workspace/ProjectScopePanel";
 import { useProjectScope } from "@/hooks/useProjectScope";
-import { listApprovals, listPendingApprovals, type ApprovalSummary } from "@/lib/api";
+import { listApprovals, listPendingApprovals, revisionChains, type ApprovalSummary, type RevisionChange } from "@/lib/api";
 import { formatWorkspaceDate, getApprovalStatusLabel, truncateText } from "@/lib/workspace";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -18,6 +18,8 @@ export default function ApprovalsWorkspaceClient() {
   const [pending, setPending] = useState<ApprovalSummary[]>([]);
   const [history, setHistory] = useState<ApprovalSummary[]>([]);
   const [busy, setBusy] = useState(false);
+  const [all, setAll] = useState<ApprovalSummary[]>([]);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const refresh = useCallback(async (projectId: string) => {
     if (!projectId) {
@@ -33,6 +35,7 @@ export default function ApprovalsWorkspaceClient() {
         listApprovals(projectId),
       ]);
       setPending(pendingResponse.requests);
+      setAll(allResponse.requests);
       setHistory(allResponse.requests.filter((item) => item.status !== "PENDING"));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load approvals");
@@ -40,6 +43,8 @@ export default function ApprovalsWorkspaceClient() {
       setBusy(false);
     }
   }, [setError]);
+
+  const chains = revisionChains(all);
 
   useEffect(() => {
     if (selectedProjectId) {
@@ -66,9 +71,15 @@ export default function ApprovalsWorkspaceClient() {
       />
 
       {error ? <div className="alert error">{error}</div> : null}
+      {notice ? <div className="alert" role="status">{notice}</div> : null}
 
       <section className="card">
         <h3>Waiting for your review</h3>
+        <p className="muted">
+          Every chat analysis / design run creates an item here. Rejecting needs a reason (Persian or English); the
+          reason is parsed (e.g. “increase column size”, “use Φ20”, “drift too high”, “cover 50 mm”), the model is
+          re-run and a new revision is created.
+        </p>
         {loading || busy ? <p className="muted">Loading approvals…</p> : null}
         {!loading && !busy && pending.length === 0 ? (
           <p className="muted">No approvals waiting right now.</p>
@@ -94,13 +105,49 @@ export default function ApprovalsWorkspaceClient() {
                 <ApprovalReviewPanel
                   projectId={selectedProjectId}
                   approvalRequestId={item.id}
-                  onResolved={() => void refresh(selectedProjectId)}
+                  onResolved={(msg) => {
+                    setNotice(msg ?? null);
+                    void refresh(selectedProjectId);
+                  }}
                 />
               ) : null}
             </li>
           ))}
         </ul>
       </section>
+
+      {chains.length ? (
+        <section className="card">
+          <h3>Revision history</h3>
+          <ul className="workspace-list">
+            {chains.map((chain) => (
+              <li key={chain[0].id} className="workspace-list-item compact">
+                <div>
+                  <strong>{String(chain[0].metadata?.module_label ?? "Engineering run")}</strong>
+                  <ol className="revision-chain">
+                    {chain.map((a) => {
+                      const changes = (a.metadata?.changes as RevisionChange[] | undefined) ?? [];
+                      return (
+                        <li key={a.id}>
+                          <span className="revision-badge">Rev {String(a.metadata?.revision ?? 1)}</span>{" "}
+                          {getApprovalStatusLabel(a.status)} · {formatWorkspaceDate(a.requested_at)}
+                          {a.metadata?.change_reason ? <p className="muted">Why: {String(a.metadata.change_reason)}</p> : null}
+                          {changes.length ? (
+                            <p className="muted">
+                              Changed: {changes.map((c) => `${c.key} ${JSON.stringify(c.old)} → ${JSON.stringify(c.new)}`).join("; ")}
+                            </p>
+                          ) : null}
+                          {a.rejection_reason ? <p className="muted">Rejected: {truncateText(a.rejection_reason)}</p> : null}
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section className="card">
         <h3>Recent decisions</h3>

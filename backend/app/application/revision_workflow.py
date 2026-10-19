@@ -24,6 +24,8 @@ def create_run_approval(approval_service: Any, project_id: UUID, requester: str,
     adapter = em.adapter_for(payload.get("kind"))
     if adapter is None or not adapter.completed(payload):
         return None
+    if revision == 1 and (payload.get("assumptions_command") == "show" or payload.get("animate_mode")):
+        return None  # viewing commands re-display the last run; they are not a new run to approve
     inputs = {k: v for k, v in (payload.get("inputs") or {}).items() if k not in ("provided",)}
     summary = adapter.summary(payload)
     if revision > 1:

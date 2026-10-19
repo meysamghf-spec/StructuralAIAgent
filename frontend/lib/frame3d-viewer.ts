@@ -253,3 +253,52 @@ export function storeyShears(levelForces: Record<string, number> | null | undefi
     return { ...r, shearKn: Math.round(acc * 10) / 10 };
   });
 }
+
+export type ViewKind = "3D" | "PLAN" | "ELEV_X" | "ELEV_Y";
+
+/**
+ * Members shown for a view. PLAN: the selected storey (top storey when All) — its beams and the columns below it.
+ * ELEV_X: the frame on Y grid line `line` (XZ plane); ELEV_Y: the frame on X grid line `line` (YZ plane);
+ * `line` null = all lines. 3D: storey filter only.
+ */
+export function viewMembers(v: ViewerData, view: ViewKind, storey: number | null, line: number | null): ViewerMember[] {
+  const byId = new Map(v.nodes.map((n) => [n.id, n]));
+  const on = (m: ViewerMember, axis: "x" | "y", c: number) => {
+    const a = byId.get(m.i), b = byId.get(m.j);
+    return !!a && !!b && Math.abs(a[axis] - c) < 1e-6 && Math.abs(b[axis] - c) < 1e-6;
+  };
+  if (view === "PLAN") {
+    const k = planStorey(v, storey);
+    return v.members.filter((m) => m.storey === k);
+  }
+  if (view === "ELEV_X") return line === null ? v.members : v.members.filter((m) => on(m, "y", v.ys[line]));
+  if (view === "ELEV_Y") return line === null ? v.members : v.members.filter((m) => on(m, "x", v.xs[line]));
+  return storey === null ? v.members : v.members.filter((m) => m.storey === storey);
+}
+
+/** Storey shown in plan: the selected one, else the top storey. */
+export function planStorey(v: ViewerData, storey: number | null): number {
+  return storey ?? (v.levels.length ? Math.max(...v.levels) : 0);
+}
+
+/** Orthographic camera for plan/elevations: position, up vector and half-extents (world units) of the frustum. */
+export function orthoCamera(v: ViewerData, view: Exclude<ViewKind, "3D">, storey: number | null, line: number | null, aspect: number) {
+  const x0 = v.xs[0], x1 = v.xs[v.xs.length - 1], y0 = v.ys[0], y1 = v.ys[v.ys.length - 1], z0 = Math.min(v.zs[0], -1), z1 = v.zs[v.zs.length - 1];
+  const pad = 3;
+  let w: number, h: number, pos: [number, number, number], target: [number, number, number], up: [number, number, number];
+  if (view === "PLAN") {
+    const z = v.zs[planStorey(v, storey)] ?? z1;
+    w = x1 - x0 + 2 * pad; h = y1 - y0 + 2 * pad;
+    target = [(x0 + x1) / 2, (y0 + y1) / 2, z]; pos = [target[0], target[1], z + 100]; up = [0, 1, 0];
+  } else if (view === "ELEV_X") {
+    const y = line === null ? (y0 + y1) / 2 : v.ys[line];
+    w = x1 - x0 + 2 * pad; h = z1 - z0 + 2 * pad;
+    target = [(x0 + x1) / 2, y, (z0 + z1) / 2]; pos = [target[0], y - 100, target[2]]; up = [0, 0, 1];
+  } else {
+    const x = line === null ? (x0 + x1) / 2 : v.xs[line];
+    w = y1 - y0 + 2 * pad; h = z1 - z0 + 2 * pad;
+    target = [x, (y0 + y1) / 2, (z0 + z1) / 2]; pos = [x + 100, target[1], target[2]]; up = [0, 0, 1];
+  }
+  const halfH = Math.max(h / 2, w / 2 / Math.max(aspect, 1e-3));
+  return { pos, target, up, halfW: halfH * aspect, halfH };
+}
