@@ -1,10 +1,6 @@
-import { AppShell } from "@/components/AppShell";
 import UpgradesWorkspaceClient from "./UpgradesWorkspaceClient";
 
+// The root layout already wraps every page in AppShell; wrapping again nested a second sidebar + scroll pane.
 export default function UpgradesPage() {
-  return (
-    <AppShell>
-      <UpgradesWorkspaceClient />
-    </AppShell>
-  );
+  return <UpgradesWorkspaceClient />;
 }

@@ -15,7 +15,9 @@ export type PendingAttachment = {
 
 export type MessageBlock =
   | { type: "paragraph"; text: string }
-  | { type: "heading"; text: string }
+  | { type: "heading"; text: string; level?: number }
+  | { type: "table"; header: string[]; rows: string[][]; align: Array<"left" | "right" | "center" | null> }
+  | { type: "ordered-item"; text: string; n: string }
   | { type: "list-item"; text: string };
 
 export function filterConversations<T extends { title: string }>(
@@ -31,17 +33,55 @@ export function filterConversations<T extends { title: string }>(
   );
 }
 
+function splitRow(line: string): string[] {
+  let t = line.trim();
+  if (t.startsWith("|")) t = t.slice(1);
+  if (t.endsWith("|") && !t.endsWith("\\|")) t = t.slice(0, -1);
+  return t.split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, "|"));
+}
+
+const TABLE_SEPARATOR = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
+
+/** Minimal GitHub-style markdown: headings (#..######), bullet/ordered lists, pipe tables, **bold**. */
 export function parseMessageContent(content: string): MessageBlock[] {
-  return content.split("\n").map((line) => {
+  const lines = content.split("\n");
+  const blocks: MessageBlock[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     const trimmed = line.trim();
-    if (trimmed.startsWith("### ")) {
-      return { type: "heading", text: trimmed.slice(4) };
+    if (trimmed.includes("|") && i + 1 < lines.length && TABLE_SEPARATOR.test(lines[i + 1]) && lines[i + 1].includes("-")) {
+      const header = splitRow(trimmed);
+      const align = splitRow(lines[i + 1]).map((c) =>
+        c.startsWith(":") && c.endsWith(":") ? "center" : c.endsWith(":") ? "right" : c.startsWith(":") ? "left" : null,
+      );
+      const rows: string[][] = [];
+      i += 2;
+      while (i < lines.length && lines[i].trim().includes("|") && lines[i].trim() !== "") {
+        const cells = splitRow(lines[i]);
+        rows.push(header.map((_, k) => cells[k] ?? ""));
+        i++;
+      }
+      i--;
+      blocks.push({ type: "table", header, rows, align });
+      continue;
     }
-    if (trimmed.startsWith("- ")) {
-      return { type: "list-item", text: trimmed.slice(2) };
+    const h = /^(#{1,6})\s+(.*)$/.exec(trimmed);
+    if (h) {
+      blocks.push(h[1].length === 3 ? { type: "heading", text: h[2] } : { type: "heading", text: h[2], level: h[1].length });
+      continue;
     }
-    return { type: "paragraph", text: line };
-  });
+    if (/^[-*+]\s+/.test(trimmed)) {
+      blocks.push({ type: "list-item", text: trimmed.replace(/^[-*+]\s+/, "") });
+      continue;
+    }
+    const o = /^(\d+)[.)]\s+(.*)$/.exec(trimmed);
+    if (o) {
+      blocks.push({ type: "ordered-item", n: o[1], text: o[2] });
+      continue;
+    }
+    blocks.push({ type: "paragraph", text: line });
+  }
+  return blocks;
 }
 
 export function renderInlineMarkdown(text: string): Array<string | { bold: string }> {
