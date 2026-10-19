@@ -84,7 +84,7 @@ def build_structural_doc(inp, raw: dict[str, Any], design: dict[str, Any] | None
                 pen.line("S-CONC-HIDDEN", (x - bb / 2, a), (x - bb / 2, b_))
                 pen.line("S-CONC-HIDDEN", (x + bb / 2, a), (x + bb / 2, b_))
                 tag = _beam_tag("Y", i in (0, nx))
-                pen.text("S-TAG", (x - bb / 2 - 1.5 * scale, (a + b_) / 2), f"{tag} {bb:.0f}x{bh:.0f}", h=2.5, align="BOTTOM_CENTER", rot=90)
+                pen.text("S-TAG", (x + bb / 2 + 4.5 * scale, (a + b_) / 2), f"{tag} {bb:.0f}x{bh:.0f}", h=2.5, align="BOTTOM_CENTER", rot=90)
         title_fa, title_en = f"پلان طبقه {k} (تراز {Z[k] / 1000:+.2f})", f"STORY {k} PLAN  (+{Z[k] / 1000:.2f})"
         pen.text("S-TITLE", (W / 2, -m - 4 * scale), title_en, h=5, align="TOP_CENTER")
         pen.text("S-TITLE", (W / 2, -m - 12 * scale), title_fa, h=4.5, align="TOP_CENTER")
@@ -123,7 +123,9 @@ def build_structural_doc(inp, raw: dict[str, Any], design: dict[str, Any] | None
     fd = (raw or {}).get("foundation_design")
     if fd and fd.get("footings"):
         pen = region()
-        pen.grid(XS, YS, xl, yl)
+        bmax = max(f["B_m"] for f in fd["footings"]) * 1000
+        pen.grid(XS, YS, xl, yl, ext=max(15 * scale, bmax / 2 + 10 * scale))
+        m = max(m, bmax / 2 + 22 * scale)
         rows = {r["position"]: r for r in fd["rows"]}
         done_dim = set()
         for f in fd["footings"]:
@@ -132,10 +134,10 @@ def build_structural_doc(inp, raw: dict[str, Any], design: dict[str, Any] | None
             pen.poly("S-FOOT", pts, closed=True)
             pen.hatch("S-FOOT-HATCH", pts, "AR-CONC", pscale=scale / 12)
             pen.rect("S-CONC", x - cb / 2, y - ch / 2, x + cb / 2, y + ch / 2)
-            pen.tag((x, y - B / 2 + 4 * scale), FTG_TAG[f["position"]], h=3)
+            pen.tag((x + B / 4, y - B / 4), FTG_TAG[f["position"]], h=3)
             if f["position"] not in done_dim:  # dimension one footing of each type
                 done_dim.add(f["position"])
-                pen.dim((x - B / 2, y + B / 2), (x + B / 2, y + B / 2), 5 * scale)
+                pen.dim((x - B / 2, y + B / 2), (x + B / 2, y + B / 2), 5 * scale, text_at=x + B / 4)
         frow = [(FTG_TAG[p], POS_FA[p] + " / " + p, f"{r['B_m'] * 1000:.0f}x{r['B_m'] * 1000:.0f}", f"{r['h_m'] * 1000:.0f}", r["bars"], str(r["members"]), r["status"])
                 for p, r in rows.items()]
         pen.table(W + m + 10 * scale, H, ("Tag", "Type", "B x L (mm)", "h (mm)", "Bars (bottom)", "No.", "Check"), frow,
@@ -150,8 +152,8 @@ def build_structural_doc(inp, raw: dict[str, Any], design: dict[str, Any] | None
         L = coords[-1]
         top = Z[-1]
         for c in coords:
-            pen.line("S-AXIS", (c, -12 * scale), (c, top + 10 * scale))
-            pen.bubble((c, -12 * scale - 4 * scale), labels[coords.index(c)])
+            pen.line("S-AXIS", (c, -18 * scale), (c, top + 10 * scale))
+            pen.bubble((c, -22 * scale), labels[coords.index(c)])
         for k in range(1, ns + 1):
             for c in coords:  # columns as double lines
                 pen.rect("S-CONC", c - cb / 2, Z[k - 1] + (bh if k > 1 else 0) * 0, c + cb / 2, Z[k] - bh)
@@ -165,9 +167,9 @@ def build_structural_doc(inp, raw: dict[str, Any], design: dict[str, Any] | None
         for k in range(ns + 1):
             pen.level_mark(L + 10 * scale, Z[k], Z[k] / 1000)
         pen.chain_dims(Z, coords[0], -14 * scale, horizontal=False)
-        pen.chain_dims(coords, 0, -24 * scale, horizontal=True, overall=True)
-        pen.text("S-TITLE", (L / 2, -42 * scale), f"ELEVATION ON AXIS {name}", h=5, align="TOP_CENTER")
-        pen.text("S-TITLE", (L / 2, -50 * scale), f"نمای قاب محور {name}", h=4.5, align="TOP_CENTER")
+        pen.chain_dims(coords, 0, -8 * scale, horizontal=True, overall=True)
+        pen.text("S-TITLE", (L / 2, -30 * scale), f"ELEVATION ON AXIS {name}", h=5, align="TOP_CENTER")
+        pen.text("S-TITLE", (L / 2, -38 * scale), f"نمای قاب محور {name}", h=4.5, align="TOP_CENTER")
         sheets.append((f"E-{name}", ext(pen, -30 * scale, -56 * scale, L + 45 * scale, top + 18 * scale), f"نمای محور {name}", f"ELEVATION AXIS {name}"))
 
     for j, lab in enumerate(yl):
@@ -176,7 +178,7 @@ def build_structural_doc(inp, raw: dict[str, Any], design: dict[str, Any] | None
         elevation(lab, YS, yl, "Y")
 
     for name, extents, tfa, ten in sheets:
-        ds.add_sheet(doc, name, extents, info, name, tfa, ten)
+        ds.add_sheet(doc, name, extents, info, name, tfa, ten, scale=scale)
     return doc, [s[0] for s in sheets]
 
 

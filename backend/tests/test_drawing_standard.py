@@ -69,3 +69,28 @@ def test_foundation_detailing_sheet_and_chat_commands():
     assert {"P_kn", "DC_punching", "bars"} <= set(f)
     p = f3.build_frame3d_payload("فونداسیون را نشان بده", prior_spec={**f3.build_frame3d_payload(REQ)["inputs"]})
     assert p["show_foundation"] is True and p["viewer"]["footings"]
+
+
+def test_every_sheet_of_every_dxf_is_clash_free_and_readable():
+    from app.application import csi_text_export as cte
+    from app.application import drawing_qa as qa
+
+    inp, raw, design = _run()
+    for fmt in ("dxf_plans", "dxf_3d", "dxf_rebar", "dxf_foundation"):
+        doc = ezdxf.read(io.StringIO(cte.build_export(fmt, inp, raw, design)))
+        assert qa.find_issues(doc) == [], fmt
+        assert qa.sheet_issues(doc) == [], fmt
+
+
+def test_rc_section_hoop_hooks_bars_dims_title():
+    doc = ds.new_document(); msp = doc.modelspace()
+    pen = ds.Pen(msp, (0, 0), 20)
+    bars = [(65, 65, 20), (335, 65, 20), (65, 335, 20), (335, 335, 20)]
+    ds.rc_section(pen, 0, 0, 400, 400, 40, 10, bars, [("4Φ20", [0, 1, 2, 3])], "hoop Φ10@100", title="C-C")
+    assert len(msp.query("HATCH[layer=='S-REBAR-MAIN']")) == 4
+    hoop = [e for e in msp.query("LWPOLYLINE[layer=='S-REBAR-STIR']") if e.closed]
+    assert hoop and any(b for *_, b in hoop[0].get_points("xyseb"))  # rounded bends
+    assert len(msp.query("LWPOLYLINE[layer=='S-REBAR-STIR']")) == 3  # hoop + two 135° hook legs
+    assert len(msp.query("DIMENSION")) == 3 and msp.query("LEADER")
+    texts = {e.dxf.text for e in msp.query("TEXT")}
+    assert "SECTION C-C" in texts and "1:20" in texts and ds.audit(doc) == 0

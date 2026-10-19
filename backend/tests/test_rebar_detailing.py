@@ -83,7 +83,11 @@ def test_dxf_audits_clean_and_has_three_sheets(model):
     callouts = [e.dxf.text for e in msp.query("TEXT[layer=='REBAR_TEXT']") if " L=" in e.dxf.text]
     assert msp.query("LEADER") and any("Φ" in c for c in callouts)
     cuts = {e.dxf.text for e in msp.query("TEXT[layer=='SECTION']")}
-    assert {"A", "B", "C-C"} <= cuts
+    assert {"A", "B", "C"} <= cuts
+    titles = {e.dxf.text for e in msp.query("TEXT[layer=='S-TITLE']")}
+    assert any(t.startswith("SECTION A-A") for t in titles) and any(t.startswith("SECTION C-C") for t in titles)
+    assert doc.layouts.get("R-04") is not None  # 1:20 section sheet
+    assert msp.query("HATCH[layer=='S-REBAR-MAIN']")  # bars as filled circles
     assert any("GENERAL NOTES" in e.dxf.text for e in msp.query("TEXT[layer=='NOTES']"))
     assert msp.query("HATCH")
     _ = get_display

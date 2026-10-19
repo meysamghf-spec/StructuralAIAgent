@@ -74,7 +74,9 @@ def build_foundation_doc(inp, raw: dict[str, Any], design: dict[str, Any] | None
 
     # ---------------------------------------------------------------- FD-01: plan with tags, dims to axes, schedule
     pen = ds.Pen(msp, (0, 0), scale)
-    pen.grid(XS, YS, [_x_label(i) for i in range(nx + 1)], [_y_label(j) for j in range(ny + 1)])
+    bmax = max(f["B_m"] for f in fd["footings"]) * 1000
+    ext = max(15 * scale, bmax / 2 + 10 * scale)
+    pen.grid(XS, YS, [_x_label(i) for i in range(nx + 1)], [_y_label(j) for j in range(ny + 1)], ext=ext)
     dimmed = set()
     for f in fd["footings"]:
         x, y, B = f["x"] * 1000, f["y"] * 1000, f["B_m"] * 1000
@@ -91,15 +93,16 @@ def build_foundation_doc(inp, raw: dict[str, Any], design: dict[str, Any] | None
             pen.dim((x + B / 2, y), (x + B / 2, y + B / 2), -4 * scale, angle=90)
     sched = [(TAG[p], f"{FA[p]} / {p}", f"{r['B_m'] * 1000:.0f}x{r['B_m'] * 1000:.0f}", f"{r['h_m'] * 1000:.0f}",
               f"Φ{r['db']}@{r['s_mm']}", f"Φ{r['db']}@{r['s_mm']}", str(r["members"])) for p, r in rows.items()]
-    tx = W + 30 * scale
+    tx = W + ext + 15 * scale
     pen.table(tx, H, ("Tag", "Type / نوع", "B x L (mm)", "h (mm)", "Bottom X", "Bottom Y", "No."), sched, (14, 30, 28, 16, 24, 24, 10),
               title="FOOTING SCHEDULE / جدول پی‌ها")
-    pen.text("S-TITLE", (W / 2, -26 * scale), "FOUNDATION PLAN / پلان فونداسیون", h=5, align="TOP_CENTER")
-    pen.text("S-NOTES", (W / 2, -34 * scale), f"qa = {fd['qa_kpa']:g} kPa{' (assumed)' if fd['qa_assumed'] else ''} · Df = {df / 1000:g} m · Mabhas 9 footing design", h=2.5, align="TOP_CENTER")
-    ds.add_sheet(doc, "FD-01", (-22 * scale, -40 * scale, tx + 160 * scale, H + 22 * scale), info, "FD-01", "پلان و جدول پی‌ها", "FOUNDATION PLAN & SCHEDULE")
+    pen.text("S-TITLE", (W / 2, -ext - 12 * scale), "FOUNDATION PLAN / پلان فونداسیون", h=5, align="TOP_CENTER")
+    pen.text("S-NOTES", (W / 2, -ext - 20 * scale), f"qa = {fd['qa_kpa']:g} kPa{' (assumed)' if fd['qa_assumed'] else ''} · Df = {df / 1000:g} m · Mabhas 9 footing design", h=2.5, align="TOP_CENTER")
+    tx = W + ext + 15 * scale
+    ds.add_sheet(doc, "FD-01", (-ext - 10 * scale, -ext - 26 * scale, tx + 160 * scale, H + ext + 10 * scale), info, "FD-01", "پلان و جدول پی‌ها", "FOUNDATION PLAN & SCHEDULE", scale=scale)
 
     # ---------------------------------------------------------------- FD-02: sections per type + bending schedule
-    s2 = 50
+    s2 = 25  # footing sections at 1:25
     ox0 = tx + 400 * scale + 20000
     pen = ds.Pen(msp, (ox0, 0), s2)
     x = 0.0
@@ -117,6 +120,7 @@ def build_foundation_doc(inp, raw: dict[str, Any], design: dict[str, Any] | None
         pen.hatch("S-CONC-HATCH", [(x - B / 2 - 100, base - lean), (x + B / 2 + 100, base - lean), (x + B / 2 + 100, base), (x - B / 2 - 100, base)], "AR-SAND", pscale=1)
         fpts = [(x - B / 2, base), (x + B / 2, base), (x + B / 2, base + h), (x - B / 2, base + h)]
         pen.poly("S-FOOT", fpts, closed=True)
+        pen.hatch("S-FOOT-HATCH", fpts, "ANSI31", pscale=s2 * 1.6)  # light section hatch
         top_col = df + lap + 400
         pen.poly("S-CONC", [(x - cb / 2, base + h), (x - cb / 2, top_col), (x + cb / 2, top_col), (x + cb / 2, base + h)])
         pen.line("S-CONC-HIDDEN", (x - B / 2 - 600, df), (x + B / 2 + 600, df))  # natural ground / ±0.00
@@ -134,17 +138,18 @@ def build_foundation_doc(inp, raw: dict[str, Any], design: dict[str, Any] | None
         pen.dim((x - B / 2, base - lean - 300), (x + B / 2, base - lean - 300), -2 * s2)
         pen.dim((x + B / 2, base), (x + B / 2, base + h), -6 * s2, angle=90)
         pen.dim((x + cb / 2 + 200, df), (x + cb / 2 + 200, df + lap), -4 * s2, angle=90)
-        pen.dim((x - B / 2 + cover, base + cover + 300), (x - B / 2 + cover, base), 3 * s2, angle=90)
+        pen.dim((x - B / 2, base), (x - B / 2, base + cover), 5 * s2, angle=90)  # bottom cover
         pen.level_mark(x + B / 2 + 400, df, 0.0)
         pen.level_mark(x + B / 2 + 400, base, -df / 1000)
         pen.callout((x, yb), (x + B / 4, base - lean - 900), f"Φ{db}@{r['s_mm']} L={_r10(B - 2 * cover + 24 * db)} (each way)")
         pen.callout((x + cb / 2 - 60, df + lap / 2), (x + cb / 2 + 700, df + lap * 0.8), f"{nb}Φ{dbc} starter, 90° hook 12Φ, lap {lap}")
-        pen.text("S-NOTES", (x - B / 2, base - 120), f"cover {cover:.0f}", h=2.0)
         pen.text("S-NOTES", (x - B / 2 - 100, base - lean - 120), f"lean concrete {lean:.0f} / بتن مگر", h=2.0, align="TOP_LEFT")
-        pen.text("S-TITLE", (x, base - lean - 1500), f"SECTION {TAG[p]}-{TAG[p]}  ({p})", h=4, align="TOP_CENTER")
+        pen.text("S-TITLE", (x, base - lean - 1000), f"SECTION {TAG[p]}-{TAG[p]}  ({p})", h=4, align="TOP_CENTER")
+        pen.text("S-TITLE", (x, base - lean - 1000 - 6.5 * s2), f"برش {TAG[p]}-{TAG[p]}", h=3.5, align="TOP_CENTER")
+        pen.text("S-NOTES", (x, base - lean - 1000 - 12 * s2), f"1:{s2}", h=2.5, align="TOP_CENTER")
         top = max(top, top_col)
         x += B + 3500
-    y = -lean - 2500
+    y = -lean - 3000
     table_rows = [(b["mark"], f"Φ{b['d']}", b["shape"], b["length"], b["count"], f"{b['weight']:.1f}") for b in brow]
     total = round(sum(b["weight"] for b in brow), 1)
     table_rows.append(("", "", "TOTAL / وزن کل", "", "", f"{total:.1f}"))
@@ -156,8 +161,8 @@ def build_foundation_doc(inp, raw: dict[str, Any], design: dict[str, Any] | None
         f"Founding depth Df = {df / 1000:g} m; allowable bearing qa = {fd['qa_kpa']:g} kPa.",
         "پوشش، عمق پی و بتن مگر از گفتگو قابل تغییر است.",
     ])
-    ds.add_sheet(doc, "FD-02", (ox0 - 3000, ox0 * 0 + yb_ - 2000, ox0 + x + 2000, top + 1500), info, "FD-02",
-                 "مقاطع و جدول میلگرد پی", "FOOTING SECTIONS & BENDING SCHEDULE", paper="A1", scale=50)
+    ds.add_sheet_tiles(doc, "FD-02", (ox0 - 3000, yb_ - 2000, ox0 + x + 2000, top + 1500), info,
+                       "مقاطع و جدول میلگرد پی", "FOOTING SECTIONS & BENDING SCHEDULE", scale=s2)
     return doc, brow, total
 
 

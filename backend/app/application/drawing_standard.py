@@ -12,6 +12,7 @@ neither; the in-app viewer reverses it back for the browser.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Iterable, Sequence
@@ -52,7 +53,7 @@ LAYERS: dict[str, tuple[int, int, str]] = {
 }
 LATIN, PERSIAN = "SA-LATIN", "SA-PERSIAN"
 PAPER = {"A3": (420.0, 297.0), "A1": (841.0, 594.0)}
-SCALES = (50, 100, 200)
+SCALES = (20, 25, 50, 100, 200)
 
 
 def fa(text: str) -> str:
@@ -141,12 +142,15 @@ class Pen:
         h.paths.add_polyline_path([self.p(x, y) for x, y in pts], is_closed=True)
         return h
 
-    def dim(self, a, b, offset, angle=0.0):
+    def dim(self, a, b, offset, angle=0.0, text_at: float | None = None):
         """Linear DIMENSION a→b with the dim line `offset` from a (perpendicular to `angle`)."""
         import math
         ux, uy = math.cos(math.radians(angle + 90)), math.sin(math.radians(angle + 90))
         base = (a[0] + ux * offset, a[1] + uy * offset)
-        d = self.msp.add_linear_dim(base=self.p(*base), p1=self.p(*a), p2=self.p(*b), angle=angle,
+        loc = None
+        if text_at is not None:  # move the text along the dim line (e.g. off a crossing axis)
+            loc = self.p(text_at, base[1] + 1.75 * self.scale) if angle == 0 else self.p(base[0] - 1.75 * self.scale, text_at)
+        d = self.msp.add_linear_dim(base=self.p(*base), p1=self.p(*a), p2=self.p(*b), angle=angle, location=loc,
                                     dimstyle=f"SA-1-{self.scale}", dxfattribs={"layer": "S-DIMS"})
         d.render()
         return d
@@ -160,7 +164,10 @@ class Pen:
         for a, b in zip(coords, coords[1:]):
             self.dim(pt(a), pt(b), off, ang)
         if overall and len(coords) > 2:
-            self.dim(pt(coords[0]), pt(coords[-1]), off + sgn * (6 * self.scale if horizontal else -6 * self.scale), ang)
+            mid = (coords[0] + coords[-1]) / 2
+            k = min(range(len(coords) - 1), key=lambda i: abs((coords[i] + coords[i + 1]) / 2 - mid))
+            at = (coords[k] + coords[k + 1]) / 2  # text in a bay, never on an intermediate axis
+            self.dim(pt(coords[0]), pt(coords[-1]), off + sgn * (6 * self.scale if horizontal else -6 * self.scale), ang, text_at=at)
 
     def bubble(self, c, label, r=None):
         r = r or 4.0 * self.scale
@@ -181,8 +188,8 @@ class Pen:
             self.bubble((x0 - ext - r, y), lab)
             self.bubble((x1 + ext + r, y), lab)
         if dims:
-            self.chain_dims(list(xs), y0, -(ext * 0.3), horizontal=True)
-            self.chain_dims(list(ys), x0, -(ext * 0.3), horizontal=False)
+            self.chain_dims(list(xs), y0, -(ext * 0.45), horizontal=True)
+            self.chain_dims(list(ys), x0, -(ext * 0.45), horizontal=False)
 
     def level_mark(self, x, z, z_m: float, side=1):
         """Triangle level symbol with ±0.00 / +3.20 text."""
@@ -234,12 +241,81 @@ class Pen:
         return y_top - (len(lines) + 2) * 1.8 * h * self.scale
 
 
+def _hoop_path(x0, y0, x1, y1, r):
+    """Closed hoop with bend radius r as (x, y, bulge) vertices (counter-clockwise)."""
+    k = math.tan(math.pi / 8)  # bulge of a 90° arc
+    return [(x0 + r, y0, 0), (x1 - r, y0, k), (x1, y0 + r, 0), (x1, y1 - r, k), (x1 - r, y1, 0), (x0 + r, y1, k),
+            (x0, y1 - r, 0), (x0, y0 + r, k)]
+
+
+def rc_section(pen: "Pen", ox: float, oy: float, b: float, h: float, cover: float, tie_d: float,
+               bars: list[tuple[float, float, float]], groups: list[tuple[str, list[int]]], tie_label: str,
+               cross_ties: list[tuple[tuple[float, float], tuple[float, float]]] = (), title: str = "A-A",
+               title_fa: str | None = None) -> tuple[float, float, float, float]:
+    """Professional RC section (true scale, pen.scale = 20/25): light-hatched outline, closed hoop at the cover with
+    135° hooks, filled bars at true diameter, cross-ties, b/h/cover dimensions, grouped callouts outside, title + scale.
+    `bars` are (x, y, d) from the section's bottom-left corner. Returns the region (x0, y0, x1, y1) used."""
+    s = pen.scale
+    P = lambda x, y: (ox + x, oy + y)  # noqa: E731
+    outline = [P(0, 0), P(b, 0), P(b, h), P(0, h)]
+    pen.poly("S-CONC", outline, closed=True)
+    pen.hatch("S-CONC-HATCH", outline, "ANSI31", pscale=s * 1.6)
+    # hoop centre line at cover + tie_d/2, inner bend radius 2·tie_d
+    c = cover + tie_d / 2
+    r = 2 * tie_d + tie_d / 2
+    hp = _hoop_path(ox + c, oy + c, ox + b - c, oy + h - c, r)
+    pen.msp.add_lwpolyline([(pen.ox + x, pen.oy + y, 0, 0, bu) for x, y, bu in hp], format="xyseb", close=True,
+                           dxfattribs={"layer": "S-REBAR-STIR", "const_width": tie_d * 0.9})
+    hook = max(6 * tie_d, 75.0)
+    tlx, tly = ox + c, oy + h - c  # 135° hooks at the top-left corner, both legs into the core
+    ax, ay = tlx + r - r * 0.7071, tly - r + r * 0.7071  # 135° point of the corner bend
+    for sgn in (-1, 1):  # two overlapping hook legs, one tie diameter apart, running diagonally into the core
+        px, py = ax + sgn * tie_d * 0.5 * 0.7071, ay + sgn * tie_d * 0.5 * 0.7071
+        pen.msp.add_lwpolyline([pen.p(px, py), pen.p(px + hook * 0.7071, py - hook * 0.7071)],
+                               dxfattribs={"layer": "S-REBAR-STIR", "const_width": tie_d * 0.9})
+    for (a, e) in cross_ties:
+        pen.msp.add_lwpolyline([(pen.ox + ox + a[0], pen.oy + oy + a[1]), (pen.ox + ox + e[0], pen.oy + oy + e[1])],
+                               dxfattribs={"layer": "S-REBAR-STIR", "const_width": tie_d * 0.9})
+    for x, y, d in bars:
+        hh = pen.msp.add_hatch(color=LAYERS["S-REBAR-MAIN"][0], dxfattribs={"layer": "S-REBAR-MAIN"})
+        hh.set_solid_fill(color=LAYERS["S-REBAR-MAIN"][0])
+        hh.paths.add_edge_path().add_arc((pen.ox + ox + x, pen.oy + oy + y), d / 2, 0, 360)
+        pen.circle("S-REBAR-MAIN", P(x, y), d / 2)
+    # dimensions: b below, h left, cover right
+    pen.dim(P(0, 0), P(b, 0), -10 * s)
+    pen.dim(P(0, 0), P(0, h), 10 * s, angle=90)
+    pen.dim(P(0, h), P(cover, h), 7 * s)  # clear cover to the hoop
+    # grouped callouts on the right, stacked from the top, outside the section and the cover dimension
+    tx = ox + b + 24 * s
+    rows = [(lab, idx) for lab, idx in groups] + [(tie_label, [])]
+    gap = 9 * s
+    y = oy + h + 2 * s
+    for lab, idx in rows:
+        if idx:
+            bx, by, bd = bars[idx[-1]]
+            tgt = (ox + bx + bd / 2 * 0.7, oy + by + bd / 2 * 0.7)
+        else:
+            tgt = (ox + b - c, oy + h / 2)
+        pen.msp.add_leader([pen.p(*tgt), pen.p(tx - 3 * s, y), pen.p(tx - 1 * s, y)], dxfattribs={"layer": "S-REBAR-TEXT"})
+        first, *more = lab.split(" + ")
+        pen.text("S-REBAR-TEXT", (tx, y), first, h=3.0, align="MIDDLE_LEFT")
+        for m in more:
+            y -= 5 * s
+            pen.text("S-REBAR-TEXT", (tx, y), "+ " + m, h=3.0, align="MIDDLE_LEFT")
+        y -= gap
+    # title + scale underneath
+    pen.text("S-TITLE", (ox + b / 2, oy - 17 * s), f"SECTION {title}", h=4.0, align="TOP_CENTER")
+    pen.text("S-TITLE", (ox + b / 2, oy - 23.5 * s), title_fa or f"برش {title}", h=3.5, align="TOP_CENTER")
+    pen.text("S-NOTES", (ox + b / 2, oy - 29 * s), f"1:{s}", h=2.5, align="TOP_CENTER")
+    return (ox - 22 * s, oy - 33 * s, tx + 45 * s, max(oy + h + 6 * s, y + gap))
+
+
 def choose_sheet(width_mm: float, height_mm: float) -> tuple[str, int]:
     """Smallest paper/scale that fits the model region (drawing area excludes the title strip)."""
     for paper in ("A3", "A1"):
         pw, ph = PAPER[paper]
         aw, ah = pw - 30 - 10, ph - 20 - 55  # margins + title-block strip
-        for s in SCALES:
+        for s in (50, 100, 200):
             if width_mm / s <= aw and height_mm / s <= ah:
                 return paper, s
     return "A1", 200
@@ -251,6 +327,8 @@ def add_sheet(doc, name: str, extents: tuple[float, float, float, float], info: 
     x0, y0, x1, y1 = extents
     # model-space sheet marker (frozen-free tiny text) so the in-app viewer can offer a sheet selector
     doc.modelspace().add_text(f"{name}|{x0:.0f}|{x1:.0f}|{title_en}", height=1, dxfattribs={"layer": "S-SHEET", "insert": (x0, y0)})
+    if scale is not None and paper is None:  # annotation was sized for this scale: pick the paper that fits it
+        paper = next((p_ for p_ in ("A3", "A1") if (x1 - x0) / scale <= PAPER[p_][0] - 40 and (y1 - y0) / scale <= PAPER[p_][1] - 30 - 75), "A1")
     if paper is None or scale is None:
         paper, scale = choose_sheet(x1 - x0, y1 - y0)
     pw, ph = PAPER[paper]
@@ -306,6 +384,22 @@ def add_sheet(doc, name: str, extents: tuple[float, float, float, float], info: 
     vp.dxf.status = 1
     lay.dxf.name  # noqa: B018 - touch
     return lay
+
+
+def add_sheet_tiles(doc, name: str, extents, info: TitleInfo, title_fa: str, title_en: str, scale: int, paper: str = "A1") -> list[str]:
+    """Keep the true scale: split a tall/wide region into as many sheets of `paper` as needed (R-01, R-01.2, ...)."""
+    x0, y0, x1, y1 = extents
+    pw, ph = PAPER[paper]
+    aw, ah = (pw - 40) * scale, (ph - 30 - 75) * scale * 0.98
+    nx, ny = max(1, math.ceil((x1 - x0) / aw)), max(1, math.ceil((y1 - y0) / ah))
+    names = []
+    for j in range(ny):
+        for i in range(nx):
+            n = name if i == j == 0 else f"{name}.{j * nx + i + 1}"
+            tile = (x0 + i * aw, y1 - (j + 1) * ah, min(x1, x0 + (i + 1) * aw), y1 - j * ah)
+            add_sheet(doc, n, tile, info, n, title_fa, title_en, paper=paper, scale=scale)
+            names.append(n)
+    return names
 
 
 def audit(doc) -> int:
