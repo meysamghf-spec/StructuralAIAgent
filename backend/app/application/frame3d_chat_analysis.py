@@ -820,11 +820,20 @@ def _viewer_payload(raw: dict[str, Any], inp: "Frame3dInputs", design: dict[str,
             "diaphragm_levels": list(range(1, inp.storeys + 1))}
 
 
-def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None = None) -> dict[str, Any] | None:
-    """Analyse a described frame, or re-run the project's last frame when only an export is asked for."""
+def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None = None, *,
+                          manual_inputs: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    """Analyse a described frame, or re-run the project's last frame when only an export is asked for.
+
+    `manual_inputs` (from the manual Model page form) bypasses prompt parsing; every given key counts as user input."""
     export_formats = requested_export_formats(user_request) if (is_export_request(user_request) or is_frame3d_request(user_request)) else []
     from_memory = False
-    if is_frame3d_request(user_request):
+    if manual_inputs is not None:
+        inp = inputs_from_dict(manual_inputs)
+        inp.parsed = [k for k, v in manual_inputs.items() if v is not None and not k.startswith("_")]
+        if not user_request:
+            user_request = "فارسی" if manual_inputs.get("lang") == "fa" else "manual"
+        export_formats = []
+    elif is_frame3d_request(user_request):
         inp = parse_frame3d_request(user_request)
     elif (export_formats or wants_foundation(user_request)) and prior_spec:
         inp = inputs_from_dict(prior_spec); from_memory = True

@@ -181,3 +181,29 @@ def test_viewer_payload_consistent_and_compact():
     fz = sum(r[2] for r in v["reactions"]["D"].values())
     assert abs(fz - p["gravity_reaction_kn"]["D"]) < 1.0
     assert len(v["footings"]) == 9
+
+
+def test_manual_run_endpoint_matches_chat_payload():
+    from fastapi.testclient import TestClient
+
+    import app.main as main
+    from app.api.deps import get_current_account
+
+    chat = f3.build_frame3d_payload(MEYSAM)
+    inputs = {k: v for k, v in chat["inputs"].items() if k != "lang"}
+    application = getattr(main, "app", None) or main.create_app()
+    application.dependency_overrides[get_current_account] = lambda: object()
+    try:
+        client = TestClient(application)
+        r = client.post("/api/v1/frame3d/run", json={"inputs": inputs})
+        assert r.status_code == 200, r.text
+        p = r.json()["frame3d_analysis"]
+        assert p["status"] == "completed" and p["design"]["status"] == chat["design"]["status"]
+        assert p["results"]["column_max_P_kn"] == chat["results"]["column_max_P_kn"]
+        assert p["viewer"] and p["foundation"] and p["lang"] == "en"
+        fa = client.post("/api/v1/frame3d/run", json={"inputs": {**inputs, "lang": "fa"}}).json()["frame3d_analysis"]
+        assert fa["lang"] == "fa" and fa["message"] != p["message"]
+        bad = client.post("/api/v1/frame3d/run", json={"inputs": {"storeys": 3}}).json()["frame3d_analysis"]
+        assert bad["status"] == "MISSING_REQUIRED_INPUT"
+    finally:
+        application.dependency_overrides.clear()

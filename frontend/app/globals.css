@@ -2191,3 +2191,26 @@ a {
 .v3d-table { width: 100%; border-collapse: collapse; font-size: 11px; }
 .v3d-table th, .v3d-table td { border-bottom: 1px solid #34465c; padding: 2px 4px; text-align: right; }
 .v3d-sum td { font-weight: 600; }
+
+/* sticky sidebar with its own scroll */
+.sidebar { position: sticky; top: 0; height: 100vh; min-height: 0 !important; overflow-y: auto; align-self: start; }
+.sidebar-lang { display: flex; gap: 6px; align-items: center; margin-top: 1rem; font-size: 0.85rem; color: #94a3b8; }
+.lang-btn { background: transparent; border: 1px solid #334155; color: #cbd5e1; border-radius: 4px; padding: 1px 8px; cursor: pointer; }
+.lang-btn.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+.project-actions { display: flex; gap: 0.5rem; }
+
+/* chat dock on every page */
+.chat-dock-toggle { position: fixed; right: 18px; bottom: 18px; z-index: 900; background: #2563eb; color: #fff; border: none; border-radius: 999px; padding: 0.7rem 1.1rem; font-weight: 600; box-shadow: 0 6px 20px #0008; cursor: pointer; }
+.chat-dock { position: fixed; top: 0; right: 0; bottom: 0; width: min(520px, 100vw); z-index: 900; display: flex; flex-direction: column; background: #0f172a; border-left: 1px solid #334155; box-shadow: -8px 0 24px #0007; }
+.chat-dock-header { display: flex; gap: 0.5rem; align-items: center; padding: 0.6rem 0.8rem; border-bottom: 1px solid #334155; }
+.chat-dock-header select { flex: 1; min-width: 0; }
+.chat-dock-body { flex: 1; overflow-y: auto; padding: 0.5rem; min-height: 0; }
+
+/* manual 3D frame panel */
+.frame3d-panel { margin-bottom: 1rem; }
+.frame3d-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.75rem; }
+.frame3d-form fieldset { border: 1px solid #334155; border-radius: 6px; padding: 0.5rem 0.75rem; display: grid; gap: 0.35rem; }
+.frame3d-form label { display: grid; grid-template-columns: 1fr 110px; align-items: center; gap: 0.5rem; font-size: 0.85rem; }
+.frame3d-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.5rem 0; }
+.legacy-section { margin-top: 1rem; border-top: 1px solid #334155; padding-top: 0.5rem; }
+.legacy-section > summary { cursor: pointer; color: #94a3b8; margin-bottom: 0.5rem; }

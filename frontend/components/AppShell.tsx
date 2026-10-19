@@ -4,29 +4,10 @@ import { useAuth } from "@/hooks/useAuth";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
+import { ChatDock } from "@/components/chat/ChatDock";
+import { useUiLang } from "@/hooks/useUiLang";
+import { visibleNavItems } from "@/lib/nav";
 
-const NAV_ITEMS = [
-  { href: "/", label: "Chat" },
-  { href: "/projects", label: "Projects" },
-  { href: "/workspace/model", label: "Model" },
-  { href: "/workspace/files", label: "Files" },
-  { href: "/workspace/memory", label: "Memory" },
-  { href: "/workspace/learning", label: "Learning" },
-  { href: "/workspace/agents", label: "Assistants" },
-  { href: "/workspace/agents/builder", label: "Assistant Builder" },
-  { href: "/workspace/approvals", label: "Approvals" },
-  { href: "/workspace/analysis", label: "Analysis" },
-  { href: "/workspace/results", label: "Results" },
-  { href: "/workspace/design", label: "Design" },
-  { href: "/workspace/optimization", label: "Optimization" },
-  { href: "/workspace/integrations", label: "Integrations" },
-  { href: "/workspace/cad", label: "CAD" },
-  { href: "/workspace/validation", label: "Validation" },
-  { href: "/workspace/reports", label: "Reports" },
-  { href: "/workspace/traceability", label: "Traceability" },
-  { href: "/workspace/upgrades", label: "Upgrades" },
-  { href: "/workspace/ai", label: "AI Assistant" },
-];
 
 const AUTH_PATHS = new Set(["/login", "/register"]);
 
@@ -34,6 +15,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, isAuthenticated, logout } = useAuth();
+  const { lang, t, setLang } = useUiLang();
   const isAuthPage = AUTH_PATHS.has(pathname);
   const isChatHome = pathname === "/" && isAuthenticated;
 
@@ -62,7 +44,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <h1>Engineering Workspace</h1>
         </div>
         <nav className="nav">
-          {NAV_ITEMS.map((item) => {
+          {visibleNavItems().map((item) => {
             const active =
               item.href === "/"
                 ? pathname === "/"
@@ -73,19 +55,24 @@ export function AppShell({ children }: { children: ReactNode }) {
                 href={item.href}
                 className={active ? "nav-link active" : "nav-link"}
               >
-                {item.label}
+                {t(item.label)}
               </Link>
             );
           })}
         </nav>
+        <div className="sidebar-lang">
+          <span>{t("Language")}:</span>
+          <button type="button" className={lang === "en" ? "lang-btn active" : "lang-btn"} onClick={() => setLang("en")}>EN</button>
+          <button type="button" className={lang === "fa" ? "lang-btn active" : "lang-btn"} onClick={() => setLang("fa")}>فا</button>
+        </div>
         <div className="sidebar-auth">
           {isAuthenticated && user ? (
             <>
-              <p className="sidebar-auth-label">Signed in</p>
+              <p className="sidebar-auth-label">{t("Signed in")}</p>
               <p className="sidebar-auth-user">{user.display_name ?? user.email}</p>
               <p className="muted sidebar-auth-email">{user.email}</p>
               <button className="button secondary sidebar-logout" type="button" onClick={handleLogout}>
-                Sign out
+                {t("Sign out")}
               </button>
             </>
           ) : (
@@ -96,6 +83,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </aside>
       <main className="content">{children}</main>
+      {isAuthenticated ? <ChatDock /> : null}
     </div>
   );
 }

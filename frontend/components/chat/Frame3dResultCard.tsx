@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getCurrentProjectId } from "@/lib/current-project";
+import { saveFrame3dInputs } from "@/lib/frame3d-store";
 
 import { downloadFrame3dExport } from "@/lib/api";
 import type { Frame3dExport, Frame3dResults } from "@/lib/chat-types";
@@ -22,6 +24,9 @@ export function Frame3dResultCard({ results }: Frame3dResultCardProps) {
   const rtl = isRtl(results.lang);
   const is2800 = results.seismicCode === "IRAN_2800";
   const [viewerOpen, setViewerOpen] = useState(false);
+  useEffect(() => {
+    if (results.status === "completed" && results.inputs) saveFrame3dInputs(getCurrentProjectId(), results.inputs);
+  }, [results.status, results.inputs]);
 
   return (
     <section className="engineering-result-card" aria-label={t("3D frame analysis")} dir={rtl ? "rtl" : "ltr"} lang={results.lang}>

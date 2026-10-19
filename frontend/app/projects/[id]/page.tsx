@@ -4,6 +4,7 @@ import { apiFetch } from "@/lib/api";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { setCurrentProjectId } from "@/lib/current-project";
 
 type ProjectContext = {
   project_id: string;
@@ -40,6 +41,7 @@ export default function ProjectDetailPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (projectId) setCurrentProjectId(projectId);
     async function load() {
       setError(null);
       try {
