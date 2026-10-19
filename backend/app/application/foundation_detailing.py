@@ -12,6 +12,7 @@ from typing import Any
 
 from app.application import detailing_assumptions as da
 from app.application import drawing_standard as ds
+from app.application.rebar_detailing import column_points as _cp
 from app.application.csi_text_export import _x_label, _y_label, frame_layout
 
 TAG = {"corner": "F1", "edge": "F2", "interior": "F3"}
@@ -145,7 +146,7 @@ def build_foundation_doc(inp, raw: dict[str, Any], design: dict[str, Any] | None
         pen.callout((x, yb), (x + B / 4, base - lean - 900), f"Φ{db}@{r['s_mm']} L={_r10(B - 2 * cover + 24 * db)} (each way)")
         pen.callout((x + cb / 2 - 60, df + lap / 2), (x + cb / 2 + 700, df + lap * 0.8), f"{nb}Φ{dbc} starter, 90° hook 12Φ, lap {lap}")
         pen.text("S-NOTES", (x - B / 2 - 100, base - lean - 120), f"lean concrete {lean:.0f} / بتن مگر", h=2.0, align="TOP_LEFT")
-        pen.text("S-TITLE", (x, base - lean - 1000), f"SECTION {TAG[p]}-{TAG[p]}  ({p})", h=4, align="TOP_CENTER")
+        pen.text("S-TITLE", (x, base - lean - 1000), f"SECTION {TAG[p]}-{TAG[p]}  ({p}, at {', '.join(_cp(inp, p)[:3])}{' typ.' if len(_cp(inp, p)) > 1 else ''})", h=4, align="TOP_CENTER")
         pen.text("S-TITLE", (x, base - lean - 1000 - 6.5 * s2), f"برش {TAG[p]}-{TAG[p]}", h=3.5, align="TOP_CENTER")
         pen.text("S-NOTES", (x, base - lean - 1000 - 12 * s2), f"1:{s2}", h=2.5, align="TOP_CENTER")
         top = max(top, top_col)

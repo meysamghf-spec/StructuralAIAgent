@@ -107,10 +107,10 @@ def test_dxf_plans_and_3d(model2800):
     assert any(t.startswith("STORY 3 PLAN") for t in texts) and any("C40X40" in t for t in texts)
     assert any(e["8"] == "DESIGN_TEXT" for e in plans)  # Mabhas 9 rebar labels when designed
     frame = cte.parse_dxf_entities(cte.build_dxf_3d(inp, raw))
-    lines = [e for e in frame if e["type"] == "LINE"]
+    lines = [e for e in frame if e["type"] == "LINE" and e.get("8") in ("FRAME_BEAMS", "FRAME_COLUMNS")]
     assert len(lines) == 63
-    assert max(float(e["31"]) for e in lines) == pytest.approx(9.6)
-    assert sum(1 for e in frame if e["type"] == "POLYLINE" and e["70"] == "8") == 9
+    assert max(float(e["31"]) for e in lines) == pytest.approx(9600)
+    assert sum(1 for e in frame if e["type"] == "POLYLINE" and e.get("8") == "FRAME_COLUMNS") == 9
 
 
 @pytest.mark.parametrize("text,formats", [

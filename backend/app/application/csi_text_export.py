@@ -545,23 +545,66 @@ def build_dxf_plans(inp, raw: dict[str, Any], design: dict[str, Any] | None = No
 
 
 def build_dxf_3d(inp, raw: dict[str, Any]) -> str:
+    """3D wireframe (mm, true Z) on the office standard, with a title-block sheet showing an isometric view."""
+    import io as _io
+
+    from app.application import drawing_standard as ds
+
     lay = frame_layout(inp)
-    XS, YS, Z, ns = lay["XS"], lay["YS"], lay["Z"], inp.storeys
-    d = _Dxf()
-    for (i, j), p in lay["pts"].items():
+    XS, YS, Z, ns = ([v * 1000 for v in lay["XS"]], [v * 1000 for v in lay["YS"]], [v * 1000 for v in lay["Z"]], inp.storeys)
+    doc = ds.new_document()
+    for name, col in (("FRAME_COLUMNS", 1), ("FRAME_BEAMS", 5), ("FRAME_LABELS", 7)):
+        doc.layers.add(name, color=col)
+    msp = doc.modelspace()
+    for (i, j), _p in lay["pts"].items():
         x, y = XS[i], YS[j]
-        # one 3D polyline per column stack (base → roof) plus a LINE per storey segment
-        d.poly("FRAME_COLUMNS", [(x, y, z) for z in Z], three_d=True)
+        msp.add_polyline3d([(x, y, z) for z in Z], dxfattribs={"layer": "FRAME_COLUMNS"})
         for k in range(1, ns + 1):
-            d.line("FRAME_COLUMNS", (x, y, Z[k - 1]), (x, y, Z[k]))
+            msp.add_line((x, y, Z[k - 1]), (x, y, Z[k]), dxfattribs={"layer": "FRAME_COLUMNS"})
     for k in range(1, ns + 1):
-        for name, mid, a, b, dirn in lay["lines"]:
+        for _name, mid, _a, _b, dirn in lay["lines"]:
             i, j = (int(v) for v in mid[2:].split("_"))
             p1 = (XS[i], YS[j], Z[k])
             p2 = (XS[i + 1], YS[j], Z[k]) if dirn == "X" else (XS[i], YS[j + 1], Z[k])
-            d.line("FRAME_BEAMS", p1, p2)
-        d.text("FRAME_LABELS", (-2.0, -2.0), 0.3, f"Story{k} z={Z[k]:.2f}")
-    return d.render()
+            msp.add_line(p1, p2, dxfattribs={"layer": "FRAME_BEAMS"})
+    W, H, T = XS[-1], YS[-1], Z[-1]
+    # 2D isometric projection drawn beside the true-3D model (any viewer, any plotter shows it the same way)
+    ox = W + 0.9 * H + 20000
+    iso = lambda x, y, z: (ox + (x + H - y) * 0.866, (x + y) * 0.5 + z)  # noqa: E731
+    u0, u1, v1 = ox, ox + (W + H) * 0.866, (W + H) * 0.5 + T
+    paper, scale = ds.choose_sheet(u1 - u0 + 60 * 100, v1 + 60 * 100)
+    pen = ds.Pen(msp, (0, 0), scale)
+    for x in XS:
+        pen.line("S-AXIS", iso(x, -6 * scale, 0)[:2], iso(x, H + 6 * scale, 0)[:2])
+    for y in YS:
+        pen.line("S-AXIS", iso(-6 * scale, y, 0)[:2], iso(W + 6 * scale, y, 0)[:2])
+    for x in XS:
+        for y in YS:
+            pen.line("S-CONC", iso(x, y, 0), iso(x, y, T))
+    for k in range(1, ns + 1):
+        for _name, mid, _a, _b, dirn in lay["lines"]:
+            i, j = (int(v) for v in mid[2:].split("_"))
+            p1 = (XS[i], YS[j], Z[k])
+            p2 = (XS[i + 1], YS[j], Z[k]) if dirn == "X" else (XS[i], YS[j + 1], Z[k])
+            pen.line("S-CONC", iso(*p1), iso(*p2))
+        pen.level_mark(iso(W, 0, Z[k])[0] + 6 * scale, iso(W, 0, Z[k])[1], Z[k] / 1000)
+        pen.text("S-NOTES", (iso(W, 0, Z[k])[0] + 24 * scale, iso(W, 0, Z[k])[1] + 1.2 * scale), f"STORY {k}", h=2.5)
+    for i, x in enumerate(XS):
+        pen.bubble(iso(x, -6 * scale - 4 * scale * 1.4, 0), _x_label(i))
+    for j, y in enumerate(YS):
+        pen.bubble(iso(-6 * scale - 4 * scale * 1.4, y, 0), _y_label(j))
+    o = (u0 - 5 * scale, v1 - 25 * scale)  # isometric axis tripod
+    pen._arrow(o, (o[0] + 10.4 * scale, o[1] + 6 * scale), "X")
+    pen._arrow(o, (o[0] - 10.4 * scale, o[1] + 6 * scale), "Y")
+    pen._arrow(o, (o[0], o[1] + 12 * scale), "Z")
+    pen.text("S-NOTES", (u0, -28 * scale), "Isometric from SE: X to the right-up, Y to the left-up", h=2.5)
+    pen.text("S-NOTES", (u0, -32.5 * scale), "3D model (true X/Y/Z, mm) is at the drawing origin: use 3D Orbit", h=2.5)
+    pen.text("S-TITLE", ((u0 + u1) / 2, -18 * scale), "3D FRAME - ISOMETRIC VIEW / نمای ایزومتریک قاب", h=5, align="TOP_CENTER")
+    ds.add_sheet(doc, "S-3D", (u0 - 20 * scale, -38 * scale, u1 + 40 * scale, v1 + 10 * scale), ds.TitleInfo(),
+                 "S-3D", "مدل سه‌بعدی قاب", "3D FRAME (ISOMETRIC)", scale=scale)
+    buf = _io.StringIO()
+    doc.write(buf)
+    return buf.getvalue()
 
 
 def parse_dxf_entities(text: str) -> list[dict[str, Any]]:

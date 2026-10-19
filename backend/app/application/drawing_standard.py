@@ -66,9 +66,9 @@ def fa(text: str) -> str:
 @dataclass
 class TitleInfo:
     project: str = "StructuralAIAgent project"
-    employer: str = "-"
+    employer: str = "To be confirmed / تعیین نشده"
     designer: str = "StructuralAIAgent"
-    checker: str = "-"
+    checker: str = "Pending check / در انتظار کنترل"
     drawing_date: str = field(default_factory=lambda: date.today().isoformat())
     revisions: list[tuple[str, str, str]] = field(default_factory=lambda: [("0", date.today().isoformat(), "Issued for review / جهت بررسی")])
     code: str = "Mabhas 9 / Standard 2800"
@@ -287,7 +287,7 @@ def _hoop_path(x0, y0, x1, y1, r):
 def rc_section(pen: "Pen", ox: float, oy: float, b: float, h: float, cover: float, tie_d: float,
                bars: list[tuple[float, float, float]], groups: list[tuple[str, list[int]]], tie_label: str,
                cross_ties: list[tuple[tuple[float, float], tuple[float, float]]] = (), title: str = "A-A",
-               title_fa: str | None = None) -> tuple[float, float, float, float]:
+               title_fa: str | None = None, axes: str | None = None) -> tuple[float, float, float, float]:
     """Professional RC section (true scale, pen.scale = 20/25): light-hatched outline, closed hoop at the cover with
     135° hooks, filled bars at true diameter, cross-ties, b/h/cover dimensions, grouped callouts outside, title + scale.
     `bars` are (x, y, d) from the section's bottom-left corner. Returns the region (x0, y0, x1, y1) used."""
@@ -356,7 +356,7 @@ def rc_section(pen: "Pen", ox: float, oy: float, b: float, h: float, cover: floa
     # title + scale underneath
     pen.text("S-TITLE", (ox + b / 2, oy - 17 * s), f"SECTION {title}", h=4.0, align="TOP_CENTER")
     pen.text("S-TITLE", (ox + b / 2, oy - 23.5 * s), title_fa or f"برش {title}", h=3.5, align="TOP_CENTER")
-    pen.text("S-NOTES", (ox + b / 2, oy - 29 * s), f"1:{s}", h=2.5, align="TOP_CENTER")
+    pen.text("S-NOTES", (ox + b / 2, oy - 29 * s), f"1:{s}" + (f"   ({axes})" if axes else ""), h=2.5, align="TOP_CENTER")
     return (ox - 22 * s, oy - 33 * s, tx + 45 * s, max(oy + h + 6 * s, oy + h))
 
 

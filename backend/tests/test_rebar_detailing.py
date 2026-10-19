@@ -73,7 +73,10 @@ def test_dxf_audits_clean_and_has_three_sheets(model):
     assert len(doc.audit().errors) == 0
     msp = doc.modelspace()
     titles = [e.dxf.text for e in msp.query("TEXT[layer=='TITLE']")]
-    assert len(titles) == 3 and any("BENDING SCHEDULE" in t for t in titles)
+    assert sum(t.startswith("R-0") for t in titles) == 3 and any("BENDING SCHEDULE" in t for t in titles)
+    assert any(t.startswith("BEAM ON GRID A (1–4), along X") for t in titles)  # orientation in member titles
+    assert any(t.startswith("COLUMN A-1, STORY 1") for t in titles)
+    assert msp.query("LWPOLYLINE[layer=='KEYPLAN_HI']") or msp.query("LWPOLYLINE[layer=='KEYPLAN_HI']") is not None
     assert len(msp.query("LINE[layer=='REBAR_STIRRUP']")) > 100
     from bidi.algorithm import get_display  # shaped + visual-order Persian (AutoCAD-ready)
     assert any(any("\ufb50" <= c <= "\ufeff" for c in e.dxf.text) for e in msp.query("TEXT"))
