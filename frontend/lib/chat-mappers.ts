@@ -13,6 +13,7 @@ import type {
   AgentToolExecution,
   AciRcBeamResults,
   Frame3dExport,
+  Frame3dFoundation,
   Frame3dResults,
   DemoEngineeringResults,
   DemoRcBeamInputs,
@@ -215,6 +216,26 @@ function mapFrame3dDesign(raw: unknown): Frame3dResults["design"] {
   };
 }
 
+export function mapFrame3dFoundation(raw: unknown): Frame3dFoundation | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const data = raw as Record<string, unknown>;
+  const overlap = data.overlap && typeof data.overlap === "object" ? (data.overlap as Record<string, unknown>) : {};
+  return {
+    status: String(data.status ?? ""),
+    qaKpa: parseOptionalNumber(data.qa_kpa),
+    qaAssumed: data.qa_assumed === true,
+    qaNetKpa: parseOptionalNumber(data.qa_net_kpa),
+    rows: flatRows(data.rows),
+    minGapM: parseOptionalNumber(overlap.min_gap_m),
+    coverage: parseOptionalNumber(overlap.coverage_ratio),
+    recommendation: typeof overlap.recommendation === "string" ? overlap.recommendation : null,
+    clausesImplemented: stringList(data.clauses_implemented),
+    clausesSimplified: stringList(data.clauses_simplified),
+  };
+}
+
 function mapFrame3dModal(raw: unknown): Frame3dResults["modal"] {
   if (!raw || typeof raw !== "object") {
     return null;
@@ -320,6 +341,8 @@ export function mapFrame3dResults(raw: unknown): Frame3dResults | null {
     driftCheck: typeof data.drift_check === "string" ? data.drift_check : null,
     modal: mapFrame3dModal(data.modal),
     design: mapFrame3dDesign(data.design),
+    lang: data.lang === "fa" ? "fa" : "en",
+    foundation: mapFrame3dFoundation(data.foundation),
     exports: mapFrame3dExports(data.exports),
     exportRequested: stringList(data.export_requested),
     modelFromProjectMemory: data.model_from_project_memory === true,

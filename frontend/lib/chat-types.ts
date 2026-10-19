@@ -252,8 +252,23 @@ export type Frame3dDesign = {
   message: string | null;
 };
 
+export type Frame3dFoundation = {
+  status: string;
+  qaKpa: number | null;
+  qaAssumed: boolean;
+  qaNetKpa: number | null;
+  rows: Array<Record<string, string | number | null>>;
+  minGapM: number | null;
+  coverage: number | null;
+  recommendation: string | null;
+  clausesImplemented: string[];
+  clausesSimplified: string[];
+};
+
 export type Frame3dResults = {
   kind: "frame3d_analysis";
+  lang: "en" | "fa";
+  foundation: Frame3dFoundation | null;
   status: string;
   message: string | null;
   disclaimer: string | null;

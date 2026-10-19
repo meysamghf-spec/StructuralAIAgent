@@ -2151,3 +2151,7 @@ a {
 .engineering-result-table td:first-child {
   text-align: left;
 }
+
+.engineering-result-card[dir="rtl"] { text-align: right; }
+.engineering-result-card[dir="rtl"] .engineering-result-table td,
+.engineering-result-card[dir="rtl"] .engineering-result-field dd { direction: ltr; unicode-bidi: plaintext; text-align: right; }

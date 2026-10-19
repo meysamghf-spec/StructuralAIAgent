@@ -94,13 +94,14 @@ def test_f2k_point_loads_equal_column_reactions(model):
     assert ex == pytest.approx(raw["base_shear"]["V_expected_kn"], rel=1e-4)  # loads on footing = applied shear
     combos = {r["Combo"] for r in tables["LOAD COMBINATIONS"]}
     assert "SERV1" in combos and "COMB2" in combos
-    assert tables["SLAB PROPERTIES 01 - GENERAL"][0]["Slab"] == "MAT_PLACEHOLDER"
+    assert tables["SLAB PROPERTIES 01 - GENERAL"][0]["Slab"].startswith("FTG_H")  # footings replace the placeholder mat
+    assert len(tables["OBJECT GEOMETRY - AREAS 01 - GENERAL"]) == 9
 
 
 def test_dxf_plans_and_3d(model2800):
     inp, raw, design = model2800
     plans = cte.parse_dxf_entities(cte.build_dxf_plans(inp, raw, design))
-    assert sum(1 for e in plans if e["type"] == "POLYLINE" and e["8"] == "COLUMNS") == 27
+    assert sum(1 for e in plans if e["type"] == "POLYLINE" and e["8"] == "COLUMNS") == 27 + 9  # + 9 column outlines on the foundation plan
     assert sum(1 for e in plans if e["type"] == "LINE" and e["8"] == "BEAMS") == 36
     texts = [e["1"] for e in plans if e["type"] == "TEXT"]
     assert any(t.startswith("STORY 3 PLAN") for t in texts) and any("C40X40" in t for t in texts)
@@ -133,7 +134,7 @@ def test_export_follow_up_uses_project_memory_spec():
     assert follow["export_requested"] == ["e2k", "f2k"]
     assert follow["results"]["column_max_P_kn"] == first["results"]["column_max_P_kn"]
     assert [e["format"] for e in follow["exports"] if e["requested"]] == ["e2k", "f2k"]
-    assert "Exports ready" in f3.frame3d_markdown(follow)
+    assert "خروجی‌ها آماده" in f3.frame3d_markdown(follow)  # Persian prompt -> Persian reply
     none = f3.build_frame3d_payload("export to ETABS", None)
     assert none["status"] == "MISSING_REQUIRED_INPUT"
     assert f3.build_frame3d_payload("export this drawing to dxf", None) is None

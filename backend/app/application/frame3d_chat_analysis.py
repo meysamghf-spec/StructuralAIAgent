@@ -25,6 +25,8 @@ from dataclasses import fields as dc_fields
 from typing import Any, Callable
 
 from app.application import csi_text_export as cte
+from app.application import foundation_design as fnd
+from app.application import frame3d_i18n as i18n
 from app.application import iran2800
 from app.application import mabhas9_rc_design as m9
 from app.application.analysis.modal import combine_cqc, generalized_eigen_diag_mass
@@ -104,6 +106,9 @@ class Frame3dInputs:
     importance: float = 1.0
     system: str = "RC_IMF"
     irregular: bool = False
+    allowable_bearing_kpa: float = 150.0
+    foundation: bool = False
+    lang: str = "en"
     parsed: list[str] = field(default_factory=list)
 
 
@@ -145,6 +150,8 @@ def is_export_request(user_request: str) -> bool:
     found = requested_export_formats(user_request)
     if {"e2k", "f2k"} & set(found):
         return True
+    if wants_foundation(user_request) and re.search(r"frame|model|structure|قاب|مدل|سازه", _norm(user_request).lower()):
+        return True
     return bool(found) and bool(re.search(r"frame|model|structure|قاب|مدل|سازه", _norm(user_request).lower()))
 
 
@@ -181,6 +188,11 @@ def prior_frame3d_spec(context: dict[str, Any] | None) -> dict[str, Any] | None:
             except ValueError:
                 continue
     return found
+
+
+def wants_foundation(user_request: str) -> bool:
+    t = _norm(user_request).lower()
+    return bool(re.search(r"foundation|footing|فونداسیون|(?<![\u0600-\u06FF])پی(?![\u0600-\u06FF])|تنش\s*مجاز|allowable\s+(?:soil\s+)?bearing", t))
 
 
 def _f(t: str, pats: tuple[str, ...], inp: Frame3dInputs, name: str, scale: float = 1.0, flags: int = re.IGNORECASE) -> None:
@@ -236,6 +248,16 @@ def parse_frame3d_request(user_request: str) -> Frame3dInputs:
     _f(t, (rf"parapet\s*(?:load)?\s*(?:of|=|:)?\s*{_NUM}",), inp, "parapet_kn_m")
     _f(t, (rf"(?<![A-Za-z'’′])C\s*[:=]\s*{_NUM}", rf"(?i:seismic|base shear)\s*(?i:coefficient)\s*(?:of|=|:)?\s*{_NUM}", rf"ضریب\s*زلزله[^\d]{{0,10}}{_NUM}"), inp, "seismic_c", flags=0)
     _f(t, (rf"(?<![A-Za-z'’′])R\s*[:=]\s*{_NUM}", rf"(?i:behaviou?r|response modification)\s*(?i:factor|coefficient)\s*(?:of|=|:)?\s*{_NUM}"), inp, "behaviour_r", flags=0)
+    qa = re.search(
+        rf"(?:allowable\s+(?:soil\s+)?bearing(?:\s+(?:capacity|pressure|stress))?|bearing\s+(?:capacity|pressure)|soil\s+(?:bearing|allowable)[^\d]{{0,12}}"
+        rf"|تنش\s*مجاز(?:\s*خاک)?|ظرفیت\s*باربری(?:\s*مجاز)?(?:\s*خاک)?)[^\d]{{0,20}}{_NUM}\s*(kpa|kn/m2|kg/cm2|mpa|کیلوپاسکال|کیلوگرم)?",
+        t, re.I)
+    if qa:
+        unit = (qa.group(2) or "kpa").lower()
+        inp.allowable_bearing_kpa = float(qa.group(1)) * ({"kg/cm2": 98.0665, "mpa": 1000.0, "کیلوگرم": 98.0665}.get(unit, 1.0))
+        inp.parsed.append("allowable_bearing_kpa")
+    inp.foundation = wants_foundation(t)
+    inp.lang = i18n.detect_lang(user_request)
     found = iran2800.parse_2800(t)
     for key, value in found.items():
         setattr(inp, key, value); inp.parsed.append(key)
@@ -488,7 +510,7 @@ def run_frame3d(inp: Frame3dInputs) -> dict[str, Any]:
     if V > 0 and inp.seismic_code == "IRAN_2800":
         modal = _modal_response_spectrum(inp, lateral_prep, nodes, XS, YS, Z, W, (ci, cj, dxc, dyc), V, seismic_info)
     total_gravity = abs(base["D"]["reac"][2]) + abs(base["L"]["reac"][2])
-    return {
+    result = {
         "geometry": {"XS": XS, "YS": YS, "Z": Z},
         "model": {"nodes": len(nodes), "elements": len(cols) + len(beams), "columns": len(cols), "beams": len(beams),
                   "dof": base["D"]["res"].dof_count, "Ec_mpa": Ec / 1000},
@@ -501,6 +523,8 @@ def run_frame3d(inp: Frame3dInputs) -> dict[str, Any]:
                    "beam_udl": {bid: {"D": beam_w("D", k, L, o, e), "L": beam_w("L", k, L, o, e)} for bid, a, b, k, L, o, e in beams},
                    "Ec_kn_m2": Ec, "eccentricity": inp.accidental_ecc},
     }
+    result["foundation_design"] = fnd.design_foundation(inp, result)
+    return result
 
 
 G = 9.81
@@ -716,22 +740,35 @@ def _r(v: float, n: int = 2) -> float:
     return round(float(v), n)
 
 
+def _loc(payload: dict[str, Any]) -> dict[str, Any]:
+    """Persian prompt -> Persian free text (status codes / ids / numbers stay as they are)."""
+    return i18n.translate_payload(payload) if payload.get("lang") == "fa" else payload
+
+
 def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None = None) -> dict[str, Any] | None:
     """Analyse a described frame, or re-run the project's last frame when only an export is asked for."""
     export_formats = requested_export_formats(user_request) if (is_export_request(user_request) or is_frame3d_request(user_request)) else []
     from_memory = False
     if is_frame3d_request(user_request):
         inp = parse_frame3d_request(user_request)
-    elif export_formats and prior_spec:
+    elif (export_formats or wants_foundation(user_request)) and prior_spec:
         inp = inputs_from_dict(prior_spec); from_memory = True
-    elif export_formats:
-        msg = ("No 3D frame analysis was found in this project to export. Describe the frame first, e.g. "
-               "`3-storey RC frame, 2x2 bays of 5 m, storey height 3.2 m, zone high, soil II`, then ask for the ETABS/SAFE/AutoCAD export.")
-        return {"kind": KIND, "label": "3D FRAME ANALYSIS", "status": "MISSING_REQUIRED_INPUT", "missing_inputs": ["frame_model"],
+        follow = parse_frame3d_request(user_request)
+        if wants_foundation(user_request):
+            inp.foundation = True
+        if "allowable_bearing_kpa" in follow.parsed:
+            inp.allowable_bearing_kpa = follow.allowable_bearing_kpa
+            inp.parsed = [*inp.parsed, "allowable_bearing_kpa"]
+    elif export_formats or (wants_foundation(user_request) and is_export_request(user_request)):
+        msg = ("No 3D frame analysis was found in this project (needed for the export / foundation design). Describe the frame first, e.g. "
+               "`3-storey RC frame, 2x2 bays of 5 m, storey height 3.2 m, zone high, soil II`, then ask for the foundation design or the ETABS/SAFE/AutoCAD export.")
+        blank = {"kind": KIND, "label": "3D FRAME ANALYSIS", "status": "MISSING_REQUIRED_INPUT", "missing_inputs": ["frame_model"],
                 "message": msg, "warnings": [msg], "export_requested": export_formats, "disclaimer": DISCLAIMER,
-                "inputs": {}, "parsed_from_request": [], "defaulted_inputs": []}
+                "inputs": {}, "parsed_from_request": [], "defaulted_inputs": [], "lang": i18n.detect_lang(user_request)}
+        return _loc(blank)
     else:
         return None
+    inp.lang = i18n.detect_lang(user_request)
     inputs = {k: v for k, v in asdict(inp).items() if k != "parsed"}
     defaulted = [k for k in inputs if k not in inp.parsed and k not in ("seismic_code", "design_code", "accidental_ecc")]
     common = {
@@ -742,13 +779,13 @@ def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None =
         "code": _code_label(inp),
         "inputs": inputs, "parsed_from_request": list(inp.parsed), "defaulted_inputs": defaulted,
         "export_requested": export_formats, "model_from_project_memory": from_memory,
-        "spec": frame3d_spec(inp),
+        "spec": frame3d_spec(inp), "lang": inp.lang,
     }
     missing = missing_inputs(inp)
     if missing:
         msg = ("Please specify: " + ", ".join(_LABELS[m] for m in missing)
                + ". Example: `3-storey RC moment frame, 2x2 bays of 5 m, storey height 3.2 m, C=0.165`.")
-        return {**common, "status": "MISSING_REQUIRED_INPUT", "missing_inputs": missing, "message": msg, "warnings": [msg]}
+        return _loc({**common, "status": "MISSING_REQUIRED_INPUT", "missing_inputs": missing, "message": msg, "warnings": [msg]})
     limits = []
     if inp.storeys > MAX_STOREYS: limits.append(f"at most {MAX_STOREYS} storeys")
     if max(inp.bays_x, inp.bays_y) > MAX_BAYS: limits.append(f"at most {MAX_BAYS} bays per direction")
@@ -756,12 +793,12 @@ def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None =
     if min(inp.storeys, inp.bays_x, inp.bays_y) < 1: limits.append("at least 1 storey and 1 bay per direction")
     if limits:
         msg = "This chat solver currently supports " + ", ".join(limits) + "."
-        return {**common, "status": "UNSUPPORTED_SIZE", "message": msg, "warnings": [msg]}
+        return _loc({**common, "status": "UNSUPPORTED_SIZE", "message": msg, "warnings": [msg]})
     try:
         raw = run_frame3d(inp)
     except (SpaceFrameSolverError, ValueError) as exc:
         msg = f"3D frame analysis failed: {exc}"
-        return {**common, "status": "FAILED", "message": msg, "warnings": [msg]}
+        return _loc({**common, "status": "FAILED", "message": msg, "warnings": [msg]})
 
     warnings: list[str] = []
     is2800 = inp.seismic_code == "IRAN_2800"
@@ -836,6 +873,14 @@ def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None =
         warnings.append(design["special_frame_note"])
     if design and inp.seismic_code != "IRAN_2800":
         warnings.append("Mabhas 9 design uses the user-supplied seismic C; add Standard 2800 parameters for code-based seismic forces.")
+    fdn = raw.get("foundation_design") if (inp.foundation or inp.design_code == "MABHAS9") else None
+    if fdn:
+        assumptions.append(f"Foundation: isolated square footings under every base column; reactions of the analysis combinations; allowable bearing {fdn['qa_kpa']:g} kPa"
+                           + (" (assumed)" if fdn["qa_assumed"] else ""))
+        if fdn["qa_assumed"]:
+            warnings.append("Allowable soil bearing was not given and 150 kPa is assumed (add e.g. 'allowable bearing 200 kPa' / 'تنش مجاز خاک 200 kPa').")
+        if fdn["overlap"] and fdn["overlap"]["overlaps"]:
+            warnings.append(f"Foundation footings overlap: {fdn['overlap']['recommendation']}")
     if inp.design_code == "NONE":
         assumptions.append("No member design / code compliance checks requested (add 'design per Mabhas 9')")
     fields = [
@@ -864,13 +909,16 @@ def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None =
         sm = design["summary"]
         fields.append({"label": "Mabhas 9 design", "value": f"{design['status']} — max D/C {sm['max_DC']:.2f}, {sm['groups_failing']}/{sm['groups']} groups failing"
                        + (f", SCWB min {sm['scwb_min_ratio']:.2f}" if sm.get("scwb_min_ratio") is not None else ""), "unit": ""})
+    if fdn and fdn.get("rows"):
+        fields.append({"label": "Foundation", "value": f"{fdn['status']} — max D/C {fdn['summary']['max_DC']:.2f}, qa {fdn['qa_kpa']:g} kPa"
+                       + (" (assumed)" if fdn["qa_assumed"] else ""), "unit": ""})
     fields += [
         {"label": "Beam max M⁻", "value": f"{results['beam_max_M_neg_kn_m']:.1f}", "unit": "kN·m"},
         {"label": "Beam max M⁺", "value": f"{results['beam_max_M_pos_kn_m']:.1f}", "unit": "kN·m"},
         {"label": "Beam max V", "value": f"{results['beam_max_V_kn']:.1f}", "unit": "kN"},
         {"label": "Column max P", "value": f"{results['column_max_P_kn']:.1f}", "unit": "kN"},
     ]
-    return {
+    return _loc({
         **common, "status": "completed", "message": "3D frame analysis completed",
         "model_summary": {**raw["model"], "storeys": inp.storeys, "bays_x": inp.bays_x, "bays_y": inp.bays_y,
                           "load_combinations": raw["combos"]},
@@ -893,7 +941,8 @@ def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None =
         "assumptions": assumptions, "warnings": warnings, "fields": fields,
         # ETABS/SAFE/DXF text exports, generated on demand by POST /api/v1/frame3d/export from `inputs`
         "exports": cte.export_descriptors(export_formats),
-    }
+        "foundation": ({k: v for k, v in fdn.items() if k != "footings"} if fdn else None),
+    })
 
 
 def _modal_payload(modal: dict[str, Any], si: dict[str, Any]) -> dict[str, Any]:
@@ -910,6 +959,11 @@ def _modal_payload(modal: dict[str, Any], si: dict[str, Any]) -> dict[str, Any]:
 
 
 def frame3d_markdown(payload: dict[str, Any]) -> str:
+    text = _frame3d_markdown_en(payload)
+    return i18n.fa_markdown(text) if payload.get("lang") == "fa" else text
+
+
+def _frame3d_markdown_en(payload: dict[str, Any]) -> str:
     if payload.get("status") != "completed":
         return f"### 3D frame analysis\n**Status:** {payload.get('status')}\n\n{payload.get('message')}"
     r = payload["results"]; ms = payload["model_summary"]
@@ -961,6 +1015,20 @@ def frame3d_markdown(payload: dict[str, Any]) -> str:
                 f"level {j['level']}: min {j['min_ratio']} ({j['status']})" for j in dz["scwb"])]
         lines += ["", "Implemented clauses: " + "; ".join(dz["clauses_implemented"]),
                   "Simplified / not checked: " + "; ".join(dz["clauses_simplified"]), ""]
+    fd = payload.get("foundation")
+    if fd and fd.get("rows"):
+        lines += ["", f"#### Foundation design (isolated footings) — **{fd['status']}**, max D/C {fd['summary']['max_DC']:.2f}, "
+                  f"allowable bearing {fd['qa_kpa']:g} kPa" + (" (assumed)" if fd["qa_assumed"] else "") + f", net {fd['qa_net_kpa']:g} kPa at Df = {fd['Df_m']:g} m", "",
+                  "| Footing group | P service | B × B × h (m) | q max (kPa) | D/C bearing | D/C 1-way | D/C punching | Bars | D/C flexure |", "|---|---|---|---|---|---|---|---|---|"]
+        for f_ in fd["rows"]:
+            if f_["status"] == "PASS":
+                lines.append(f"| {f_['group']} | {f_['P_service_kn']} | {f_['B_m']} × {f_['B_m']} × {f_['h_m']} | {f_['q_max_kpa']} | {f_['bearing_dc']} | "
+                             f"{f_['DC_oneway']} | {f_['DC_punching']} | {f_['bars']} | {f_['DC_flexure']} |")
+            else:
+                lines.append(f"| {f_['group']} | — | FAIL: {'; '.join(f_['notes'])} | | | | | | |")
+        if fd.get("overlap"):
+            lines += ["", f"Footing clear gap min {fd['overlap']['min_gap_m']:g} m, plan coverage {fd['overlap']['coverage_ratio']:.0%}. {fd['overlap']['recommendation']}"]
+        lines += ["", "Implemented clauses: " + "; ".join(fd["clauses_implemented"]), "Simplified / not checked: " + "; ".join(fd["clauses_simplified"]), ""]
     lines += [f"- Beam max M⁻ **{r['beam_max_M_neg_kn_m']:.1f} kN·m** ({r['beam_max_M_neg_id']}), M⁺ {r['beam_max_M_pos_kn_m']:.1f} kN·m, V {r['beam_max_V_kn']:.1f} kN",
               f"- Column max axial P **{r['column_max_P_kn']:.1f} kN** ({r['column_max_P_id']})",
               "", "Assumptions:", *[f"- {a}" for a in payload["assumptions"]]]

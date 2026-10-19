@@ -4,6 +4,9 @@ import { useState } from "react";
 
 import { downloadFrame3dExport } from "@/lib/api";
 import type { Frame3dExport, Frame3dResults } from "@/lib/chat-types";
+import { isRtl, makeT } from "@/lib/frame3d-i18n";
+
+type T = (key: string) => string;
 
 type Frame3dResultCardProps = {
   results: Frame3dResults;
@@ -12,27 +15,30 @@ type Frame3dResultCardProps = {
 export function Frame3dResultCard({ results }: Frame3dResultCardProps) {
   const completed = results.status === "completed";
   const limit = results.driftReferenceLimitPct;
+  const t = makeT(results.lang);
+  const rtl = isRtl(results.lang);
+  const is2800 = results.seismicCode === "IRAN_2800";
 
   return (
-    <section className="engineering-result-card" aria-label="3D frame analysis">
+    <section className="engineering-result-card" aria-label={t("3D frame analysis")} dir={rtl ? "rtl" : "ltr"} lang={results.lang}>
       <header className="engineering-result-header">
         <div>
-          <p className="eyebrow">Structural analysis</p>
-          <h3>3D frame analysis</h3>
+          <p className="eyebrow">{t("Structural analysis")}</p>
+          <h3>{t("3D frame analysis")}</h3>
         </div>
         <div className="engineering-result-badges">
           <span className={`chat-progress-badge ${completed ? "" : "warning"}`}>
-            {completed ? "Completed" : results.status.replace(/_/g, " ")}
+            {completed ? t("Completed") : (t(results.status) !== results.status ? t(results.status) : results.status.replace(/_/g, " "))}
           </span>
         </div>
       </header>
 
-      {results.code ? <p className="muted engineering-result-code">Code: {results.code}</p> : null}
+      {results.code ? <p className="muted engineering-result-code">{t("Code")}: {results.code}</p> : null}
       {!completed && results.message ? <p>{results.message}</p> : null}
 
       {completed && results.fields.length > 0 ? (
         <div className="engineering-result-block">
-          <p className="engineering-result-label">Model and results</p>
+          <p className="engineering-result-label">{t("Model and results")}</p>
           <dl className="engineering-result-grid">
             {results.fields.map((field) => (
               <div key={field.label} className="engineering-result-field">
@@ -49,22 +55,22 @@ export function Frame3dResultCard({ results }: Frame3dResultCardProps) {
 
       {completed && results.gridX.length > 1 && results.gridY.length > 1 ? (
         <div className="engineering-result-block">
-          <p className="engineering-result-label">Plan (beams and columns)</p>
-          <PlanView xs={results.gridX} ys={results.gridY} />
+          <p className="engineering-result-label">{t("Plan (beams and columns)")}</p>
+          <PlanView xs={results.gridX} ys={results.gridY} label={t("Frame plan")} />
         </div>
       ) : null}
 
       {results.drift.length > 0 ? (
         <div className="engineering-result-block">
-          <p className="engineering-result-label">Storey drift</p>
+          <p className="engineering-result-label">{t("Storey drift")}</p>
           <table className="engineering-result-table">
             <thead>
               <tr>
-                <th>Storey</th>
-                <th>Dir</th>
-                <th>Δ elastic (mm)</th>
-                <th>Δ/h elastic (%)</th>
-                <th>0.7R·Δ/h (%)</th>
+                <th>{t("Storey")}</th>
+                <th>{t("Dir")}</th>
+                <th>{t("Δ elastic (mm)")}</th>
+                <th>{t("Δ/h elastic (%)")}</th>
+                <th>{t(is2800 ? "Cd·Δ/(I·h) (%)" : "0.7R·Δ/h (%)")}</th>
               </tr>
             </thead>
             <tbody>
@@ -85,8 +91,8 @@ export function Frame3dResultCard({ results }: Frame3dResultCardProps) {
           {limit !== null ? (
             <p className="muted">
               {results.driftCheck
-                ? `Standard 2800 drift limit ${limit}%: ${results.driftCheck}`
-                : `Reference value ${limit}% shown for orientation only; not a Standard 2800 check.`}
+                ? `${t("Standard 2800 drift limit")} ${limit}%: ${t(results.driftCheck)}`
+                : `${t("Reference value")} ${limit}% ${t("shown for orientation only; not a Standard 2800 check.")}`}
             </p>
           ) : null}
         </div>
@@ -94,11 +100,11 @@ export function Frame3dResultCard({ results }: Frame3dResultCardProps) {
 
       {results.modal ? (
         <div className="engineering-result-block">
-          <p className="engineering-result-label">Modal and response-spectrum analysis</p>
+          <p className="engineering-result-label">{t("Modal and response-spectrum analysis")}</p>
           <table className="engineering-result-table">
             <thead>
               <tr>
-                <th>Mode</th>
+                <th>{t("Mode")}</th>
                 <th>T (s)</th>
                 <th>Mx (%)</th>
                 <th>My (%)</th>
@@ -120,8 +126,8 @@ export function Frame3dResultCard({ results }: Frame3dResultCardProps) {
           <ul>
             {results.modal.spectrum.map((s) => (
               <li key={s.direction}>
-                {s.direction}: V dynamic {fmt(s.vDynamicKn, 1)} kN vs static {fmt(s.vStaticKn, 1)} kN, scale ×
-                {fmt(s.scaleFactor, 3)}, max scaled drift {fmt(s.maxDriftPct, 2)}%
+                {s.direction}: {t("V dynamic")} {fmt(s.vDynamicKn, 1)} kN {t("vs static")} {fmt(s.vStaticKn, 1)} kN, {t("scale")} ×
+                {fmt(s.scaleFactor, 3)}, {t("max scaled drift")} {fmt(s.maxDriftPct, 2)}%
               </li>
             ))}
           </ul>
@@ -129,7 +135,9 @@ export function Frame3dResultCard({ results }: Frame3dResultCardProps) {
         </div>
       ) : null}
 
-      {results.design ? <DesignSection design={results.design} /> : null}
+      {results.design ? <DesignSection design={results.design} t={t} /> : null}
+
+      {results.foundation ? <FoundationSection foundation={results.foundation} t={t} /> : null}
 
       {results.exports.length > 0 && results.inputs ? (
         <ExportSection
@@ -137,20 +145,21 @@ export function Frame3dResultCard({ results }: Frame3dResultCardProps) {
           inputs={results.inputs}
           requested={results.exportRequested}
           fromMemory={results.modelFromProjectMemory}
+          t={t}
         />
       ) : null}
 
       {results.storeyForces.length > 0 ? (
         <div className="engineering-result-block">
-          <p className="engineering-result-label">Max member forces per storey (envelope)</p>
+          <p className="engineering-result-label">{t("Max member forces per storey (envelope)")}</p>
           <table className="engineering-result-table">
             <thead>
               <tr>
-                <th>Storey</th>
-                <th>Beam M⁻ (kN·m)</th>
-                <th>Beam M⁺ (kN·m)</th>
-                <th>Beam V (kN)</th>
-                <th>Column P (kN)</th>
+                <th>{t("Storey")}</th>
+                <th>{t("Beam M⁻ (kN·m)")}</th>
+                <th>{t("Beam M⁺ (kN·m)")}</th>
+                <th>{t("Beam V (kN)")}</th>
+                <th>{t("Column P (kN)")}</th>
               </tr>
             </thead>
             <tbody>
@@ -170,15 +179,15 @@ export function Frame3dResultCard({ results }: Frame3dResultCardProps) {
 
       {results.baseShearStatus ? (
         <div className="engineering-result-block">
-          <p className="engineering-result-label">Validation</p>
+          <p className="engineering-result-label">{t("Validation")}</p>
           <ul>
-            <li>Base shear: sum of reactions vs C·W — {results.baseShearStatus}</li>
+            <li>{t("Base shear: sum of reactions vs C·W")} — {t(results.baseShearStatus)}</li>
           </ul>
         </div>
       ) : null}
 
-      <TextList title="Assumptions" items={results.assumptions} />
-      <TextList title="Warnings" items={results.warnings} />
+      <TextList title={t("Assumptions")} items={results.assumptions} />
+      <TextList title={t("Warnings")} items={results.warnings} />
 
       {results.disclaimer ? <p className="muted chat-disclaimer">{results.disclaimer}</p> : null}
     </section>
@@ -229,13 +238,13 @@ function downloadCsv(name: string, rows: Array<Record<string, string | number | 
   URL.revokeObjectURL(url);
 }
 
-function DesignTable({ rows, columns }: { rows: Array<Record<string, string | number | null>>; columns: Array<[string, string]> }) {
+function DesignTable({ rows, columns, t }: { rows: Array<Record<string, string | number | null>>; columns: Array<[string, string]>; t: T }) {
   return (
     <table className="engineering-result-table">
       <thead>
         <tr>
           {columns.map(([key, label]) => (
-            <th key={key}>{label}</th>
+            <th key={key}>{t(label)}</th>
           ))}
         </tr>
       </thead>
@@ -252,20 +261,21 @@ function DesignTable({ rows, columns }: { rows: Array<Record<string, string | nu
   );
 }
 
-function DesignSection({ design }: { design: NonNullable<Frame3dResults["design"]> }) {
+function DesignSection({ design, t }: { design: NonNullable<Frame3dResults["design"]>; t: T }) {
   return (
     <div className="engineering-result-block">
       <p className="engineering-result-label">
-        Mabhas 9 RC design{design.ductility ? ` (${design.ductility} ductility)` : ""} — {design.status}
+        {t("Mabhas 9 RC design")}
+        {design.ductility ? ` (${t(design.ductility)} ${t("ductility")})` : ""} — {t(design.status)}
       </p>
       {design.message ? <p>{design.message}</p> : null}
-      {design.beams.length > 0 ? <DesignTable rows={design.beams} columns={BEAM_COLUMNS} /> : null}
-      {design.columns.length > 0 ? <DesignTable rows={design.columns} columns={COLUMN_COLUMNS} /> : null}
+      {design.beams.length > 0 ? <DesignTable rows={design.beams} columns={BEAM_COLUMNS} t={t} /> : null}
+      {design.columns.length > 0 ? <DesignTable rows={design.columns} columns={COLUMN_COLUMNS} t={t} /> : null}
       {design.scwb.length > 0 ? (
         <ul>
           {design.scwb.map((j) => (
             <li key={String(j.level)}>
-              Level {j.level}: ΣMnc/ΣMnb min {j.min_ratio} at {j.joint} ({j.direction}) — {j.status}
+              {t("Level")} {j.level}: {t("ΣMnc/ΣMnb min")} {j.min_ratio} {t("at")} {j.joint} ({j.direction}) — {t(String(j.status))}
             </li>
           ))}
           {design.scwbNote ? <li className="muted">{design.scwbNote}</li> : null}
@@ -274,15 +284,15 @@ function DesignSection({ design }: { design: NonNullable<Frame3dResults["design"
       {design.beams.length > 0 ? (
         <p>
           <button type="button" className="link-button" onClick={() => downloadCsv("mabhas9-beams.csv", design.beams)}>
-            Download beams CSV
+            {t("Download beams CSV")}
           </button>{" "}
           <button type="button" className="link-button" onClick={() => downloadCsv("mabhas9-columns.csv", design.columns)}>
-            Download columns CSV
+            {t("Download columns CSV")}
           </button>
         </p>
       ) : null}
-      <TextList title="Implemented clauses" items={design.clausesImplemented} />
-      <TextList title="Simplified / not checked" items={design.clausesSimplified} />
+      <TextList title={t("Implemented clauses")} items={design.clausesImplemented} />
+      <TextList title={t("Simplified / not checked")} items={design.clausesSimplified} />
     </div>
   );
 }
@@ -296,11 +306,13 @@ function ExportSection({
   inputs,
   requested,
   fromMemory,
+  t,
 }: {
   exports: Frame3dExport[];
   inputs: Record<string, unknown>;
   requested: string[];
   fromMemory: boolean;
+  t: T;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -311,7 +323,7 @@ function ExportSection({
     try {
       await downloadFrame3dExport(e.format, inputs, e.filename);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Export failed");
+      setError(err instanceof Error ? err.message : t("Export failed"));
     } finally {
       setBusy(null);
     }
@@ -319,7 +331,8 @@ function ExportSection({
   return (
     <div className="engineering-result-block">
       <p className="engineering-result-label">
-        Export model (ETABS / SAFE / AutoCAD){fromMemory ? " — re-analysed from the last frame in this project" : ""}
+        {t("Export model (ETABS / SAFE / AutoCAD)")}
+        {fromMemory ? ` — ${t("re-analysed from the last frame in this project")}` : ""}
       </p>
       <p>
         {orderExports(exports).map((e) => (
@@ -330,7 +343,7 @@ function ExportSection({
             disabled={busy !== null}
             onClick={() => void run(e)}
           >
-            {busy === e.format ? "Preparing…" : `${e.requested ? "★ " : ""}${e.label}`}
+            {busy === e.format ? t("Preparing…") : `${e.requested ? "★ " : ""}${e.label}`}
           </button>
         ))}
       </p>
@@ -340,6 +353,49 @@ function ExportSection({
           {notes.flatMap((e) => e.notes.map((n, i) => <li key={`${e.format}-${i}`}>{`${e.filename}: ${n}`}</li>))}
         </ul>
       ) : null}
+    </div>
+  );
+}
+
+const FOUNDATION_COLUMNS: Array<[string, string]> = [
+  ["group", "Group"],
+  ["P_service_kn", "P service"],
+  ["size", "B × B × h (m)"],
+  ["q_max_kpa", "qu max (kPa)"],
+  ["bearing_dc", "D/C bearing"],
+  ["DC_oneway", "D/C 1-way"],
+  ["DC_punching", "D/C punching"],
+  ["bars", "Bars"],
+  ["DC_flexure", "D/C flexure"],
+];
+
+export function foundationRows(rows: Array<Record<string, string | number | null>>): Array<Record<string, string | number | null>> {
+  return rows.map((r) => ({ ...r, size: r.B_m === null || r.B_m === undefined ? "—" : `${r.B_m} × ${r.B_m} × ${r.h_m}` }));
+}
+
+function FoundationSection({ foundation, t }: { foundation: NonNullable<Frame3dResults["foundation"]>; t: T }) {
+  const rows = foundationRows(foundation.rows);
+  return (
+    <div className="engineering-result-block">
+      <p className="engineering-result-label">
+        {t("Foundation design (isolated footings)")} — {t(foundation.status)}
+      </p>
+      <p className="muted">
+        {t("Allowable bearing")} {foundation.qaKpa} kPa{foundation.qaAssumed ? ` (${t("assumed")})` : ""}, {t("net")} {foundation.qaNetKpa} kPa
+        {foundation.minGapM !== null ? ` · ${t("Min clear gap")} ${foundation.minGapM} m` : ""}
+        {foundation.coverage !== null ? ` · ${t("Plan coverage")} ${Math.round(foundation.coverage * 100)}%` : ""}
+      </p>
+      {rows.length > 0 ? <DesignTable rows={rows} columns={FOUNDATION_COLUMNS} t={t} /> : null}
+      {foundation.recommendation ? <p>{foundation.recommendation}</p> : null}
+      {foundation.rows.length > 0 ? (
+        <p>
+          <button type="button" className="link-button" onClick={() => downloadCsv("foundation-footings.csv", foundation.rows)}>
+            {t("Download footings CSV")}
+          </button>
+        </p>
+      ) : null}
+      <TextList title={t("Implemented clauses")} items={foundation.clausesImplemented} />
+      <TextList title={t("Simplified / not checked")} items={foundation.clausesSimplified} />
     </div>
   );
 }
@@ -364,7 +420,7 @@ function fmt(value: number | null, digits: number): string {
   return value === null ? "—" : value.toFixed(digits);
 }
 
-function PlanView({ xs, ys }: { xs: number[]; ys: number[] }) {
+function PlanView({ xs, ys, label }: { xs: number[]; ys: number[]; label: string }) {
   const width = xs[xs.length - 1] || 1;
   const depth = ys[ys.length - 1] || 1;
   const size = Math.max(width, depth);
@@ -375,7 +431,7 @@ function PlanView({ xs, ys }: { xs: number[]; ys: number[] }) {
     <svg
       viewBox={`${-pad} ${-pad} ${width + 2 * pad} ${depth + 2 * pad}`}
       role="img"
-      aria-label="Frame plan"
+      aria-label={label}
       style={{ width: "100%", maxWidth: 320, height: "auto" }}
     >
       <g transform={`translate(0 ${depth}) scale(1 -1)`}>

@@ -24,6 +24,7 @@ E2K_UNVERIFIED = [
     "Slabs are not modelled as shells: floor loads are already distributed to beams as line loads (tributary areas).",
 ]
 F2K_UNVERIFIED = [
+    "When a foundation design exists the placeholder mat is replaced by one footing area per column (sizes/thickness from the design); soil spring ks is still a placeholder.",
     "Point table, load patterns/cases/combinations and point loads follow an ETABS→SAFE 2014 export (SAFE v12–2016 table names).",
     "The mat outline tables (MATERIAL PROPERTIES 0x, SLAB PROPERTIES 01, SOIL PROPERTIES, OBJECT GEOMETRY - AREAS 01, "
     "SLAB/SOIL PROPERTY ASSIGNMENTS) are written from memory of the SAFE 12 format and are a PLACEHOLDER — "
@@ -306,20 +307,36 @@ def build_f2k(inp, raw: dict[str, Any]) -> str:
     for j, y in enumerate(lay["YS"]):
         add(f'   CoordSys=GLOBAL   AxisDir=Y   GridID="{_y_label(j)}"   Ordinate={_g(y)}')
     add(" ")
-    # --- placeholder mat (labelled, unverified table names) ---
+    fd = raw.get("foundation_design")
+    ftgs = fd["footings"] if fd and fd.get("status") == "PASS" and fd.get("footings") else None
     ov = 1.0; t_mat = 0.6; ks = 20000.0
     x0, x1 = -ov, lay["XS"][-1] + ov
     y0, y1 = -ov, lay["YS"][-1] + ov
-    corner = {"M1": (x0, y0), "M2": (x1, y0), "M3": (x1, y1), "M4": (x0, y1)}
+    areas: list[tuple[str, str, list[str]]] = []   # (area name, slab property, corner point names)
+    extra_pts: dict[str, tuple[float, float]] = {}
+    slabs: dict[str, float] = {}
+    if ftgs:
+        for n, f_ in enumerate(ftgs, start=1):
+            pn = []
+            for c, (sx, sy) in enumerate(((-1, -1), (1, -1), (1, 1), (-1, 1)), start=1):
+                extra_pts[f"F{n}_{c}"] = (f_["x"] + sx * f_["B_m"] / 2, f_["y"] + sy * f_["B_m"] / 2); pn.append(f"F{n}_{c}")
+            prop = f"FTG_H{round(f_['h_m'] * 100)}"
+            slabs[prop] = f_["h_m"]
+            areas.append((f"FTG{n}", prop, pn))
+    else:
+        extra_pts = {"M1": (x0, y0), "M2": (x1, y0), "M3": (x1, y1), "M4": (x0, y1)}
+        slabs["MAT_PLACEHOLDER"] = t_mat
+        areas.append(("MAT1", "MAT_PLACEHOLDER", list(extra_pts)))
     add('TABLE:  "OBJECT GEOMETRY - POINT COORDINATES"')
     for (i, j), p in lay["pts"].items():
         add(f'   Point={p}   GlobalX={_g(lay["XS"][i])}   GlobalY={_g(lay["YS"][j])}   GlobalZ=0   SpecialPt=Yes')
-    for name, (x, y) in corner.items():
+    for name, (x, y) in extra_pts.items():
         add(f'   Point={name}   GlobalX={_g(x)}   GlobalY={_g(y)}   GlobalZ=0   SpecialPt=No')
     add(" ")
     conc = lay["conc"]
+    label = "isolated footings from the foundation design" if ftgs else "PLACEHOLDER mat material"
     add('TABLE:  "MATERIAL PROPERTIES 01 - GENERAL"')
-    add(f'   Material={conc}   Type=Concrete   Notes="PLACEHOLDER mat material"')
+    add(f'   Material={conc}   Type=Concrete   Notes="{label}"')
     add(" ")
     add('TABLE:  "MATERIAL PROPERTIES 02 - BASIC MECHANICAL PROPERTIES"')
     Ec = ex["Ec_kn_m2"]
@@ -329,19 +346,23 @@ def build_f2k(inp, raw: dict[str, Any]) -> str:
     add(f'   Material={conc}   Fc={_g(inp.fc_mpa * 1000)}   LtWtConc=No')
     add(" ")
     add('TABLE:  "SLAB PROPERTIES 01 - GENERAL"')
-    add(f'   Slab=MAT_PLACEHOLDER   Type=Mat   MatProp={conc}   Thickness={_g(t_mat)}   Ortho=No')
+    for sname, th in slabs.items():
+        add(f'   Slab={sname}   Type={"Footing" if ftgs else "Mat"}   MatProp={conc}   Thickness={_g(th)}   Ortho=No')
     add(" ")
     add('TABLE:  "SOIL PROPERTIES"')
     add(f'   Soil=SOIL_PLACEHOLDER   Subgrade={_g(ks)}   NonlinOpt="Compression Only"')
     add(" ")
     add('TABLE:  "OBJECT GEOMETRY - AREAS 01 - GENERAL"')
-    add('   Area=MAT1   NumPoints=4   Point1=M1   Point2=M2   Point3=M3   Point4=M4')
+    for an, _sp, pn in areas:
+        add(f'   Area={an}   NumPoints=4   ' + "   ".join(f"Point{k}={p}" for k, p in enumerate(pn, start=1)))
     add(" ")
     add('TABLE:  "SLAB PROPERTY ASSIGNMENTS"')
-    add('   Area=MAT1   SlabProp=MAT_PLACEHOLDER')
+    for an, sp, _pn in areas:
+        add(f'   Area={an}   SlabProp={sp}')
     add(" ")
     add('TABLE:  "SOIL PROPERTY ASSIGNMENTS"')
-    add('   Area=MAT1   SoilProp=SOIL_PLACEHOLDER')
+    for an, _sp, _pn in areas:
+        add(f'   Area={an}   SoilProp=SOIL_PLACEHOLDER')
     add(" ")
     add('TABLE:  "LOAD PATTERNS"')
     add("   LoadPat=DEAD   Type=DEAD   SelfWtMult=1")
@@ -406,7 +427,7 @@ def parse_f2k(text: str) -> dict[str, list[dict[str, str]]]:
 # --------------------------------------------------------------------------- DXF (R12 ASCII, no dependencies)
 class _Dxf:
     LAYERS = {"GRID": 8, "GRID_TEXT": 8, "COLUMNS": 1, "BEAMS": 5, "SECTION_TEXT": 3, "TITLE": 7, "DESIGN_TEXT": 6,
-              "FRAME_COLUMNS": 1, "FRAME_BEAMS": 5, "FRAME_LABELS": 3}
+              "FRAME_COLUMNS": 1, "FRAME_BEAMS": 5, "FRAME_LABELS": 3, "FOUNDATION": 2, "FOUNDATION_TEXT": 2}
 
     def __init__(self) -> None:
         self.e: list[str] = []
@@ -499,6 +520,25 @@ def build_dxf_plans(inp, raw: dict[str, Any], design: dict[str, Any] | None = No
             key = (k, dirn, "edge" if edge else "interior")
             if key in blabel:
                 d.text("DESIGN_TEXT", (mx, my - th * 1.6 if dirn == "X" else my - th * 1.6), th * 0.7, blabel[key])
+    fd = raw.get("foundation_design")
+    if fd and fd.get("footings"):
+        ox = ns * (W + gap)
+        d.text("TITLE", (ox, -ext - 2.2), th * 2, f"FOUNDATION PLAN  qa={fd['qa_kpa']:g} kPa" + (" (assumed)" if fd["qa_assumed"] else "")
+               + ("  - FOOTINGS OVERLAP, see report" if fd["status"] == "OVERLAP" else ""))
+        for i, x in enumerate(XS):
+            d.line("GRID", (ox + x, -ext), (ox + x, H + ext))
+            d.text("GRID_TEXT", (ox + x, H + ext + 0.5), 0.45, _x_label(i), center=True)
+        for j, y in enumerate(YS):
+            d.line("GRID", (ox - ext, y), (ox + W + ext, y))
+            d.text("GRID_TEXT", (ox - ext - 0.5, y), 0.45, _y_label(j), center=True)
+        for f_ in fd["footings"]:
+            cx, cy, bq = ox + f_["x"], f_["y"], f_["B_m"] / 2
+            d.poly("FOUNDATION", [(cx - bq, cy - bq), (cx + bq, cy - bq), (cx + bq, cy + bq), (cx - bq, cy + bq)], closed=True)
+            d.poly("COLUMNS", [(cx - cb / 2, cy - ch / 2), (cx + cb / 2, cy - ch / 2), (cx + cb / 2, cy + ch / 2), (cx - cb / 2, cy + ch / 2)], closed=True)
+            d.text("FOUNDATION_TEXT", (cx - bq + 0.1, cy - bq + 0.1), th * 0.8, f"F{f_['B_m']:.1f}x{f_['B_m']:.1f}x{f_['h_m']:.2f}")
+        for row in fd["rows"]:
+            if row["status"] == "PASS":
+                d.text("FOUNDATION_TEXT", (ox, -ext - 3.4 - 0.7 * list(fd["rows"]).index(row)), th * 0.8, f"{row['group']}: {row['bars']}")
     return d.render()
 
 

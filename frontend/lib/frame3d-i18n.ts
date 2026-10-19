@@ -1,0 +1,98 @@
+export type Frame3dLang = "en" | "fa";
+
+const FA: Record<string, string> = {
+  "3D frame analysis": "تحلیل قاب سه‌بعدی",
+  "Structural analysis": "تحلیل سازه",
+  Completed: "تکمیل شد",
+  MISSING_REQUIRED_INPUT: "ورودی ضروری کم است",
+  UNSUPPORTED_SIZE: "اندازهٔ مدل پشتیبانی نمی‌شود",
+  FAILED: "ناموفق",
+  PASS: "قبول",
+  FAIL: "رد",
+  CHECK: "بررسی",
+  OVERLAP: "تداخل",
+  NOT_APPLICABLE: "نامربوط",
+  Code: "آیین‌نامه",
+  "Model and results": "مدل و نتایج",
+  "Plan (beams and columns)": "پلان (تیرها و ستون‌ها)",
+  "Storey drift": "دریفت طبقات",
+  Storey: "طبقه",
+  Dir: "جهت",
+  "Δ elastic (mm)": "Δ ارتجاعی (mm)",
+  "Δ/h elastic (%)": "Δ/h ارتجاعی (%)",
+  "0.7R·Δ/h (%)": "0.7R·Δ/h (%)",
+  "Cd·Δ/(I·h) (%)": "Cd·Δ/(I·h) (%)",
+  "Standard 2800 drift limit": "حد دریفت استاندارد ۲۸۰۰",
+  "Reference value": "مقدار مرجع",
+  "shown for orientation only; not a Standard 2800 check.": "فقط برای راهنمایی نشان داده شده و کنترل استاندارد ۲۸۰۰ نیست.",
+  "Modal and response-spectrum analysis": "تحلیل مودال و طیف پاسخ",
+  Mode: "مود",
+  "T (s)": "T (s)",
+  "V dynamic": "V دینامیکی",
+  "vs static": "در برابر استاتیکی",
+  scale: "ضریب مقیاس",
+  "max scaled drift": "حداکثر دریفت مقیاس‌شده",
+  "Max member forces per storey (envelope)": "بیشینهٔ نیروی اعضا در هر طبقه (پوش)",
+  "Beam M⁻ (kN·m)": "M⁻ تیر (kN·m)",
+  "Beam M⁺ (kN·m)": "M⁺ تیر (kN·m)",
+  "Beam V (kN)": "V تیر (kN)",
+  "Column P (kN)": "P ستون (kN)",
+  Validation: "اعتبارسنجی",
+  "Base shear: sum of reactions vs C·W": "برش پایه: مجموع عکس‌العمل‌ها در برابر C·W",
+  Assumptions: "فرضیات",
+  Warnings: "هشدارها",
+  "Mabhas 9 RC design": "طراحی بتن‌آرمهٔ مبحث نهم",
+  "ductility": "شکل‌پذیری",
+  intermediate: "متوسط",
+  special: "ویژه",
+  ordinary: "معمولی",
+  Level: "تراز",
+  "ΣMnc/ΣMnb min": "کمینهٔ ΣMnc/ΣMnb",
+  at: "در",
+  "Download beams CSV": "دانلود CSV تیرها",
+  "Download columns CSV": "دانلود CSV ستون‌ها",
+  "Download footings CSV": "دانلود CSV پی‌ها",
+  "Implemented clauses": "بندهای پیاده‌سازی‌شده",
+  "Simplified / not checked": "بندهای ساده‌شده / کنترل‌نشده",
+  Group: "گروه",
+  Top: "بالا",
+  Bottom: "پایین",
+  Stirrups: "خاموت",
+  Bars: "آرماتور",
+  Ties: "تنگ",
+  "D/C M": "D/C خمش",
+  "D/C V": "D/C برش",
+  "D/C": "D/C",
+  "Foundation design (isolated footings)": "طراحی فونداسیون (پی منفرد)",
+  "Allowable bearing": "تنش مجاز خاک",
+  assumed: "فرضی",
+  "net": "خالص",
+  "Min clear gap": "حداقل فاصلهٔ آزاد",
+  "Plan coverage": "نسبت پوشش پلان",
+  "P service": "P بهره‌برداری",
+  "B × B × h (m)": "B × B × h (m)",
+  "qu max (kPa)": "qu بیشینه (kPa)",
+  "D/C bearing": "D/C تنش خاک",
+  "D/C 1-way": "D/C برش یک‌طرفه",
+  "D/C punching": "D/C پانچ",
+  "D/C flexure": "D/C خمش",
+  "Export model (ETABS / SAFE / AutoCAD)": "خروجی مدل (ایتبس / سیف / اتوکد)",
+  "re-analysed from the last frame in this project": "از آخرین قاب این پروژه دوباره تحلیل شد",
+  "Preparing…": "در حال آماده‌سازی…",
+  "Export failed": "خروجی ناموفق بود",
+  "Frame plan": "پلان قاب",
+};
+
+export function makeT(lang: Frame3dLang): (key: string) => string {
+  return (key: string) => (lang === "fa" ? (FA[key] ?? key) : key);
+}
+
+export function isRtl(lang: Frame3dLang): boolean {
+  return lang === "fa";
+}
+
+export function normalizeLang(value: unknown): Frame3dLang {
+  return value === "fa" ? "fa" : "en";
+}
+
+export const FA_DICTIONARY = FA;
