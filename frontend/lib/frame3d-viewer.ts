@@ -15,7 +15,7 @@ export type ViewerMember = {
   designStatus: string | null;
   rebar: string | null;
 };
-export type ViewerFooting = { column: string; node: string; x: number; y: number; position: string; B: number; h: number };
+export type ViewerFooting = { column: string; node: string; x: number; y: number; position: string; B: number; h: number; info?: Record<string, unknown> };
 export type ViewerData = {
   nodes: ViewerNode[];
   supports: string[];
@@ -109,6 +109,7 @@ export function mapViewerData(raw: unknown): ViewerData | null {
         x: num(f.x),
         y: num(f.y),
         position: String(f.position ?? ""),
+        info: f,
         B: num(f.B_m),
         h: num(f.h_m),
       }))

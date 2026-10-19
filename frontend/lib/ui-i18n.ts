@@ -64,6 +64,7 @@ export const UI_FA: Record<string, string> = {
   "Rebar detailing drawings": "نقشه‌های آرماتوربندی",
   "Show rebar drawings": "نمایش نقشه آرماتوربندی",
   "Rebar detailing + bar schedule": "آرماتوربندی + جدول میلگرد",
+  "Foundation detailing (plan, sections, schedule)": "نقشه فونداسیون (پلان، مقاطع، جدول)",
   "Sent for approval.": "برای تأیید ارسال شد.",
   "Print / PDF": "چاپ / PDF",
   "No report yet: analyse a 3D frame in the chat or on the Model page.": "هنوز گزارشی نیست: یک قاب سه‌بعدی را در گفتگو یا صفحهٔ مدل تحلیل کنید.",

@@ -10,6 +10,7 @@ import dynamic from "next/dynamic";
 import { isRtl, makeT } from "@/lib/frame3d-i18n";
 
 const Frame3dViewer = dynamic(() => import("./Frame3dViewer"), { ssr: false });
+const FoundationView = dynamic(() => import("@/components/frame3d/FoundationView"), { ssr: false });
 
 type T = (key: string) => string;
 
@@ -71,6 +72,9 @@ export function Frame3dResultCard({ results }: Frame3dResultCardProps) {
                 {t("Open 3D view")}
               </button>
             </p>
+          ) : null}
+          {results.showFoundation && results.viewer?.footings.length ? (
+            <FoundationView data={results.viewer} qa={results.foundation?.qaKpa ?? 150} t={t} />
           ) : null}
           {viewerOpen && results.viewer ? (
             <Frame3dViewer data={results.viewer} results={results} t={t} onClose={() => setViewerOpen(false)} initialMode={results.animateMode ?? null} />

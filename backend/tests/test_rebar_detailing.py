@@ -75,7 +75,18 @@ def test_dxf_audits_clean_and_has_three_sheets(model):
     titles = [e.dxf.text for e in msp.query("TEXT[layer=='TITLE']")]
     assert len(titles) == 3 and any("BENDING SCHEDULE" in t for t in titles)
     assert len(msp.query("LINE[layer=='REBAR_STIRRUP']")) > 100
-    assert any("وزن کل" in e.dxf.text for e in msp.query("TEXT"))
+    from bidi.algorithm import get_display  # shaped + visual-order Persian (AutoCAD-ready)
+    assert any(any("\ufb50" <= c <= "\ufeff" for c in e.dxf.text) for e in msp.query("TEXT"))
+    # office drawing standard: paper-space sheets, bar callouts with leaders, A-A / B-B cut marks, notes, hatches
+    for name in ("R-01", "R-02", "R-03"):
+        assert doc.layouts.get(name).query("VIEWPORT")
+    callouts = [e.dxf.text for e in msp.query("TEXT[layer=='REBAR_TEXT']") if " L=" in e.dxf.text]
+    assert msp.query("LEADER") and any("Φ" in c for c in callouts)
+    cuts = {e.dxf.text for e in msp.query("TEXT[layer=='SECTION']")}
+    assert {"A", "B", "C-C"} <= cuts
+    assert any("GENERAL NOTES" in e.dxf.text for e in msp.query("TEXT[layer=='NOTES']"))
+    assert msp.query("HATCH")
+    _ = get_display
 
 
 def test_schedule_rows_and_total(model):

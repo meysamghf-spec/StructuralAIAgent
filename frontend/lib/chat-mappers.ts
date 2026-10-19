@@ -344,6 +344,7 @@ export function mapFrame3dResults(raw: unknown): Frame3dResults | null {
     design: mapFrame3dDesign(data.design),
     lang: data.lang === "fa" ? "fa" : "en",
     viewer: mapViewerData(data.viewer),
+    showFoundation: data.show_foundation === true,
     animateMode: typeof data.animate_mode === "number" ? data.animate_mode : null,
     storeyLateral: storeyShears(
       data.seismic && typeof data.seismic === "object"

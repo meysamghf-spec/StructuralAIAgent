@@ -18,7 +18,7 @@ router = APIRouter(prefix="/frame3d", tags=["frame3d"])
 
 
 class Frame3dExportRequest(BaseModel):
-    format: str = Field(description="e2k | f2k | dxf_plans | dxf_3d | dxf_rebar")
+    format: str = Field(description="e2k | f2k | dxf_plans | dxf_3d | dxf_rebar | dxf_foundation")
     inputs: dict[str, Any] = Field(description="`inputs` of a frame3d_analysis result (plus optional `parsed_from_request`)")
 
 
@@ -31,7 +31,9 @@ def export_frame3d(
     if meta is None:
         raise HTTPException(status_code=422, detail=f"Unknown format {body.format!r}; use one of {sorted(cte.FORMATS)}")
     try:
-        inputs = {**body.inputs, "design_code": "MABHAS9"} if body.format == "dxf_rebar" else body.inputs
+        inputs = body.inputs
+        if body.format in ("dxf_rebar", "dxf_foundation"):
+            inputs = {**inputs, "design_code": "MABHAS9", **({"foundation": True} if body.format == "dxf_foundation" else {})}
         inp, raw, design = run_frame3d_for_export(inputs)
         content = cte.build_export(body.format, inp, raw, design)
     except (TypeError, ValueError, SpaceFrameSolverError) as exc:

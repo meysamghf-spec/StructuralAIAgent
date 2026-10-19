@@ -74,8 +74,8 @@ export function ReportPanel() {
               {t("Print / PDF")}
             </button>
             {inputs
-              ? ["e2k", "f2k", "dxf_plans", "dxf_3d", "dxf_rebar"].map((f) => (
-                  <button key={f} type="button" className="link-button" onClick={() => void downloadFrame3dExport(f, inputs, { e2k: "model.e2k", f2k: "foundation.f2k", dxf_plans: "plans.dxf", dxf_3d: "frame3d.dxf", dxf_rebar: "rebar-details.dxf" }[f]!)}>
+              ? ["e2k", "f2k", "dxf_plans", "dxf_3d", "dxf_rebar", "dxf_foundation"].map((f) => (
+                  <button key={f} type="button" className="link-button" onClick={() => void downloadFrame3dExport(f, inputs, { e2k: "model.e2k", f2k: "foundation.f2k", dxf_plans: "plans.dxf", dxf_3d: "frame3d.dxf", dxf_rebar: "rebar-details.dxf", dxf_foundation: "foundation-details.dxf" }[f]!)}>
                     {f}
                   </button>
                 ))

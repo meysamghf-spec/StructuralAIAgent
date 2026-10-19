@@ -37,6 +37,7 @@ FORMATS = {
     "dxf_plans": {"filename": "plans.dxf", "label": "AutoCAD plans per storey (.dxf)", "mime": "application/dxf"},
     "dxf_3d": {"filename": "frame3d.dxf", "label": "AutoCAD 3D wireframe (.dxf)", "mime": "application/dxf"},
     "dxf_rebar": {"filename": "rebar-details.dxf", "label": "Rebar detailing sheets + bar bending schedule (.dxf)", "mime": "application/dxf"},
+    "dxf_foundation": {"filename": "foundation-details.dxf", "label": "Foundation plan, footing sections + bending schedule (.dxf)", "mime": "application/dxf"},
 }
 
 
@@ -591,7 +592,9 @@ def build_export(fmt: str, inp, raw: dict[str, Any], design: dict[str, Any] | No
     if fmt == "f2k":
         return build_f2k(inp, raw)
     if fmt == "dxf_plans":
-        return build_dxf_plans(inp, raw, design)
+        from app.application.structural_drawings import build_dxf_plans as build_pro_plans
+
+        return build_pro_plans(inp, raw, design)
     if fmt == "dxf_3d":
         return build_dxf_3d(inp, raw)
     if fmt == "dxf_rebar":
@@ -600,14 +603,20 @@ def build_export(fmt: str, inp, raw: dict[str, Any], design: dict[str, Any] | No
         if not design:
             raise ValueError("rebar detailing needs the Mabhas 9 design (design code MABHAS9)")
         return build_dxf_rebar(inp, raw, design)
+    if fmt == "dxf_foundation":
+        from app.application.foundation_detailing import build_dxf_foundation
+
+        return build_dxf_foundation(inp, raw, design)
     raise ValueError(f"unknown export format {fmt!r}")
 
 
 def export_descriptors(requested: list[str] | None = None) -> list[dict[str, Any]]:
     req = set(requested or [])
     notes = {"e2k": E2K_UNVERIFIED, "f2k": F2K_UNVERIFIED,
-             "dxf_plans": ["DXF R12 ASCII; layers GRID, COLUMNS, BEAMS, SECTION_TEXT, DESIGN_TEXT; one plan per storey side by side."],
+             "dxf_plans": ["DXF R2010 (ezdxf, audited); office drawing standard: A3/A1 paper-space sheets with title block, S-0k story plans, S-10 column/beam schedules, S-F1 foundation plan + footing schedule, E-xx elevations per grid line; units mm."],
              "dxf_3d": ["DXF R12 ASCII; LINE entities with Z plus one 3D POLYLINE per column stack (use 3D Orbit)."],
              "dxf_rebar": ["DXF R2010 (ezdxf, audited); sheets R-01 beams, R-02 columns, R-03 bar bending schedule; units mm.",
-                           "Detailing rules marked [code] / [assumed] on sheet R-03; engineer review required before construction."]}
+                           "Detailing rules marked [code] / [assumed] on sheet R-03; engineer review required before construction."],
+             "dxf_foundation": ["DXF R2010 (ezdxf, audited); FD-01 footing plan + schedule, FD-02 sections per footing type + bending schedule; units mm.",
+                                "Footings designed to Mabhas 9 (flexure at the column face, one-way and punching shear); cover/Df/lean concrete changeable from chat."]}
     return [{"format": f, **{k: v for k, v in meta.items()}, "requested": f in req, "notes": notes[f]} for f, meta in FORMATS.items()]

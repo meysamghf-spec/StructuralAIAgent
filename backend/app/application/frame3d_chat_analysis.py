@@ -119,6 +119,12 @@ def _norm(text: str) -> str:
     return (text or "").translate(_PERSIAN_DIGITS).replace("×", "x").replace("*", "x")
 
 
+def requested_foundation_view(user_request: str) -> bool:
+    """'show foundation' / «فونداسیون را نشان بده» / «نمایش پی» -> SAFE-like footing view."""
+    t = _norm(user_request).lower()
+    return bool(re.search(r"(?:show|display|view)\s+(?:the\s+)?(?:foundation|footings?)|(?:فونداسیون|پی ?ها?)\s*(?:را\s*)?نشان|نمایش\s*(?:فونداسیون|پی)", t))
+
+
 def requested_mode_shape(user_request: str) -> int | None:
     """'animate mode 2' / 'show mode shape 3' / «مود ۲ را نشان بده» / «شکل مود ۲» -> mode number."""
     t = _norm(user_request).lower()
@@ -143,28 +149,32 @@ _EXPORT_TARGETS = {
     "dxf_plans": r"autocad|auto ?cad|\bdxf\b|\bcad\b|اتوکد|اتو ?کد|نقشه|پلان",
     "dxf_3d": r"autocad|auto ?cad|\bdxf\b|\bcad\b|اتوکد|اتو ?کد|3d|سه ?بعدی",
     "dxf_rebar": _REBAR_WORDS,
+    "dxf_foundation": r"نقشه (?:ی )?(?:فونداسیون|پی)|دیتیل (?:فونداسیون|پی)|foundation (?:drawing|detail|sheet|plan)|footing (?:detail|drawing)",
 }
+_FOUNDATION_DRAWING = _EXPORT_TARGETS["dxf_foundation"]
 
 
 def requested_export_formats(user_request: str) -> list[str]:
     """Formats asked for in an export prompt ("خروجی ایتبس بده", "export to ETABS/SAFE/AutoCAD")."""
     t = _norm(user_request).lower()
+    if re.search(_FOUNDATION_DRAWING, t):  # «نقشه فونداسیون» is itself a drawing request
+        return ["dxf_foundation"] + (["dxf_rebar"] if re.search(_REBAR_WORDS, t) else [])
     if re.search(_REBAR_WORDS, t):  # "نقشه آرماتوربندی" is itself a drawing request (no export word needed)
         return ["dxf_rebar"] + [f for f in ("e2k", "f2k") if re.search(_EXPORT_TARGETS[f], t)]
     if not re.search(_EXPORT_WORD, t):
         return []
-    found = [f for f, pat in _EXPORT_TARGETS.items() if f != "dxf_rebar" and re.search(pat, t)]
+    found = [f for f, pat in _EXPORT_TARGETS.items() if f not in ("dxf_rebar", "dxf_foundation") and re.search(pat, t)]
     if "dxf_3d" in found and "dxf_plans" not in found and not re.search(r"autocad|auto ?cad|dxf|cad|اتوکد|اتو ?کد", t):
         found.remove("dxf_3d")  # "3D" alone (e.g. in a frame description) is not a CAD request
     if re.search(r"\ball\b|همه", t) and found:
-        found = [f for f in _EXPORT_TARGETS if f != "dxf_rebar"]
+        found = [f for f in _EXPORT_TARGETS if f not in ("dxf_rebar", "dxf_foundation")]
     return found
 
 
 def is_export_request(user_request: str) -> bool:
     """ETABS/SAFE exports always; CAD-only exports when the frame/model is mentioned (other CAD exports keep their agents)."""
     found = requested_export_formats(user_request)
-    if {"e2k", "f2k", "dxf_rebar"} & set(found):
+    if {"e2k", "f2k", "dxf_rebar", "dxf_foundation"} & set(found):
         return True
     if wants_foundation(user_request) and re.search(r"frame|model|structure|قاب|مدل|سازه", _norm(user_request).lower()):
         return True
@@ -878,7 +888,8 @@ def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None =
     show_assumptions = manual_inputs is None and da.is_show_assumptions(user_request)
     # input-only values (fy, fc, ...) count as an assumption command only on an existing project frame
     animate_mode = requested_mode_shape(user_request) if manual_inputs is None else None
-    assumption_cmd = bool(a_upd or show_assumptions or (inp_upd and prior_spec) or animate_mode)
+    show_foundation = manual_inputs is None and requested_foundation_view(user_request)
+    assumption_cmd = bool(a_upd or show_assumptions or (inp_upd and prior_spec) or animate_mode or show_foundation)
     if manual_inputs is not None:
         inp = inputs_from_dict(manual_inputs)
         inp.parsed = [k for k, v in manual_inputs.items() if v is not None and not k.startswith("_")]
@@ -892,8 +903,12 @@ def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None =
         follow = parse_frame3d_request(user_request)
         if wants_foundation(user_request):
             inp.foundation = True
-        if "dxf_rebar" in export_formats or a_upd:
+        if "dxf_rebar" in export_formats or "dxf_foundation" in export_formats or a_upd:
             inp.design_code = "MABHAS9"
+        if "dxf_foundation" in export_formats:
+            inp.foundation = True
+        if show_foundation:
+            inp.foundation = True
         if animate_mode:
             inp.seismic_code = "IRAN_2800"  # mode shapes come from the 2800 modal analysis  # detailing is built from the Mabhas 9 design groups
         if "allowable_bearing_kpa" in follow.parsed:
@@ -927,7 +942,7 @@ def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None =
         "export_requested": export_formats, "model_from_project_memory": from_memory,
         "spec": frame3d_spec(inp), "lang": inp.lang,
         "detailing_assumptions": da.describe(inp.assumptions, inp, inp.lang, changed),
-        "assumptions_changed": sorted(changed), "animate_mode": animate_mode, "assumptions_command": "show" if show_assumptions and not changed else ("update" if changed else None),
+        "assumptions_changed": sorted(changed), "animate_mode": animate_mode, "show_foundation": bool(show_foundation), "assumptions_command": "show" if show_assumptions and not changed else ("update" if changed else None),
     }
     missing = missing_inputs(inp)
     if missing:

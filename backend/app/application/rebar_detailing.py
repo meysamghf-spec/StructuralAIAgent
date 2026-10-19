@@ -19,10 +19,13 @@ from typing import Any
 
 import ezdxf
 
+from app.application import drawing_standard as dstd
+
 from app.application import detailing_assumptions as da
 from ezdxf.enums import TextEntityAlignment
 
 STOCK_LENGTH_MM = 12000
+FOOTING_DRAW_H = 600  # schematic footing depth drawn under ground-storey columns (details on the FD sheets)
 COL_PITCH = 2900  # horizontal gap between column details (labels left, lap note right)
 COVER_MM = 40
 DETAILING_BASIS = [
@@ -156,12 +159,42 @@ class _Sheet:
         self.msp.add_circle((self.x0 + c[0], self.y0 + c[1]), r, dxfattribs={"layer": layer})
 
     def text(self, layer, p, h, s, center=False, style="LATIN"):
-        t = self.msp.add_text(s, height=h, dxfattribs={"layer": layer, "style": style})
+        persian = any("\u0600" <= ch <= "\u06ff" for ch in s)
+        style = dstd.PERSIAN if (persian or style == "PERSIAN") else dstd.LATIN
+        t = self.msp.add_text(dstd.fa(s), height=h, dxfattribs={"layer": layer, "style": style})
         t.set_placement((self.x0 + p[0], self.y0 + p[1]), align=TextEntityAlignment.CENTER if center else TextEntityAlignment.LEFT)
 
 
+    def callout(self, target, at, s, h=90):
+        """Bar callout (e.g. 3Φ25 L=6200) with a leader line from the bar."""
+        self.msp.add_leader([(self.x0 + target[0], self.y0 + target[1]), (self.x0 + at[0], self.y0 + at[1]),
+                             (self.x0 + at[0] + 150, self.y0 + at[1])], dxfattribs={"layer": "REBAR_TEXT"})
+        self.text("REBAR_TEXT", (at[0] + 200, at[1] - h / 2), h, s)
+
+    def dim(self, a, b, offset, vertical=False):
+        """Linear DIMENSION (office dim style, 1:50 annotation)."""
+        ang = 90 if vertical else 0
+        base = (a[0] - offset, a[1]) if vertical else (a[0], a[1] + offset)
+        d = self.msp.add_linear_dim(base=(self.x0 + base[0], self.y0 + base[1]), p1=(self.x0 + a[0], self.y0 + a[1]),
+                                    p2=(self.x0 + b[0], self.y0 + b[1]), angle=ang, dimstyle="SA-1-50", dxfattribs={"layer": "DIM"})
+        d.render()
+
+    def cut(self, x, y_lo, y_hi, label):
+        """Section cut mark: vertical cut line with labelled heads at both ends."""
+        self.line("SECTION", (x, y_lo), (x, y_hi))
+        for yy in (y_lo, y_hi):
+            self.circle("SECTION", (x, yy), 110)
+            self.text("SECTION", (x, yy - 45), 90, label, center=True)
+
+    def hatch(self, layer, pts):
+        hh = self.msp.add_hatch(color=8, dxfattribs={"layer": layer})
+        hh.set_pattern_fill("ANSI31", scale=8)
+        hh.paths.add_polyline_path([(self.x0 + x, self.y0 + y) for x, y in pts], is_closed=True)
+
+
 LAYERS = {"TITLE": 2, "TITLE_BLOCK": 7, "CONCRETE": 8, "REBAR_MAIN": 1, "REBAR_STIRRUP": 3, "REBAR_TEXT": 4,
-          "DIM": 6, "ZONE": 5, "NOTES": 7, "TABLE": 7}
+          "DIM": 6, "ZONE": 5, "NOTES": 7, "TABLE": 7, "SECTION": 1, "CONC_HATCH": 8}
+LINEWEIGHTS = {"CONCRETE": 50, "REBAR_MAIN": 50, "REBAR_STIRRUP": 30, "TITLE_BLOCK": 35, "SECTION": 35}
 
 
 def _title_block(sh: _Sheet, w: float, h: float, sheet_no: int, fa: str, en: str, project: str) -> None:
@@ -218,9 +251,11 @@ def _draw_beam(sh: _Sheet, y0: float, g: dict[str, Any], inp, rows: list[BarRow]
         L_bar = _r10(e - a + (hk_t if i == 0 else 0) + (hk_t if i == len(top_pieces) - 1 else 0))
         rows.append(BarRow(f"{tag}-T1{chr(97 + i) if len(top_pieces) > 1 else ''}", tag, dt,
                            "L 90° hooks" if len(top_pieces) == 1 else "straight + hook", L_bar, 2 * lines))
+        sh.callout(((xa + xe) / 2, yt), ((xa + xe) / 2 + 300, y0 + h + 700), f"2Φ{dt} L={L_bar} (T1)")
     if len(top_pieces) > 1:
         for a, e in zip(top_pieces[1:], top_pieces[:-1]):
             sh.text("REBAR_TEXT", (x_end0 + a[0], yt + 120), 90, f"lap {lt}")
+            sh.dim((x_end0 + a[0], yt + 8), (x_end0 + e[1], yt + 8), 380)
     # extra top bars over supports, ln/3 beyond each face
     n_extra = nt - 2
     ext = cutoff_length(A["cutoff"], ln, g.get("Mu_neg_kn_m", 0.0), g.get("Mu_pos_kn_m", 0.0), nt, 2, h - COVER_MM - ds - dt / 2, dt)
@@ -248,6 +283,10 @@ def _draw_beam(sh: _Sheet, y0: float, g: dict[str, Any], inp, rows: list[BarRow]
         L_bar = _r10(e - a + (hk_b if i == 0 else 0) + (hk_b if i == len(bot_pieces) - 1 else 0))
         rows.append(BarRow(f"{tag}-B1{chr(97 + i) if len(bot_pieces) > 1 else ''}", tag, dbb,
                            "L 90° hooks" if len(bot_pieces) == 1 else "straight + hook", L_bar, nb * lines))
+        sh.callout(((xa + xe) / 2 - 400, yb), ((xa + xe) / 2 - 100, y0 - 650), f"{nb}Φ{dbb} L={L_bar} (B1)")
+    for a, e in zip(bot_pieces[1:], bot_pieces[:-1]):
+        sh.text("REBAR_TEXT", (x_end0 + a[0], yb - 200), 90, f"lap {lb}")
+        sh.dim((x_end0 + a[0], yb - 8), (x_end0 + e[1], yb - 8), -330)
     # stirrups
     n_st = 0
     for k in range(nsp):
@@ -267,11 +306,15 @@ def _draw_beam(sh: _Sheet, y0: float, g: dict[str, Any], inp, rows: list[BarRow]
     sh.text("REBAR_TEXT", (-col / 2, y0 + h + 420), 140,
             f"{tag}  {lines} line(s) x {nsp} spans  {b:.0f}x{h:.0f}   top {g['top_bars']} (T1 2Φ{dt} cont. + T2)  bottom {g['bottom_bars']} (B1)   "
             f"ld,top={ld_t}  ldh={ldh_t} (avail. {col - COVER_MM:.0f})")
+    # section cut marks on the elevation: A-A at the first support face, B-B at the first midspan
+    sh.cut(col / 2 + 250, y0 - 150, y0 + h + 150, "A")
+    sh.cut(L / 2, y0 - 150, y0 + h + 150, "B")
     # sections A-A (support) and B-B (midspan)
     sx = total + col / 2 + 900
     for j, (lab, ntop) in enumerate((("A-A support", nt), ("B-B midspan", 2))):
         ox = sx + j * (b + 900)
         sh.poly("CONCRETE", [(ox, y0), (ox + b, y0), (ox + b, y0 + h), (ox, y0 + h)], closed=True)
+        sh.hatch("CONC_HATCH", [(ox, y0), (ox + b, y0), (ox + b, y0 + h), (ox, y0 + h)])
         sh.poly("REBAR_STIRRUP", [(ox + COVER_MM, y0 + COVER_MM), (ox + b - COVER_MM, y0 + COVER_MM),
                                   (ox + b - COVER_MM, y0 + h - COVER_MM), (ox + COVER_MM, y0 + h - COVER_MM)], closed=True)
         for n, d, yy in ((ntop, dt, yt), (nb, dbb, yb)):
@@ -318,11 +361,32 @@ def _draw_column(sh: _Sheet, x0: float, g: dict[str, Any], inp, rows: list[BarRo
     lap_lo = clear / 4 + (clear / 2 - lap) / 2  # lap centred in the middle half
     if lap > clear / 2:
         lap_lo = clear / 4
-    xi = x0 + COVER_MM + dt + d / 2
-    sh.line("REBAR_MAIN", (xi, -300), (xi, lap_lo + lap))  # bar from the storey below
-    sh.line("REBAR_MAIN", (xi + 14, lap_lo), (xi + 14, H + 200))  # this storey's bar
+    # every longitudinal bar seen in elevation (both faces + middle bars), offset by cover + tie
+    inset = COVER_MM + dt + d / 2
+    face_x = sorted({round(px, 1) for px, _ in _column_bar_positions(n, b, h, inset)})
+    ground = g["storey"] == 1
+    for xp in face_x:
+        xb = x0 + xp
+        sgn = 1 if xp < b / 2 else -1  # crank towards the core
+        if ground:  # anchorage into the footing with a 90° hook on the bottom mesh
+            yh = -FOOTING_DRAW_H + 75 + 40
+            sh.poly("REBAR_MAIN", [(xb - sgn * 12 * d, yh), (xb, yh), (xb, lap_lo + lap)])
+        else:  # bar from the storey below ends after the lap
+            sh.line("REBAR_MAIN", (xb, -300), (xb, lap_lo + lap))
+        # this storey's bar: cranked by one diameter over the lap, back on line above it (1:6 crank)
+        sh.poly("REBAR_MAIN", [(xb + sgn * d, lap_lo), (xb + sgn * d, lap_lo + lap), (xb, lap_lo + lap + 6 * d), (xb, H)])
+        # starter into the storey above (shown dashed beyond the top of the beam)
+        sh.msp.add_line((sh.x0 + xb, sh.y0 + H), (sh.x0 + xb, sh.y0 + H + lap_lo * 0.5 + 300),
+                        dxfattribs={"layer": "REBAR_MAIN", "linetype": "DASHED"})
+    if ground:
+        sh.poly("CONCRETE", [(x0 - 600, -FOOTING_DRAW_H), (x0 + b + 600, -FOOTING_DRAW_H), (x0 + b + 600, 0), (x0 - 600, 0)], closed=True)
+        sh.text("REBAR_TEXT", (x0 - 550, -FOOTING_DRAW_H + 80), 70, "footing (see FD sheets) / پی")
     sh.text("REBAR_TEXT", (x0 + b + 150, lap_lo + lap / 2), 90, f"lap {lap}")
-    sh.text("REBAR_TEXT", (x0 + b + 150, lap_lo + lap / 2 - 150), 70, "(middle half)")
+    sh.text("REBAR_TEXT", (x0 + b + 150, lap_lo + lap / 2 - 150), 70, "(middle half, cranked bar)")
+    sh.text("REBAR_TEXT", (x0 + b + 150, H + 150), 70, "starter bars to storey above")
+    sh.dim((x0 + b, lap_lo), (x0 + b, lap_lo + lap), -(b * 0 + 700), vertical=True)
+    sh.dim((x0 + b, 0), (x0 + b, lap_lo), -(700), vertical=True)
+    xi = x0 + face_x[0]
     ys = zone_positions(0, clear, l0, s0, s)
     y = clear + s0
     while y < H:
@@ -338,6 +402,12 @@ def _draw_column(sh: _Sheet, x0: float, g: dict[str, Any], inp, rows: list[BarRo
     # section
     oy = H + 900
     sh.poly("CONCRETE", [(x0, oy), (x0 + b, oy), (x0 + b, oy + h), (x0, oy + h)], closed=True)
+    sh.hatch("CONC_HATCH", [(x0, oy), (x0 + b, oy), (x0 + b, oy + h), (x0, oy + h)])
+    sh.text("SECTION", (x0 + b / 2, oy - 160), 90, "C-C", center=True)
+    sh.line("SECTION", (x0 - 200, clear / 2), (x0 + b + 200, clear / 2))
+    sh.text("SECTION", (x0 - 200, clear / 2 + 40), 80, "C")
+    sh.text("SECTION", (x0 + b + 120, clear / 2 + 40), 80, "C")
+    sh.callout((xi + 14, H * 0.8), (x0 + b + 250, H * 0.85), f"{n}Φ{d} L={_r10(H + lap)}")
     sh.poly("REBAR_STIRRUP", [(x0 + COVER_MM, oy + COVER_MM), (x0 + b - COVER_MM, oy + COVER_MM),
                               (x0 + b - COVER_MM, oy + h - COVER_MM), (x0 + COVER_MM, oy + h - COVER_MM)], closed=True)
     inset = COVER_MM + dt + d / 2
@@ -394,13 +464,10 @@ def build_rebar_doc(inp, design: dict[str, Any], project: str = "3D frame") -> t
     if not design or not design.get("beams"):
         raise ValueError("rebar detailing needs the Mabhas 9 design (design_code MABHAS9)")
     A = da.effective(getattr(inp, "assumptions", None))
-    doc = ezdxf.new("R2010", setup=True)
-    doc.header["$INSUNITS"] = 4  # mm
-    doc.styles.add("LATIN", font="arial.ttf")
-    doc.styles.add("PERSIAN", font="tahoma.ttf")
+    doc = dstd.new_document()  # shared office standard: linetypes, lineweights, Latin + Persian text styles
     for name, color in LAYERS.items():
         if name not in doc.layers:
-            doc.layers.add(name, color=color)
+            doc.layers.add(name, color=color, lineweight=LINEWEIGHTS.get(name, 18))
     msp = doc.modelspace()
     rows: list[BarRow] = []
     beams, columns = design["beams"], design["columns"]
@@ -408,7 +475,7 @@ def build_rebar_doc(inp, design: dict[str, Any], project: str = "3D frame") -> t
     nsp_max = max(_beam_spans(inp, g["direction"])[0] * _beam_spans(inp, g["direction"])[1] for g in beams)
     beam_row_h = inp.beam_h_m * 1000 + 2400
     sheet_w = max(nsp_max + 8000, len(columns) * (inp.column_b_m * 1000 + COL_PITCH) + 3000, 12500, 20000)
-    pitch = sheet_w + 4000
+    pitch = max(sheet_w + 4000, 90000.0)  # A1 viewport at 1:100 must not show the neighbouring sheet
     heights = [len(beams) * beam_row_h + 6000, inp.storey_height_m * 1000 + inp.column_h_m * 1000 + 6500, 0]
     # sheet 1: beams
     s1 = _Sheet(msp, 0, "R-01")
@@ -435,9 +502,18 @@ def build_rebar_doc(inp, design: dict[str, Any], project: str = "3D frame") -> t
     titles = [("نقشه آرماتوربندی تیرها", "BEAM REINFORCEMENT DETAILS"),
               ("نقشه آرماتوربندی ستون‌ها", "COLUMN REINFORCEMENT DETAILS"),
               ("جدول مشخصات و وزن میلگردها", "BAR BENDING SCHEDULE")]
+    gen = [f"Concrete C{inp.fc_mpa:g} (f'c = {inp.fc_mpa:g} MPa)   Rebar S{inp.fy_mpa:g} (fy = {inp.fy_mpa:g} MPa)",
+           f"Clear cover {A['cover_mm']:g} mm   Lap splices class {A['splice_class']} (lengths on the drawing)   Stock length {A['stock_length_m']:g} m",
+           "Hooks: stirrups/ties 135° with the extension shown; all dimensions in mm",
+           "بتن و میلگرد طبق مبحث نهم؛ پوشش و طول وصله طبق یادداشت‌ها"]
+    for i, s_ in enumerate(["GENERAL NOTES / یادداشت‌های عمومی"] + gen):
+        s3.text("NOTES", (13200, 2900 + (len(gen) - i) * 300), 160 if i == 0 else 120, s_)
+    info = dstd.TitleInfo(project=project)
     for k, (sh, (fa, en)) in enumerate(zip((s1, s2, s3), titles), start=1):
         sh.text("TITLE", (0.25 * pitch, H + 600), 420, f"R-{k:02d} {en}", center=False)
-        _title_block(sh, sheet_w, H + 1500, k, fa, en, project)
+        sh.poly("TITLE_BLOCK", [(0, 0), (sheet_w, 0), (sheet_w, H + 1500), (0, H + 1500)], closed=True)
+        scale = next((sc for sc in (50, 100, 200) if sheet_w / sc <= 800 and (H + 1500) / sc <= 450), 200)
+        dstd.add_sheet(doc, f"R-{k:02d}", (sh.x0, 0.0, sh.x0 + sheet_w, H + 1500), info, f"R-{k:02d}", fa, en, paper="A1", scale=scale)
     return doc, rows, total
 
 

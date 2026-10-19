@@ -30,6 +30,7 @@ def test_migrations_directory_contains_bootstrap_and_pem_foundation() -> None:
         "019_agent_execution_lifecycle.sql",
         "020_conversations_foundation.sql",
         "021_engineering_learning_foundation.sql",
+        "022_seed_agent_capabilities.sql",
     ]
 
 

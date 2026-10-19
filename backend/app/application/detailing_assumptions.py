@@ -16,7 +16,7 @@ DUCTILITY_SYSTEM = {"ordinary": "RC_OMF", "intermediate": "RC_IMF", "special": "
 
 reg.register_module("rebar_detailing", [
     S("cover_mm", "number", 40, "Clear cover", "پوشش بتن", "mm", (15, 100),
-      (r"(?:clear )?cover", r"پوشش(?: بتن)?", r"کاور"), unit_scale={"cm": 10, "سانت": 10, "میلی": 1}),
+      (r"(?<!footing )(?<!foundation )(?:clear )?cover", r"پوشش(?: بتن)?(?! (?:بتن )?(?:پی|فونداسیون))", r"کاور(?! (?:پی|فونداسیون))"), unit_scale={"cm": 10, "سانت": 10, "میلی": 1}),
     S("stock_length_m", "number", 12, "Stock bar length", "طول شاخه میلگرد", "m", (6, 18),
       (r"(?:stock|bar) length", r"stock bars?", r"شاخه(?: ی| های)?", r"طول شاخه"), value_before_alias=True),
     S("cutoff", "choice", "ln/3", "Top-bar cut-off", "قطع آرماتور فوقانی", "", None, (r"cut.?off", r"قطع"),
@@ -57,6 +57,16 @@ reg.register_module("iran2800", [
 reg.register_module("foundation", [
     S("allowable_bearing_kpa", "number", 150, "Allowable soil bearing", "تنش مجاز خاک", "kPa", (50, 800),
       (r"allowable (?:soil )?bearing", r"bearing capacity", r"تنش مجاز(?: خاک)?", r"ظرفیت باربری"), target="input", field_name="allowable_bearing_kpa"),
+    S("footing_cover_mm", "number", 75, "Footing bottom cover", "پوشش بتن پی", "mm", (50, 100),
+      (r"footing cover", r"foundation cover", r"پوشش (?:بتن )?(?:پی|فونداسیون)", r"کاور (?:پی|فونداسیون)"), unit_scale={"cm": 10, "سانت": 10}),
+    S("footing_depth_m", "number", 1.5, "Footing founding depth Df", "عمق پی‌کنی", "m", (0.5, 5.0),
+      (r"founding depth", r"\bdf\b", r"embedment depth", r"عمق (?:پی|استقرار|پی ?کنی)")),
+    S("footing_min_h_m", "number", 0.30, "Minimum footing thickness", "حداقل ضخامت پی", "m", (0.25, 1.5),
+      (r"min(?:imum)? footing (?:thickness|depth)", r"حداقل ضخامت پی"), unit_scale={"cm": 0.01, "سانت": 0.01, "mm": 0.001}),
+    S("lean_concrete_mm", "number", 100, "Lean concrete (blinding) layer", "بتن مگر", "mm", (50, 200),
+      (r"lean concrete", r"blinding", r"بتن مگر", r"مگر"), unit_scale={"cm": 10, "سانت": 10}),
+    S("footing_bar_db", "list", [14, 16, 18, 20, 22, 25], "Footing bar diameters", "قطر میلگرد پی", "mm", None,
+      (r"footing bars?", r"foundation bars?", r"میلگرد (?:پی|فونداسیون)")),
 ])
 FRAME_MODULES = ["rebar_detailing", "mabhas9", "iran2800", "foundation"]
 
