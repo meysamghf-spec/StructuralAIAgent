@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { mapFrame3dResults } from "../lib/chat-mappers";
+import { designCsv } from "../components/chat/Frame3dResultCard";
 
 describe("mapFrame3dResults", () => {
   it("maps a completed 3D frame payload", () => {
@@ -22,6 +23,35 @@ describe("mapFrame3dResults", () => {
     expect(mapped?.gridX).toEqual([0, 5, 10]);
     expect(mapped?.baseShearStatus).toBe("PASS");
     expect(mapped?.seismicCode).toBe("ASSUMED_C");
+  });
+
+  it("maps modal and Mabhas 9 design sections", () => {
+    const mapped = mapFrame3dResults({
+      kind: "frame3d_analysis",
+      status: "completed",
+      drift_check: "PASS",
+      modal: {
+        T_fundamental_s: 0.829,
+        modes: [{ mode: 1, T_s: 0.829, mass_x_pct: 83.3, mass_y_pct: 0, mass_rz_pct: 0 }],
+        response_spectrum: { X: { V_dynamic_kn: 325, V_static_kn: 588, scale_factor: 1.538, drift: [{ ratio_amplified_pct: 1.9 }] } },
+      },
+      design: {
+        code: "MABHAS9",
+        status: "CHECK",
+        ductility: "intermediate",
+        beams: [{ group: "B-X-S1-edge", top_bars: "3Φ25", DC_flexure: 1.0, notes: ["a", "b"] }],
+        columns: [{ group: "C-S1-corner", bars: "8Φ22", DC: 0.965 }],
+        scwb: [{ level: 1, min_ratio: 1.27, status: "PASS" }],
+        clauses_implemented: ["x"],
+        clauses_simplified: ["y"],
+      },
+    });
+    expect(mapped?.driftCheck).toBe("PASS");
+    expect(mapped?.modal?.spectrum[0]?.scaleFactor).toBe(1.538);
+    expect(mapped?.modal?.spectrum[0]?.maxDriftPct).toBe(1.9);
+    expect(mapped?.design?.beams[0]?.notes).toBe("a; b");
+    expect(mapped?.design?.columns[0]?.bars).toBe("8Φ22");
+    expect(designCsv(mapped?.design?.beams ?? [])).toContain("B-X-S1-edge");
   });
 
   it("ignores other result kinds", () => {

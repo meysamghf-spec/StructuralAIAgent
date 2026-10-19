@@ -23,6 +23,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Callable
 
 from app.application import iran2800
+from app.application import mabhas9_rc_design as m9
 from app.application.analysis.modal import combine_cqc, generalized_eigen_diag_mass
 from app.application.analysis.linear_algebra import factor_linear_system
 from app.application.analysis.frame3d_solver import (
@@ -430,6 +431,98 @@ def run_frame3d(inp: Frame3dInputs) -> dict[str, Any]:
 
 
 G = 9.81
+DUCTILITY = {"RC_SMF": "special", "RC_IMF": "intermediate", "RC_OMF": "ordinary"}
+
+
+def design_mabhas9(inp: "Frame3dInputs", raw: dict[str, Any]) -> dict[str, Any]:
+    """Group-wise Mabhas 9 design of beams (storey × direction × edge/interior) and columns (storey × position)."""
+    ductility = DUCTILITY.get(inp.system)
+    if ductility is None:
+        return {"code": "MABHAS9", "status": "NOT_APPLICABLE",
+                "message": "Mabhas 9 RC design applies to RC systems only (steel / Mabhas 10 not implemented)."}
+    fc, fy = inp.fc_mpa, inp.fy_mpa
+    bb, bh = inp.beam_b_m * 1000, inp.beam_h_m * 1000
+    cb, ch = inp.column_b_m * 1000, inp.column_h_m * 1000
+    groups: dict[tuple, list[dict]] = {}
+    for b in raw["beams"]:
+        groups.setdefault((b["storey"], b["direction"], b["position"]), []).append(b)
+    beam_rows, beam_by_id = [], {}
+    for (k, dirn, pos), members in sorted(groups.items()):
+        env = {key: max(m[key] for m in members) for key in ("M_neg_end_kn_m", "M_pos_end_kn_m", "M_pos_mid_kn_m", "V_kn")}
+        d = m9.design_beam(m_neg_end=env["M_neg_end_kn_m"], m_pos_end=env["M_pos_end_kn_m"], m_pos_mid=env["M_pos_mid_kn_m"],
+                           vu=env["V_kn"], b=bb, h=bh, fc=fc, fy=fy, ductility=ductility)
+        row = {"group": f"B-{dirn}-S{k}-{pos}", "storey": k, "direction": dirn, "position": pos, "members": len(members),
+               "Mu_neg_kn_m": round(env["M_neg_end_kn_m"], 1), "Mu_pos_kn_m": round(max(env["M_pos_end_kn_m"], env["M_pos_mid_kn_m"]), 1),
+               "Vu_kn": round(env["V_kn"], 1), "As_top_req_mm2": round(d.get("As_top_req_mm2", 0)), "As_bot_req_mm2": round(d.get("As_bot_req_mm2", 0)),
+               "top_bars": d.get("top_bars"), "bottom_bars": d.get("bottom_bars"),
+               "stirrups": (d.get("shear") or {}).get("stirrups"), "DC_flexure": round(d["DC_flexure"], 3) if d.get("DC_flexure") is not None else None,
+               "DC_shear": round(d["DC_shear"], 3) if d.get("DC_shear") is not None else None, "status": d["status"], "notes": d.get("notes", [])}
+        beam_rows.append(row)
+        for m in members:
+            beam_by_id[m["id"]] = d
+    cgroups: dict[tuple, list[dict]] = {}
+    for c in raw["columns"]:
+        cgroups.setdefault((c["storey"], c["position"]), []).append(c)
+    clear = inp.storey_height_m * 1000 - bh
+    col_rows, col_by_id = [], {}
+    for (k, pos), members in sorted(cgroups.items()):
+        d = m9.design_column_group({m["id"]: m["records"] for m in members}, cb, ch, fc, fy, clear)
+        gov = d.get("governing") or {}
+        col_rows.append({"group": f"C-S{k}-{pos}", "storey": k, "position": pos, "members": len(members),
+                         "Pu_kn": round(gov.get("Pu_kn", 0), 1), "Mu_y_kn_m": round(gov.get("Mu_y_kn_m", 0), 1),
+                         "Mu_z_kn_m": round(gov.get("Mu_z_kn_m", 0), 1), "governing_combo": gov.get("combo"),
+                         "bars": d.get("bars"), "rho_pct": round(d.get("rho", 0) * 100, 2), "ties": (d.get("ties") or {}).get("text"),
+                         "DC": round(d["DC"], 3), "status": d["status"], "notes": d.get("notes", [])})
+        for m in members:
+            col_by_id[m["id"]] = (d, m)
+    # strong column / weak beam at every joint below the roof
+    nx, ny, ns = inp.bays_x, inp.bays_y, inp.storeys
+    joints = []
+    for k in range(1, ns):
+        worst = None; fails = 0; count = 0
+        for i in range(nx + 1):
+            for j in range(ny + 1):
+                mnc = 0.0
+                for cid in (f"C{i}_{j}_{k}", f"C{i}_{j}_{k+1}"):
+                    d, m = col_by_id[cid]
+                    if "nface" not in d:
+                        continue
+                    ps = [r["P"] for r in m["records"] if r["seismic"]] or [r["P"] for r in m["records"]]
+                    mnc += min(m9.column_moment_resistance(p, bw, bd, d["nface"], d["db"], fc, fy, nominal=True)
+                               for p in ps for bw, bd in ((cb, ch), (ch, cb)))
+                for dirn, left, right in (("X", f"BX{i-1}_{j}_{k}" if i > 0 else None, f"BX{i}_{j}_{k}" if i < nx else None),
+                                          ("Y", f"BY{i}_{j-1}_{k}" if j > 0 else None, f"BY{i}_{j}_{k}" if j < ny else None)):
+                    def mn(bid, key):
+                        dd = beam_by_id.get(bid) if bid else None
+                        return dd.get(key, 0.0) if dd else 0.0
+                    mnb = max(mn(left, "Mn_top_kn_m") + mn(right, "Mn_bot_kn_m"), mn(left, "Mn_bot_kn_m") + mn(right, "Mn_top_kn_m"))
+                    if mnb <= 0:
+                        continue
+                    ratio = mnc / mnb; count += 1
+                    if ratio < 1.2:
+                        fails += 1
+                    if worst is None or ratio < worst[0]:
+                        worst = (ratio, f"N{i}_{j}_{k}", dirn)
+        if worst:
+            joints.append({"level": k, "min_ratio": round(worst[0], 3), "joint": worst[1], "direction": worst[2],
+                           "joints_checked": count, "joints_below_1_2": fails, "status": "PASS" if fails == 0 else "FAIL"})
+    all_rows = beam_rows + col_rows
+    max_dc = max([r["DC_flexure"] or 0 for r in beam_rows] + [r["DC_shear"] or 0 for r in beam_rows] + [r["DC"] for r in col_rows])
+    n_fail = sum(1 for r in all_rows if r["status"] != "PASS")
+    scwb_note = ("mandatory for special frames" if ductility == "special"
+                 else "reported as a check; verify applicability for this ductility level")
+    scwb_fail = any(j["status"] != "PASS" for j in joints)
+    member_status = "PASS" if n_fail == 0 else "FAIL"
+    overall = "FAIL" if member_status == "FAIL" or (scwb_fail and ductility == "special") else ("CHECK" if scwb_fail else "PASS")
+    return {"code": "MABHAS9", "status": overall, "member_status": member_status,
+            "scwb_status": "FAIL" if scwb_fail else "PASS", "ductility": ductility,
+            "phi_c": m9.PHI_C, "phi_s": m9.PHI_S, "beams": beam_rows, "columns": col_rows, "scwb": joints,
+            "scwb_note": f"ΣMnc ≥ 1.2·ΣMnb ({scwb_note})",
+            "summary": {"max_DC": round(max_dc, 3), "groups": len(all_rows), "groups_failing": n_fail,
+                        "scwb_min_ratio": min((j["min_ratio"] for j in joints), default=None)},
+            "clauses_implemented": m9.CLAUSES_IMPLEMENTED, "clauses_simplified": m9.CLAUSES_SIMPLIFIED,
+            "analysis_basis": "Member forces from the equivalent static load cases (response spectrum used for checks only)",
+            "special_frame_note": "Special-frame detailing (capacity shear, joint shear, Ash confinement) not implemented" if ductility == "special" else None}
 
 
 def _modal_response_spectrum(inp, lateral_prep, nodes, XS, YS, Z, W, centre, V_static, info) -> dict[str, Any]:
@@ -647,6 +740,15 @@ def build_frame3d_payload(user_request: str) -> dict[str, Any] | None:
         ]
     else:
         assumptions.append(f"Drift amplified by 0.7R with R={inp.behaviour_r:g}; the 2.5% value shown is only a reference, not a 2800 check")
+    design = design_mabhas9(inp, raw) if inp.design_code == "MABHAS9" else None
+    if design and design.get("status") == "NOT_APPLICABLE":
+        warnings.append(design["message"])
+    if design and design.get("scwb_status") == "FAIL":
+        warnings.append("Strong column / weak beam ratio below 1.2 at some joints (see design table): consider larger columns or less beam steel.")
+    if design and design.get("special_frame_note"):
+        warnings.append(design["special_frame_note"])
+    if design and inp.seismic_code != "IRAN_2800":
+        warnings.append("Mabhas 9 design uses the user-supplied seismic C; add Standard 2800 parameters for code-based seismic forces.")
     if inp.design_code == "NONE":
         assumptions.append("No member design / code compliance checks requested (add 'design per Mabhas 9')")
     fields = [
@@ -671,6 +773,10 @@ def build_frame3d_payload(user_request: str) -> dict[str, Any] | None:
             f"{d}: {rs[d]['V_dynamic_kn']:.1f}/{rs[d]['V_static_kn']:.1f} (×{rs[d]['scale_factor']:.3f})" for d in rs), "unit": "kN"})
     if max_drift:
         fields.append({"label": "Max drift " + ("Cd·Δ/(I·h)" if is2800 else "0.7R·Δ/h"), "value": f"{max_drift['ratio_amplified_pct']:.2f} (storey {max_drift['storey']}, {max_drift['direction']})", "unit": "%"})
+    if design and design.get("summary"):
+        sm = design["summary"]
+        fields.append({"label": "Mabhas 9 design", "value": f"{design['status']} — max D/C {sm['max_DC']:.2f}, {sm['groups_failing']}/{sm['groups']} groups failing"
+                       + (f", SCWB min {sm['scwb_min_ratio']:.2f}" if sm.get("scwb_min_ratio") is not None else ""), "unit": ""})
     fields += [
         {"label": "Beam max M⁻", "value": f"{results['beam_max_M_neg_kn_m']:.1f}", "unit": "kN·m"},
         {"label": "Beam max M⁺", "value": f"{results['beam_max_M_pos_kn_m']:.1f}", "unit": "kN·m"},
@@ -688,6 +794,7 @@ def build_frame3d_payload(user_request: str) -> dict[str, Any] | None:
         "drift_reference_limit_pct": _r(si.get("drift_limit", 0.025) * 100, 2),
         "drift_check": (("PASS" if max_drift["ratio_amplified_pct"] <= si["drift_limit"] * 100 + 1e-9 else "FAIL") if (is2800 and max_drift) else None),
         "modal": _modal_payload(modal, si) if modal else None,
+        "design": design,
         "beam_forces_by_storey": per_storey_beam,
         "column_forces_by_storey": [{"storey": k, "P_kn": _r(max(c["P_kn"] for c in cols if c["storey"] == k)),
                                      "M_kn_m": _r(max(c["M_kn_m"] for c in cols if c["storey"] == k))} for k in range(1, inp.storeys + 1)],
@@ -750,6 +857,21 @@ def frame3d_markdown(payload: dict[str, Any]) -> str:
             md = max(x["ratio_amplified_pct"] for x in v["drift"])
             lines.append(f"- Response spectrum {d}: V_dyn = {v['V_dynamic_kn']:.1f} kN vs V_static = {v['V_static_kn']:.1f} kN "
                          f"({v['ratio']:.0%}) → scale ×{v['scale_factor']:.3f} ({modal['scale_rule']}); max scaled drift {md:.2f}%")
+    dz = payload.get("design")
+    if dz and dz.get("beams"):
+        sm = dz["summary"]
+        lines += ["", f"#### Mabhas 9 RC design ({dz['ductility']} ductility, φc={dz['phi_c']}, φs={dz['phi_s']}) — **{dz['status']}**, max D/C {sm['max_DC']:.2f}", "",
+                  "| Beam group | Mu⁻ | Mu⁺ | Vu | Top | Bottom | Stirrups | D/C M | D/C V |", "|---|---|---|---|---|---|---|---|---|"]
+        for b in dz["beams"]:
+            lines.append(f"| {b['group']} | {b['Mu_neg_kn_m']} | {b['Mu_pos_kn_m']} | {b['Vu_kn']} | {b['top_bars']} | {b['bottom_bars']} | {b['stirrups']} | {b['DC_flexure']} | {b['DC_shear']} |")
+        lines += ["", "| Column group | Pu | Mu,y | Mu,z | Bars | ρ % | Ties | D/C |", "|---|---|---|---|---|---|---|---|"]
+        for c in dz["columns"]:
+            lines.append(f"| {c['group']} | {c['Pu_kn']} | {c['Mu_y_kn_m']} | {c['Mu_z_kn_m']} | {c['bars']} | {c['rho_pct']} | {c['ties']} | {c['DC']} |")
+        if dz["scwb"]:
+            lines += ["", f"Strong column / weak beam — {dz['scwb_note']}: " + "; ".join(
+                f"level {j['level']}: min {j['min_ratio']} ({j['status']})" for j in dz["scwb"])]
+        lines += ["", "Implemented clauses: " + "; ".join(dz["clauses_implemented"]),
+                  "Simplified / not checked: " + "; ".join(dz["clauses_simplified"]), ""]
     lines += [f"- Beam max M⁻ **{r['beam_max_M_neg_kn_m']:.1f} kN·m** ({r['beam_max_M_neg_id']}), M⁺ {r['beam_max_M_pos_kn_m']:.1f} kN·m, V {r['beam_max_V_kn']:.1f} kN",
               f"- Column max axial P **{r['column_max_P_kn']:.1f} kN** ({r['column_max_P_id']})",
               "", "Assumptions:", *[f"- {a}" for a in payload["assumptions"]]]
