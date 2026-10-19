@@ -179,6 +179,37 @@ function recordList(value: unknown): Array<Record<string, unknown>> {
     : [];
 }
 
+function mapFrame3dModal(raw: unknown): Frame3dResults["modal"] {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const data = raw as Record<string, unknown>;
+  const rs = data.response_spectrum && typeof data.response_spectrum === "object"
+    ? (data.response_spectrum as Record<string, Record<string, unknown>>)
+    : {};
+  return {
+    fundamentalPeriodS: parseOptionalNumber(data.T_fundamental_s),
+    scaleRule: typeof data.scale_rule === "string" ? data.scale_rule : null,
+    modes: recordList(data.modes).map((m) => ({
+      mode: Number(m.mode ?? 0),
+      periodS: parseOptionalNumber(m.T_s),
+      massXPct: parseOptionalNumber(m.mass_x_pct),
+      massYPct: parseOptionalNumber(m.mass_y_pct),
+      massRzPct: parseOptionalNumber(m.mass_rz_pct),
+    })),
+    spectrum: Object.entries(rs).map(([direction, v]) => {
+      const drifts = recordList(v.drift).map((d) => parseOptionalNumber(d.ratio_amplified_pct) ?? 0);
+      return {
+        direction,
+        vDynamicKn: parseOptionalNumber(v.V_dynamic_kn),
+        vStaticKn: parseOptionalNumber(v.V_static_kn),
+        scaleFactor: parseOptionalNumber(v.scale_factor),
+        maxDriftPct: drifts.length ? Math.max(...drifts) : null,
+      };
+    }),
+  };
+}
+
 export function mapFrame3dResults(raw: unknown): Frame3dResults | null {
   if (!raw || typeof raw !== "object") {
     return null;
@@ -226,6 +257,8 @@ export function mapFrame3dResults(raw: unknown): Frame3dResults | null {
       };
     }),
     baseShearStatus: baseShear && typeof baseShear.status === "string" ? baseShear.status : null,
+    driftCheck: typeof data.drift_check === "string" ? data.drift_check : null,
+    modal: mapFrame3dModal(data.modal),
     gridX: numberList(geometry.XS),
     gridY: numberList(geometry.YS),
     missing: stringList(data.missing_inputs),
