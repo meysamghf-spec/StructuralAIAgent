@@ -153,16 +153,23 @@ def build_foundation_doc(inp, raw: dict[str, Any], design: dict[str, Any] | None
     table_rows = [(b["mark"], f"Φ{b['d']}", b["shape"], b["length"], b["count"], f"{b['weight']:.1f}") for b in brow]
     total = round(sum(b["weight"] for b in brow), 1)
     table_rows.append(("", "", "TOTAL / وزن کل", "", "", f"{total:.1f}"))
-    yb_ = pen.table(0, y - 4000, ("Mark", "Φ (mm)", "Shape / شکل", "Length (mm)", "Count", "Weight (kg)"), table_rows,
+    bottom = -lean - 1000 - 16 * s2
+    ds.add_sheet(doc, "FD-02", (ox0 - 3000, bottom - 1000, ox0 + x + 2000, top + 1500), info, "FD-02",
+                 "مقاطع پی", "FOOTING SECTIONS", scale=s2)
+    # FD-03: bending schedule + notes on their own 1:50 sheet
+    ox3 = ox0 + x + 40000
+    pen = ds.Pen(msp, (ox3, 0), 50)
+    yb_ = pen.table(0, 0, ("Mark", "Φ (mm)", "Shape / شکل", "Length (mm)", "Count", "Weight (kg)"), table_rows,
                     (22, 16, 44, 24, 16, 24), title="BAR BENDING SCHEDULE - FOOTINGS / جدول وزن میلگرد پی")
-    pen.notes(x * 0.55, y - 4000, "GENERAL NOTES / یادداشت‌های عمومی", [
+    nx = 160 * 50
+    pen.notes(nx, 0, "GENERAL NOTES / یادداشت‌های عمومی", [
         f"Concrete C{inp.fc_mpa:g}, rebar S{inp.fy_mpa:g}; bottom cover {cover:.0f} mm; lean concrete {lean:.0f} mm.",
         "Footings designed to Mabhas 9: flexure at the column face, one-way shear at d, punching at d/2.",
         f"Founding depth Df = {df / 1000:g} m; allowable bearing qa = {fd['qa_kpa']:g} kPa.",
         "پوشش، عمق پی و بتن مگر از گفتگو قابل تغییر است.",
     ])
-    ds.add_sheet_tiles(doc, "FD-02", (ox0 - 3000, yb_ - 2000, ox0 + x + 2000, top + 1500), info,
-                       "مقاطع و جدول میلگرد پی", "FOOTING SECTIONS & BENDING SCHEDULE", scale=s2)
+    ds.add_sheet(doc, "FD-03", (ox3 - 1500, min(yb_, -12 * 50 * 2.5) - 1500, ox3 + nx + 150 * 50, 1500 + 12 * 50), info, "FD-03",
+                 "جدول میلگرد پی", "FOOTING BENDING SCHEDULE", scale=50)
     return doc, brow, total
 
 

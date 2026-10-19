@@ -91,6 +91,17 @@ def test_rc_section_hoop_hooks_bars_dims_title():
     hoop = [e for e in msp.query("LWPOLYLINE[layer=='S-REBAR-STIR']") if e.closed]
     assert hoop and any(b for *_, b in hoop[0].get_points("xyseb"))  # rounded bends
     assert len(msp.query("LWPOLYLINE[layer=='S-REBAR-STIR']")) == 3  # hoop + two 135° hook legs
-    assert len(msp.query("DIMENSION")) == 3 and msp.query("LEADER")
+    assert len(msp.query("DIMENSION")) == 3
+    leaders = msp.query("LWPOLYLINE[layer=='S-REBAR-TEXT']")
+    assert len(leaders) == 2 and all(abs(p[0][1] - p[1][1]) < 1e-6 for p in (list(l.get_points("xy")) for l in leaders))  # horizontal out of the section
     texts = {e.dxf.text for e in msp.query("TEXT")}
     assert "SECTION C-C" in texts and "1:20" in texts and ds.audit(doc) == 0
+
+
+def test_footing_schedule_on_its_own_sheet():
+    from app.application import csi_text_export as cte
+
+    inp, raw, design = _run()
+    doc = ezdxf.read(io.StringIO(cte.build_export("dxf_foundation", inp, raw, design)))
+    names = [l.name for l in doc.layouts if l.name != "Model"]
+    assert {"FD-01", "FD-02", "FD-03"} <= set(names) and not any(n.startswith("FD-02.") for n in names)

@@ -274,7 +274,14 @@ def rc_section(pen: "Pen", ox: float, oy: float, b: float, h: float, cover: floa
         pen.msp.add_lwpolyline([pen.p(px, py), pen.p(px + hook * 0.7071, py - hook * 0.7071)],
                                dxfattribs={"layer": "S-REBAR-STIR", "const_width": tie_d * 0.9})
     for (a, e) in cross_ties:
-        pen.msp.add_lwpolyline([(pen.ox + ox + a[0], pen.oy + oy + a[1]), (pen.ox + ox + e[0], pen.oy + oy + e[1])],
+        ux, uy = e[0] - a[0], e[1] - a[1]
+        ln = math.hypot(ux, uy) or 1.0
+        ux, uy = ux / ln, uy / ln
+        hk = hook * 0.5
+        # 135° hooks: each end turns back into the core, legs on opposite sides of the tie
+        A0 = (ox + a[0] + (ux - uy) * hk, oy + a[1] + (uy + ux) * hk)
+        E0 = (ox + e[0] + (-ux + uy) * hk, oy + e[1] + (-uy - ux) * hk)
+        pen.msp.add_lwpolyline([pen.p(*A0), pen.p(ox + a[0], oy + a[1]), pen.p(ox + e[0], oy + e[1]), pen.p(*E0)],
                                dxfattribs={"layer": "S-REBAR-STIR", "const_width": tie_d * 0.9})
     for x, y, d in bars:
         hh = pen.msp.add_hatch(color=LAYERS["S-REBAR-MAIN"][0], dxfattribs={"layer": "S-REBAR-MAIN"})
@@ -284,19 +291,26 @@ def rc_section(pen: "Pen", ox: float, oy: float, b: float, h: float, cover: floa
     # dimensions: b below, h left, cover right
     pen.dim(P(0, 0), P(b, 0), -10 * s)
     pen.dim(P(0, 0), P(0, h), 10 * s, angle=90)
-    pen.dim(P(0, h), P(cover, h), 7 * s)  # clear cover to the hoop
+    pen.dim(P(0, 0), P(0, cover), 4 * s, angle=90, text_at=oy - 5 * s)  # clear cover, text below the corner
     # grouped callouts on the right, stacked from the top, outside the section and the cover dimension
     tx = ox + b + 24 * s
-    rows = [(lab, idx) for lab, idx in groups] + [(tie_label, [])]
-    gap = 9 * s
-    y = oy + h + 2 * s
-    for lab, idx in rows:
-        if idx:
-            bx, by, bd = bars[idx[-1]]
-            tgt = (ox + bx + bd / 2 * 0.7, oy + by + bd / 2 * 0.7)
-        else:
-            tgt = (ox + b - c, oy + h / 2)
-        pen.msp.add_leader([pen.p(*tgt), pen.p(tx - 3 * s, y), pen.p(tx - 1 * s, y)], dxfattribs={"layer": "S-REBAR-TEXT"})
+    # each callout starts at the bar / hoop edge on the right (callout) side and runs horizontally out of the
+    # section; any jog needed to stack the texts happens outside the concrete.
+    rows = []
+    for lab, idx in groups:
+        bx, by, bd = max((bars[i] for i in idx), key=lambda q: (q[0], q[1]))
+        rows.append((lab, (ox + bx + bd / 2, oy + by)))
+    rows.append((tie_label, (ox + b - c + tie_d / 2, oy + h / 2)))
+    rows.sort(key=lambda r: -r[1][1])
+    gap, y = 9 * s, None
+    for lab, (sx_, sy_) in rows:
+        y = sy_ if y is None else min(sy_, y)
+        pts = [pen.p(sx_, sy_), pen.p(ox + b + 4 * s, sy_)]
+        if abs(y - sy_) > 1:
+            pts.append(pen.p(ox + b + 8 * s, y))
+        pts.append(pen.p(tx - 1 * s, y))
+        pen.msp.add_lwpolyline(pts, dxfattribs={"layer": "S-REBAR-TEXT"})
+        pen.circle("S-REBAR-TEXT", (sx_, sy_), 0.6 * s)  # leader dot on the bar
         first, *more = lab.split(" + ")
         pen.text("S-REBAR-TEXT", (tx, y), first, h=3.0, align="MIDDLE_LEFT")
         for m in more:
@@ -307,7 +321,7 @@ def rc_section(pen: "Pen", ox: float, oy: float, b: float, h: float, cover: floa
     pen.text("S-TITLE", (ox + b / 2, oy - 17 * s), f"SECTION {title}", h=4.0, align="TOP_CENTER")
     pen.text("S-TITLE", (ox + b / 2, oy - 23.5 * s), title_fa or f"برش {title}", h=3.5, align="TOP_CENTER")
     pen.text("S-NOTES", (ox + b / 2, oy - 29 * s), f"1:{s}", h=2.5, align="TOP_CENTER")
-    return (ox - 22 * s, oy - 33 * s, tx + 45 * s, max(oy + h + 6 * s, y + gap))
+    return (ox - 22 * s, oy - 33 * s, tx + 45 * s, max(oy + h + 6 * s, oy + h))
 
 
 def choose_sheet(width_mm: float, height_mm: float) -> tuple[str, int]:
