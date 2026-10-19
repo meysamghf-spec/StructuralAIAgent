@@ -89,7 +89,8 @@ def build_structural_doc(inp, raw: dict[str, Any], design: dict[str, Any] | None
         pen.text("S-TITLE", (W / 2, -m - 4 * scale), title_en, h=5, align="TOP_CENTER")
         pen.text("S-TITLE", (W / 2, -m - 12 * scale), title_fa, h=4.5, align="TOP_CENTER")
         pen.text("S-NOTES", (W / 2, -m - 19 * scale), f"Scale 1:{scale} · columns {cb:.0f}x{ch:.0f} · beams {bb:.0f}x{bh:.0f} mm", h=2.5, align="TOP_CENTER")
-        sheets.append((f"S-{k:02d}", ext(pen, -m, -m - 24 * scale, W + m, H + m), title_fa, title_en))
+        pen.orientation((W + m + 6 * scale, -m + 12 * scale))
+        sheets.append((f"S-{k:02d}", ext(pen, -m, -m - 24 * scale, W + m + 90 * scale, H + m), title_fa, title_en))
 
     # ---------------------------------------------------------------- schedules
     pen = region()
@@ -144,10 +145,11 @@ def build_structural_doc(inp, raw: dict[str, Any], design: dict[str, Any] | None
                   (14, 30, 28, 16, 38, 10, 16), title="FOOTING SCHEDULE / جدول پی‌ها")
         pen.text("S-TITLE", (W / 2, -m - 4 * scale), f"FOUNDATION PLAN  qa = {fd['qa_kpa']:g} kPa" + (" (assumed)" if fd["qa_assumed"] else ""), h=5, align="TOP_CENTER")
         pen.text("S-TITLE", (W / 2, -m - 12 * scale), "پلان فونداسیون", h=4.5, align="TOP_CENTER")
-        sheets.append(("S-F1", ext(pen, -m, -m - 20 * scale, W + m + 170 * scale, H + m), "پلان فونداسیون", "FOUNDATION PLAN"))
+        pen.orientation((-m - 80 * scale, -m + 12 * scale))
+        sheets.append(("S-F1", ext(pen, -m - 85 * scale, -m - 20 * scale, W + m + 170 * scale, H + m), "پلان فونداسیون", "FOUNDATION PLAN"))
 
     # ---------------------------------------------------------------- elevations
-    def elevation(name, coords, labels, depth_label):
+    def elevation(name, coords, labels, depth_label, view_dir="Y"):
         pen = region()
         L = coords[-1]
         top = Z[-1]
@@ -168,14 +170,15 @@ def build_structural_doc(inp, raw: dict[str, Any], design: dict[str, Any] | None
             pen.level_mark(L + 10 * scale, Z[k], Z[k] / 1000)
         pen.chain_dims(Z, coords[0], -14 * scale, horizontal=False)
         pen.chain_dims(coords, 0, -8 * scale, horizontal=True, overall=True)
-        pen.text("S-TITLE", (L / 2, -30 * scale), f"ELEVATION ON AXIS {name}", h=5, align="TOP_CENTER")
-        pen.text("S-TITLE", (L / 2, -38 * scale), f"نمای قاب محور {name}", h=4.5, align="TOP_CENTER")
+        pen.text("S-TITLE", (L / 2, -30 * scale), f"ELEVATION GRID {name}, viewed along +{view_dir}", h=5, align="TOP_CENTER")
+        pen.text("S-TITLE", (L / 2, -38 * scale), f"نمای محور {name} - دید در جهت {view_dir}", h=4.5, align="TOP_CENTER")
+        pen.axis_indicator((L + 18 * scale, -50 * scale), h_label=depth_label, v_label="Z")
         sheets.append((f"E-{name}", ext(pen, -30 * scale, -56 * scale, L + 45 * scale, top + 18 * scale), f"نمای محور {name}", f"ELEVATION AXIS {name}"))
 
     for j, lab in enumerate(yl):
-        elevation(lab, XS, xl, "X")
+        elevation(lab, XS, xl, "X", "Y")
     for i, lab in enumerate(xl):
-        elevation(lab, YS, yl, "Y")
+        elevation(lab, YS, yl, "Y", "X")
 
     for name, extents, tfa, ten in sheets:
         ds.add_sheet(doc, name, extents, info, name, tfa, ten, scale=scale)

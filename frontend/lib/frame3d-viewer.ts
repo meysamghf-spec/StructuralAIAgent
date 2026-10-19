@@ -220,13 +220,23 @@ export function explorerTree(v: ViewerData): TreeGroup[] {
   return out;
 }
 
+/** Same convention as the DXF drawings: grid lines along X (x = const, ⟂ X) are numbered 1, 2, 3…;
+ * grid lines along Y (y = const, ⟂ Y) are lettered A, B, C… */
 export function gridLabelX(i: number): string {
-  return String.fromCharCode(65 + (i % 26));
+  return String(i + 1);
 }
 
 export function gridLabelY(i: number): string {
-  return String(i + 1);
+  let s = "";
+  let n = i;
+  do {
+    s = String.fromCharCode(65 + (n % 26)) + s;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return s;
 }
+
+export const GRID_LEGEND = "Grids 1,2,3… ⟂ X ; Grids A,B,C… ⟂ Y";
 
 /** Visible members for "plan at story k" (beams of level k + columns below it) or all when storey is null. */
 export function visibleMembers(v: ViewerData, storey: number | null): ViewerMember[] {

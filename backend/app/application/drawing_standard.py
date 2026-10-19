@@ -104,6 +104,9 @@ def new_document() -> Any:
     return doc
 
 
+GRID_LEGEND = ("Grids 1,2,3... perpendicular to X", "Grids A,B,C... perpendicular to Y")
+
+
 class Pen:
     """Drawing helpers in model space (mm), offset by an origin; `scale` sizes annotation for the target plot."""
 
@@ -173,6 +176,39 @@ class Pen:
         r = r or 4.0 * self.scale
         self.circle("S-AXIS-BUBBLE", c, r)
         self.text("S-AXIS-BUBBLE", c, label, h=3.5, align="MIDDLE_CENTER")
+
+    def _arrow(self, a, b, label):
+        s = self.scale
+        self.line("S-NOTES", a, b)
+        ux, uy = (b[0] - a[0]), (b[1] - a[1])
+        n = math.hypot(ux, uy) or 1.0
+        ux, uy = ux / n, uy / n
+        hl, hw = 2.5 * s, 1.0 * s
+        tip = [b, (b[0] - ux * hl - uy * hw, b[1] - uy * hl + ux * hw), (b[0] - ux * hl + uy * hw, b[1] - uy * hl - ux * hw)]
+        self.hatch("S-NOTES", tip, solid=True)
+        self.text("S-NOTES", (b[0] + ux * 2.5 * s, b[1] + uy * 2.5 * s), label, h=3.0, align="MIDDLE_CENTER")
+
+    def axis_indicator(self, o, h_label="X", v_label="Y"):
+        """UCS-style indicator: two arrows from o (horizontal = h_label, vertical = v_label) and a small origin box."""
+        s = self.scale
+        self.rect("S-NOTES", o[0] - 1 * s, o[1] - 1 * s, o[0] + 1 * s, o[1] + 1 * s)
+        self._arrow(o, (o[0] + 12 * s, o[1]), h_label)
+        self._arrow(o, (o[0], o[1] + 12 * s), v_label)
+
+    def north_arrow(self, c, r=5.0):
+        s = self.scale
+        self.circle("S-NOTES", c, r * s)
+        self.hatch("S-NOTES", [(c[0], c[1] + r * s), (c[0] - 1.6 * s, c[1] - r * 0.6 * s), (c[0], c[1] - r * 0.25 * s)], solid=True)
+        self.poly("S-NOTES", [(c[0], c[1] + r * s), (c[0] + 1.6 * s, c[1] - r * 0.6 * s), (c[0], c[1] - r * 0.25 * s)], closed=True)
+        self.text("S-NOTES", (c[0], c[1] + (r + 3) * s), "N", h=3.5, align="MIDDLE_CENTER")
+
+    def orientation(self, o):
+        """Plan orientation block at o: north arrow, XY indicator and the grid-naming legend (footprint ~70 x 50 mm)."""
+        s = self.scale
+        self.north_arrow((o[0] + 6 * s, o[1] + 30 * s))
+        self.axis_indicator((o[0] + 2 * s, o[1] + 4 * s))
+        for i, t in enumerate(GRID_LEGEND):
+            self.text("S-NOTES", (o[0], o[1] - (5 + 4.5 * i) * s), t, h=2.5)
 
     def grid(self, xs, ys, xl, yl, ext=None, dims=True):
         """Axis lines (CENTER) with bubbles at both ends and chained + overall dimensions on two sides."""

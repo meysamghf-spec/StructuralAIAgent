@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 
 import { FIELD_UNITS, contourColor, dcColor, sampleField, stripProfile, type FoundationField } from "@/lib/foundation-view";
-import { gridLabelX, gridLabelY, type ViewerData, type ViewerFooting } from "@/lib/frame3d-viewer";
+import { OrientationGlyph } from "@/components/frame3d/OrientationBadge";
+import { GRID_LEGEND, gridLabelX, gridLabelY, type ViewerData, type ViewerFooting } from "@/lib/frame3d-viewer";
 
 type T = (k: string) => string;
 const FIELDS: Array<[FoundationField, string]> = [
@@ -85,6 +86,8 @@ export default function FoundationView({ data, qa, t }: { data: ViewerData; qa: 
               </g>
             );
           })}
+          {!is3d ? <OrientationGlyph x={22} y={H - 14} /> : null}
+          {!is3d ? <text x={W - 8} y={H + 6} fontSize={10} fill="#cbd5e1" textAnchor="end">{GRID_LEGEND}</text> : null}
         </svg>
         <div style={{ minWidth: 220 }}>
           <strong>{t(FIELDS.find((x) => x[0] === field)![1])} ({FIELD_UNITS[field]})</strong>

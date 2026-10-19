@@ -105,3 +105,12 @@ def test_footing_schedule_on_its_own_sheet():
     doc = ezdxf.read(io.StringIO(cte.build_export("dxf_foundation", inp, raw, design)))
     names = [l.name for l in doc.layouts if l.name != "Model"]
     assert {"FD-01", "FD-02", "FD-03"} <= set(names) and not any(n.startswith("FD-02.") for n in names)
+
+
+def test_plans_and_elevations_carry_orientation():
+    inp, raw, design = _run()
+    doc, _ = build_structural_doc(inp, raw, design)
+    texts = [e.dxf.text for e in doc.modelspace().query("TEXT")]
+    assert texts.count("N") >= inp.storeys and ds.GRID_LEGEND[0] in texts
+    assert any(t.startswith("ELEVATION GRID A, viewed along +Y") for t in texts)
+    assert any(t.startswith("ELEVATION GRID 1, viewed along +X") for t in texts)

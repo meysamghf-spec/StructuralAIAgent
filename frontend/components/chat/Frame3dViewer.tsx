@@ -1,5 +1,6 @@
 "use client";
 
+import { OrientationBadge } from "@/components/frame3d/OrientationBadge";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { Frame3dResults } from "@/lib/chat-types";
@@ -12,6 +13,7 @@ import {
   explorerTree,
   gridLabelX,
   gridLabelY,
+  GRID_LEGEND,
   loadOptions,
   maxAbs,
   memberForces,
@@ -536,6 +538,9 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
           ))}
         </aside>
         <div className="v3d-canvas" ref={hostRef}>
+          {view === "PLAN" ? <OrientationBadge h="X" v="Y" north /> : null}
+          {view === "ELEV_X" ? <OrientationBadge h="X" v="Z" north={false} note={`Elevation on grid ${gridLabelY(gridLine ?? 0)}, viewed along +Y · ${GRID_LEGEND}`} /> : null}
+          {view === "ELEV_Y" ? <OrientationBadge h="Y" v="Z" north={false} note={`Elevation on grid ${gridLabelX(gridLine ?? 0)}, viewed along +X · ${GRID_LEGEND}`} /> : null}
           {hover ? (
             <div className="v3d-tip" style={{ left: hover.x, top: hover.y }} dir="ltr">
               {hover.text}

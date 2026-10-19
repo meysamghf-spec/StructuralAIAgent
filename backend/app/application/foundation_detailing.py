@@ -99,7 +99,8 @@ def build_foundation_doc(inp, raw: dict[str, Any], design: dict[str, Any] | None
     pen.text("S-TITLE", (W / 2, -ext - 12 * scale), "FOUNDATION PLAN / پلان فونداسیون", h=5, align="TOP_CENTER")
     pen.text("S-NOTES", (W / 2, -ext - 20 * scale), f"qa = {fd['qa_kpa']:g} kPa{' (assumed)' if fd['qa_assumed'] else ''} · Df = {df / 1000:g} m · Mabhas 9 footing design", h=2.5, align="TOP_CENTER")
     tx = W + ext + 15 * scale
-    ds.add_sheet(doc, "FD-01", (-ext - 10 * scale, -ext - 26 * scale, tx + 160 * scale, H + ext + 10 * scale), info, "FD-01", "پلان و جدول پی‌ها", "FOUNDATION PLAN & SCHEDULE", scale=scale)
+    pen.orientation((-ext - 85 * scale, -ext + 12 * scale))
+    ds.add_sheet(doc, "FD-01", (-ext - 90 * scale, -ext - 26 * scale, tx + 160 * scale, H + ext + 10 * scale), info, "FD-01", "پلان و جدول پی‌ها", "FOUNDATION PLAN & SCHEDULE", scale=scale)
 
     # ---------------------------------------------------------------- FD-02: sections per type + bending schedule
     s2 = 25  # footing sections at 1:25
