@@ -93,6 +93,15 @@ Expect a graphical result card: span 6.00 m, UDL 20.00 kN/m, **Mmax = 90.00 kN·
 Expect a **3D frame analysis** card (internal 3D direct-stiffness solver, rigid diaphragms): 36 nodes / 27 columns / 36 beams, seismic weight ≈ 3920 kN, base shear V = C·W ≈ 646.8 kN (reactions check PASS), max storey drift 0.7R·Δ/h ≈ **2.13 %** (storey 2, X and Y), beam max M⁻ ≈ **179.5 kN·m**, column max P ≈ **1175 kN**, plus per-storey drift / force tables and a plan view. Persian prompts work too, e.g. `قاب بتنی ۳ طبقه با ۲x۲ دهانه ۵ متر، ضریب زلزله C=0.165 را تحلیل کن`.
 Missing storeys/bays produce a clear "please specify" message; omitted values use listed defaults (slab 12 cm, walls 7 kN/m, parapet 2 kN/m, roof live 1.5 kN/m², R = 5). Seismic C is user-supplied (`seismic_code = ASSUMED_C`); **no Iranian Standard 2800 or Mabhas 9 checks are performed yet** (planned next phases).
 
+### Standard 2800 seismic loads + modal / response spectrum (Phase 2)
+
+`Analyze a 3-storey RC intermediate moment frame, 2x2 bays of 5 m in X and Y, storey height 3.2 m, columns 40x40 cm, beams 30x45 cm, f'c=30 MPa, fy=400 MPa, dead load 6 kN/m2, live load 2 kN/m2, Standard 2800, high seismic hazard, soil type II, I=1.`
+
+Persian: `قاب خمشی بتنی متوسط ۳ طبقه با ۲x۲ دهانه ۵ متر، خطر نسبی زیاد، نوع خاک ۲، ضریب اهمیت ۱ را طبق ۲۸۰۰ تحلیل کن`
+
+Expect (Arak-type case): T = 0.05·H^0.75 = 0.273 s, B1 = 2.5, N = 1, **C = A·B·I/R = 0.30·2.5·1/5 = 0.150** (Cmin 0.036), V = 588.0 kN, max drift Cd·Δ/(I·h) = **2.49 %** ≤ 2.5 % (PASS); modal T1 ≈ **0.83 s** (83 % mass), response-spectrum V_dyn ≈ 325 kN = 55 % of static → scaled ×1.54 to 85 %.
+Implemented: zone A, soil I–IV spectrum (T0, Ts, S, S0), B1·N, empirical period, I, R/Cd for RC/steel moment frames, Cmin = 0.12AI, k-exponent vertical distribution (4th ed.), 5 % accidental eccentricity, Cd/I drift with 2.5 %/2.0 % limits, modal analysis on diaphragm DOFs, CQC response spectrum and 85 %/90 % scaling. Simplified: empirical period only for C, drift from design forces, no accidental torsion in dynamic cases, no 100 %+30 % orthogonal combination, no irregularity checks.
+
 ## Run Tests
 
 **Backend:**

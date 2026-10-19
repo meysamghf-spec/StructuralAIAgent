@@ -80,8 +80,49 @@ export function Frame3dResultCard({ results }: Frame3dResultCardProps) {
             </tbody>
           </table>
           {limit !== null ? (
-            <p className="muted">Reference value {limit}% shown for orientation only; not a Standard 2800 check.</p>
+            <p className="muted">
+              {results.driftCheck
+                ? `Standard 2800 drift limit ${limit}%: ${results.driftCheck}`
+                : `Reference value ${limit}% shown for orientation only; not a Standard 2800 check.`}
+            </p>
           ) : null}
+        </div>
+      ) : null}
+
+      {results.modal ? (
+        <div className="engineering-result-block">
+          <p className="engineering-result-label">Modal and response-spectrum analysis</p>
+          <table className="engineering-result-table">
+            <thead>
+              <tr>
+                <th>Mode</th>
+                <th>T (s)</th>
+                <th>Mx (%)</th>
+                <th>My (%)</th>
+                <th>Rz (%)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {results.modal.modes.slice(0, 6).map((m) => (
+                <tr key={m.mode}>
+                  <td>{m.mode}</td>
+                  <td>{fmt(m.periodS, 3)}</td>
+                  <td>{fmt(m.massXPct, 1)}</td>
+                  <td>{fmt(m.massYPct, 1)}</td>
+                  <td>{fmt(m.massRzPct, 1)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <ul>
+            {results.modal.spectrum.map((s) => (
+              <li key={s.direction}>
+                {s.direction}: V dynamic {fmt(s.vDynamicKn, 1)} kN vs static {fmt(s.vStaticKn, 1)} kN, scale ×
+                {fmt(s.scaleFactor, 3)}, max scaled drift {fmt(s.maxDriftPct, 2)}%
+              </li>
+            ))}
+          </ul>
+          {results.modal.scaleRule ? <p className="muted">{results.modal.scaleRule}</p> : null}
         </div>
       ) : null}
 

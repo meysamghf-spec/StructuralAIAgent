@@ -216,6 +216,29 @@ export type Frame3dStoreyForces = {
   columnPKn: number | null;
 };
 
+export type Frame3dModalMode = {
+  mode: number;
+  periodS: number | null;
+  massXPct: number | null;
+  massYPct: number | null;
+  massRzPct: number | null;
+};
+
+export type Frame3dSpectrumSummary = {
+  direction: string;
+  vDynamicKn: number | null;
+  vStaticKn: number | null;
+  scaleFactor: number | null;
+  maxDriftPct: number | null;
+};
+
+export type Frame3dModal = {
+  fundamentalPeriodS: number | null;
+  scaleRule: string | null;
+  modes: Frame3dModalMode[];
+  spectrum: Frame3dSpectrumSummary[];
+};
+
 export type Frame3dResults = {
   kind: "frame3d_analysis";
   status: string;
@@ -229,6 +252,8 @@ export type Frame3dResults = {
   driftReferenceLimitPct: number | null;
   storeyForces: Frame3dStoreyForces[];
   baseShearStatus: string | null;
+  driftCheck: string | null;
+  modal: Frame3dModal | null;
   gridX: number[];
   gridY: number[];
   missing: string[];
