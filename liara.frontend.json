@@ -1,0 +1,6 @@
+{
+  "platform": "docker",
+  "app": "sazeh-frontend",
+  "port": 3000,
+  "build": { "dockerfile": "frontend/Dockerfile", "location": "iran", "args": ["NEXT_PUBLIC_API_URL=https://api.example.ir"] }
+}
