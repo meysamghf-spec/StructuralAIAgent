@@ -221,6 +221,11 @@ export default function AnalysisWorkspaceClient() {
           The platform prepares deterministic model inputs and records the run. Forces, displacements,
           and modal results are not generated until a solver adapter is connected.
         </p>
+        <p className="muted">
+          This page does not read a prompt. To analyse a described 3D frame (e.g. “Analyze and design per Mabhas 9 a
+          3-storey RC frame, 2x2 bays of 5 m …”), send it in the <a href="/">Chat</a>: it runs the built-in 3D frame solver
+          and shows the result card.
+        </p>
       </section>
 
       {error ? <div className="alert error">{error}</div> : null}

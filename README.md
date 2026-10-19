@@ -150,3 +150,8 @@ See `PHASE_1_IMPLEMENTATION.md` for M1–M5 history. See [docs/DEMO.md](docs/DEM
 ## License
 
 Proprietary — internal development.
+
+### Phase 5: foundation design and Persian result card
+- Isolated-footing design (service bearing + kern, one-way/punching shear, flexure, overlap check) runs in the 3D-frame chat flow; allowable bearing from the prompt (`تنش مجاز خاک 200 kPa` / `allowable bearing 200 kPa`, default 150 kPa flagged as assumed). Footings appear in the card, `plans.dxf` (FOUNDATION layer) and `.f2k`.
+- The result card and chat reply follow the prompt language (Persian → RTL Persian card). Backend: `frame3d_i18n.py`; frontend: `lib/frame3d-i18n.ts`.
+- The "Run analysis" page under /workspace/analysis does not read prompts; send frame descriptions in Chat.
