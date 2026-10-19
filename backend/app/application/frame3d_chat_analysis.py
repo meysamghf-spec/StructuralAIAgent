@@ -25,6 +25,7 @@ from dataclasses import fields as dc_fields
 from typing import Any, Callable
 
 from app.application import csi_text_export as cte
+from app.application import detailing_assumptions as da
 from app.application import foundation_design as fnd
 from app.application import frame3d_i18n as i18n
 from app.application import iran2800
@@ -109,6 +110,8 @@ class Frame3dInputs:
     allowable_bearing_kpa: float = 150.0
     foundation: bool = False
     lang: str = "en"
+    # per-project design / rebar-detailing assumptions changed from chat (see detailing_assumptions.py)
+    assumptions: dict | None = None
     parsed: list[str] = field(default_factory=list)
 
 
@@ -542,6 +545,22 @@ def design_mabhas9(inp: "Frame3dInputs", raw: dict[str, Any]) -> dict[str, Any]:
     if ductility is None:
         return {"code": "MABHAS9", "status": "NOT_APPLICABLE",
                 "message": "Mabhas 9 RC design applies to RC systems only (steel / Mabhas 10 not implemented)."}
+    with da.design_overrides(m9, inp.assumptions):
+        return _apply_scwb_rule(_design_mabhas9(inp, raw, ductility), da.effective(inp.assumptions)["scwb"])
+
+
+def _apply_scwb_rule(design: dict[str, Any], rule: str) -> dict[str, Any]:
+    """Assumption 'scwb': auto (code default) | check (always governs) | skip (not applicable, reported only)."""
+    if rule == "skip":
+        design["scwb_status"] = "NOT_APPLIED"
+        design["status"] = design["member_status"]
+        design["scwb_note"] += " — not applied (project assumption)"
+    elif rule == "check" and design.get("scwb_status") == "FAIL":
+        design["status"] = "FAIL"
+    return design
+
+
+def _design_mabhas9(inp: "Frame3dInputs", raw: dict[str, Any], ductility: str) -> dict[str, Any]:
     fc, fy = inp.fc_mpa, inp.fy_mpa
     bb, bh = inp.beam_b_m * 1000, inp.beam_h_m * 1000
     cb, ch = inp.column_b_m * 1000, inp.column_h_m * 1000
@@ -831,6 +850,9 @@ def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None =
     `manual_inputs` (from the manual Model page form) bypasses prompt parsing; every given key counts as user input."""
     export_formats = requested_export_formats(user_request) if (is_export_request(user_request) or is_frame3d_request(user_request)) else []
     from_memory = False
+    a_upd, inp_upd = da.parse_assumptions(user_request) if manual_inputs is None else ({}, {})
+    show_assumptions = manual_inputs is None and da.is_show_assumptions(user_request)
+    assumption_cmd = bool(a_upd or inp_upd or show_assumptions)
     if manual_inputs is not None:
         inp = inputs_from_dict(manual_inputs)
         inp.parsed = [k for k, v in manual_inputs.items() if v is not None and not k.startswith("_")]
@@ -839,17 +861,17 @@ def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None =
         export_formats = []
     elif is_frame3d_request(user_request):
         inp = parse_frame3d_request(user_request)
-    elif (export_formats or wants_foundation(user_request)) and prior_spec:
+    elif (export_formats or wants_foundation(user_request) or assumption_cmd) and prior_spec:
         inp = inputs_from_dict(prior_spec); from_memory = True
         follow = parse_frame3d_request(user_request)
         if wants_foundation(user_request):
             inp.foundation = True
-        if "dxf_rebar" in export_formats:
+        if "dxf_rebar" in export_formats or a_upd:
             inp.design_code = "MABHAS9"  # detailing is built from the Mabhas 9 design groups
         if "allowable_bearing_kpa" in follow.parsed:
             inp.allowable_bearing_kpa = follow.allowable_bearing_kpa
             inp.parsed = [*inp.parsed, "allowable_bearing_kpa"]
-    elif export_formats or (wants_foundation(user_request) and is_export_request(user_request)):
+    elif export_formats or assumption_cmd or (wants_foundation(user_request) and is_export_request(user_request)):
         msg = ("No 3D frame analysis was found in this project (needed for the export / foundation design). Describe the frame first, e.g. "
                "`3-storey RC frame, 2x2 bays of 5 m, storey height 3.2 m, zone high, soil II`, then ask for the foundation design or the ETABS/SAFE/AutoCAD export.")
         blank = {"kind": KIND, "label": "3D FRAME ANALYSIS", "status": "MISSING_REQUIRED_INPUT", "missing_inputs": ["frame_model"],
@@ -859,6 +881,12 @@ def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None =
     else:
         return None
     inp.lang = i18n.detect_lang(user_request)
+    if a_upd:
+        inp.assumptions = {**(inp.assumptions or {}), **a_upd}
+    for k, v in inp_upd.items():
+        setattr(inp, k, v)
+        inp.parsed = [*inp.parsed, k]
+    changed = set(a_upd) | set(inp_upd)
     inputs = {k: v for k, v in asdict(inp).items() if k != "parsed"}
     defaulted = [k for k in inputs if k not in inp.parsed and k not in ("seismic_code", "design_code", "accidental_ecc")]
     common = {
@@ -870,6 +898,8 @@ def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None =
         "inputs": inputs, "parsed_from_request": list(inp.parsed), "defaulted_inputs": defaulted,
         "export_requested": export_formats, "model_from_project_memory": from_memory,
         "spec": frame3d_spec(inp), "lang": inp.lang,
+        "detailing_assumptions": da.describe(inp.assumptions, inp, inp.lang, changed),
+        "assumptions_changed": sorted(changed), "assumptions_command": "show" if show_assumptions and not changed else ("update" if changed else None),
     }
     missing = missing_inputs(inp)
     if missing:
@@ -1051,7 +1081,16 @@ def _modal_payload(modal: dict[str, Any], si: dict[str, Any]) -> dict[str, Any]:
 
 def frame3d_markdown(payload: dict[str, Any]) -> str:
     text = _frame3d_markdown_en(payload)
-    return i18n.fa_markdown(text) if payload.get("lang") == "fa" else text
+    text = i18n.fa_markdown(text) if payload.get("lang") == "fa" else text
+    rows = payload.get("detailing_assumptions") or []
+    if rows:
+        fa = payload.get("lang") == "fa"
+        head = ("### فرض‌های طراحی و آرماتوربندی پروژه" if fa else "### Project design & detailing assumptions")
+        hint = ("(* = تغییر در همین پیام؛ برای تغییر بنویسید مثلاً «پوشش ۵۰ میلی‌متر، شاخه ۱۲ متری، قطع آرماتور در ln/4»)" if fa
+                else "(* = changed in this message; change with e.g. \"cover 50 mm, 12 m stock bars, cut-off at ln/4\")")
+        block = "\n".join([head, *[f"- {r}" for r in rows], hint])
+        text = block + "\n\n" + text if payload.get("assumptions_command") else text + "\n\n" + block
+    return text
 
 
 def _frame3d_markdown_en(payload: dict[str, Any]) -> str:

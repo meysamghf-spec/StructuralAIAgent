@@ -8,6 +8,12 @@ from dataclasses import dataclass
 from app.domain.models.agent import EngineeringAgentType
 from app.application.frame3d_chat_analysis import is_export_request as _is_frame3d_export
 from app.application.frame3d_chat_analysis import is_frame3d_request as _is_frame3d_request
+from app.application.detailing_assumptions import is_assumption_update as _is_assumption_update
+from app.application.detailing_assumptions import is_show_assumptions as _is_show_assumptions
+
+
+def _is_assumption_cmd(text: str) -> bool:
+    return _is_show_assumptions(text) or _is_assumption_update(text)
 
 ATTACHMENT_CONTEXT_MARKERS: tuple[str, ...] = (
     "Attached files (engineering context):",
@@ -214,7 +220,7 @@ def score_agent_intents(text: str) -> list[AgentIntentScore]:
                 matched_keywords=hit_keywords,
             )
         )
-    if _is_frame3d_request(text or "") or _is_frame3d_export(text or ""):
+    if _is_frame3d_request(text or "") or _is_frame3d_export(text or "") or _is_assumption_cmd(text or ""):
         # A described multi-storey frame is an analysis request even if it mentions loads/seismic/concrete.
         boosted = [m for m in matches if m.agent_type == EngineeringAgentType.ANALYSIS_AGENT]
         base_score = max((m.score for m in matches), default=0.0) + 10.0

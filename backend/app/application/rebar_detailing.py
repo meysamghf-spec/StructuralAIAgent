@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from typing import Any
 
 import ezdxf
+
+from app.application import detailing_assumptions as da
 from ezdxf.enums import TextEntityAlignment
 
 STOCK_LENGTH_MM = 12000
@@ -30,11 +32,11 @@ DETAILING_BASIS = [
     "Lap splices class B = 1.3*ld; column laps in the middle half of the clear height; no laps inside joints or 2h zones.",
 ]
 DETAILING_ASSUMPTIONS = [
-    f"Clear cover {COVER_MM} mm; stock bar length {STOCK_LENGTH_MM / 1000:.0f} m; unit weight 0.00617*d^2 kg/m.",
-    "Top bars: 2 corner bars continuous; extra bars over supports cut off at ln/3 from the support face (standard practice, not a moment-curve cut-off).",
+    "Clear cover, stock bar length, cut-off rule, splice class, ld/hook factors, cross-ties, stirrup hooks: project assumptions listed below (defaults 40 mm, 12 m, ln/3, class B, 1.0, every bar, 10db). Unit weight 0.00617*d^2 kg/m.",
+    "Top bars: 2 corner bars continuous; extra bars over supports cut off per the project cut-off rule (ln/3, ln/4 or from a parabolic moment diagram).",
     "Bottom bars all continuous, hooked into the end columns; top laps at midspan, bottom laps just outside the 2h zone.",
-    "Every intermediate column bar is held by a cross-tie (135 deg hooks); ties continue through the joint at the l0 spacing.",
-    "Stirrup/tie cut length = hoop perimeter + 2 x 10db hooks. Lengths rounded up to 10 mm. One typical member drawn per design group.",
+    "Column cross-ties per project rule (every or alternate intermediate bar, 135 deg hooks); ties continue through the joint at the l0 spacing.",
+    "Stirrup/tie cut length = hoop perimeter + 2 hooks of the project stirrup-hook length. Lengths rounded up to 10 mm. One typical member drawn per design group.",
     "Check against the final architectural/structural drawings; a licensed engineer must review before construction.",
 ]
 
@@ -66,18 +68,34 @@ def _r10(x: float) -> int:
     return int(math.ceil(x / 10.0) * 10)
 
 
-def dev_length(db: float, fy: float, fc: float, top: bool = False) -> int:
-    psi_t = 1.3 if top else 1.0
+def dev_length(db: float, fy: float, fc: float, top: bool = False, psi_t: float = 1.3, factor: float = 1.0) -> int:
     k = 2.1 if db <= 18 else 1.7
-    return _r10(max(fy * psi_t / (k * math.sqrt(fc)) * db, 300))
+    return _r10(max(fy * (psi_t if top else 1.0) / (k * math.sqrt(fc)) * db * factor, 300))
 
 
-def hook_length(db: float, fy: float, fc: float) -> int:
-    return _r10(max(0.24 * fy / math.sqrt(fc) * db, 8 * db, 150))
+def hook_length(db: float, fy: float, fc: float, factor: float = 1.0) -> int:
+    return _r10(max(0.24 * fy / math.sqrt(fc) * db * factor, 8 * db, 150))
 
 
-def lap_length(db: float, fy: float, fc: float, top: bool = False) -> int:
-    return _r10(1.3 * dev_length(db, fy, fc, top))
+def lap_length(db: float, fy: float, fc: float, top: bool = False, splice_class: str = "B", psi_t: float = 1.3, factor: float = 1.0) -> int:
+    return _r10((1.0 if splice_class == "A" else 1.3) * dev_length(db, fy, fc, top, psi_t, factor))
+
+
+def cutoff_length(rule: str, ln: float, mu_neg: float, mu_pos: float, n_total: int, n_cont: int, d_eff: float, db: float) -> int:
+    """Extension of the extra top bars beyond the support face.
+    ln/3 | ln/4: fixed fraction; moment: point where a parabolic moment diagram (uniform load, end moment Mu-,
+    span moment Mu+) drops to the capacity share of the continuous bars, plus max(d, 12db) (Mabhas 9 / ACI 12.10.3)."""
+    if rule == "ln/4":
+        return _r10(ln / 4)
+    if rule == "moment" and mu_neg > 0:
+        w_l2 = 8 * (mu_neg + max(mu_pos, 0.0))  # w*ln^2 for M(x) = -Mneg + w x (ln - x)/2
+        target = mu_neg * n_cont / max(n_total, 1)  # moment carried by the continuous bars alone
+        # solve -Mneg + w x(ln-x)/2 = -target  ->  x^2 - ln x + 2(Mneg-target) ln^2 / w_l2 = 0
+        c = 2 * (mu_neg - target) * ln * ln / w_l2
+        disc = max(ln * ln - 4 * c, 0.0)
+        x = (ln - math.sqrt(disc)) / 2
+        return _r10(max(x + max(d_eff, 12 * db), ln / 16))
+    return _r10(ln / 3)
 
 
 def zone_positions(f0: float, f1: float, zone: float, s_end: float, s_mid: float, first: float = 50.0) -> list[float]:
@@ -165,8 +183,10 @@ def _beam_spans(inp, direction: str) -> tuple[int, float, float]:
     return n, L, col
 
 
-def _draw_beam(sh: _Sheet, y0: float, g: dict[str, Any], inp, rows: list[BarRow]) -> float:
+def _draw_beam(sh: _Sheet, y0: float, g: dict[str, Any], inp, rows: list[BarRow], A: dict[str, Any]) -> float:
     fy, fc = inp.fy_mpa, inp.fc_mpa
+    COVER_MM, STOCK = float(A["cover_mm"]), float(A["stock_length_m"]) * 1000
+    hookx = float(A["stirrup_hook_db"])
     b, h = inp.beam_b_m * 1000, inp.beam_h_m * 1000
     nt, dt = parse_bars(g["top_bars"])
     nb, dbb = parse_bars(g["bottom_bars"])
@@ -186,10 +206,11 @@ def _draw_beam(sh: _Sheet, y0: float, g: dict[str, Any], inp, rows: list[BarRow]
         sh.poly("CONCRETE", [(x + col / 2, y0 - 700), (x + col / 2, y0 + h + 700)])
     yt, yb = y0 + h - COVER_MM - ds - dt / 2, y0 + COVER_MM + ds + dbb / 2
     hk_t, hk_b = 12 * dt, 12 * dbb
-    lt, lb = lap_length(dt, fy, fc, True), lap_length(dbb, fy, fc)
+    lt = lap_length(dt, fy, fc, True, A["splice_class"], A["psi_t"], A["ld_factor"])
+    lb = lap_length(dbb, fy, fc, False, A["splice_class"], A["psi_t"], A["ld_factor"])
     run = x_end1 - x_end0
     # top continuous (2 bars) with laps at midspans
-    top_pieces = split_bar(run, lt, [(k + 0.5) * L - x_end0 for k in range(nsp)], STOCK_LENGTH_MM - hk_t)
+    top_pieces = split_bar(run, lt, [(k + 0.5) * L - x_end0 for k in range(nsp)], STOCK - hk_t)
     for i, (a, e) in enumerate(top_pieces):
         xa, xe = x_end0 + a, x_end0 + e
         pts = ([(xa, yt - hk_t)] if i == 0 else []) + [(xa, yt), (xe, yt)] + ([(xe, yt - hk_t)] if i == len(top_pieces) - 1 else [])
@@ -201,8 +222,8 @@ def _draw_beam(sh: _Sheet, y0: float, g: dict[str, Any], inp, rows: list[BarRow]
         for a, e in zip(top_pieces[1:], top_pieces[:-1]):
             sh.text("REBAR_TEXT", (x_end0 + a[0], yt + 120), 90, f"lap {lt}")
     # extra top bars over supports, ln/3 beyond each face
-    ext = _r10(ln / 3)
     n_extra = nt - 2
+    ext = cutoff_length(A["cutoff"], ln, g.get("Mu_neg_kn_m", 0.0), g.get("Mu_pos_kn_m", 0.0), nt, 2, h - COVER_MM - ds - dt / 2, dt)
     if n_extra > 0:
         for k in range(nsp + 1):
             x = k * L
@@ -211,7 +232,7 @@ def _draw_beam(sh: _Sheet, y0: float, g: dict[str, Any], inp, rows: list[BarRow]
             yy = yt - dt - 25
             pts = ([(a, yy - hk_t)] if k == 0 else []) + [(a, yy), (e, yy)] + ([(e, yy - hk_t)] if k == nsp else [])
             sh.poly("REBAR_MAIN", pts)
-            sh.text("REBAR_TEXT", (x - col / 2, y0 + h + 160), 100, f"{n_extra}Φ{dt} (T2) ln/3={ext}")
+            sh.text("REBAR_TEXT", (x - col / 2, y0 + h + 160), 100, f"{n_extra}Φ{dt} (T2) {A['cutoff']}={ext}")
         L_end = _r10(col / 2 - COVER_MM + col / 2 + ext + hk_t)
         L_int = _r10(col + 2 * ext)
         rows.append(BarRow(f"{tag}-T2e", tag, dt, "L 90° hook", L_end, n_extra * 2 * lines))
@@ -219,7 +240,7 @@ def _draw_beam(sh: _Sheet, y0: float, g: dict[str, Any], inp, rows: list[BarRow]
             rows.append(BarRow(f"{tag}-T2i", tag, dt, "straight", L_int, n_extra * (nsp - 1) * lines))
     # bottom continuous with laps just outside the 2h zone
     bot_c = [k * L + col / 2 + zone + lb / 2 - x_end0 for k in range(nsp)]
-    bot_pieces = split_bar(run, lb, bot_c, STOCK_LENGTH_MM - hk_b)
+    bot_pieces = split_bar(run, lb, bot_c, STOCK - hk_b)
     for i, (a, e) in enumerate(bot_pieces):
         xa, xe = x_end0 + a, x_end0 + e
         pts = ([(xa, yb + hk_b)] if i == 0 else []) + [(xa, yb), (xe, yb)] + ([(xe, yb + hk_b)] if i == len(bot_pieces) - 1 else [])
@@ -239,9 +260,10 @@ def _draw_beam(sh: _Sheet, y0: float, g: dict[str, Any], inp, rows: list[BarRow]
             sh.line("ZONE", (za, y0 - 250), (zb, y0 - 250))
             sh.line("ZONE", (za, y0 - 320), (za, y0 - 180))
             sh.text("REBAR_TEXT", ((za + zb) / 2, y0 - 450), 90, lab, center=True)
-    st_len = _r10(2 * (b - 2 * COVER_MM) + 2 * (h - 2 * COVER_MM) + 20 * ds)
+    st_len = _r10(2 * (b - 2 * COVER_MM) + 2 * (h - 2 * COVER_MM) + 2 * hookx * ds)
     rows.append(BarRow(f"{tag}-S1", tag, ds, "closed stirrup 135°", st_len, n_st * lines))
-    ld_t, ldh_t = dev_length(dt, fy, fc, True), hook_length(dt, fy, fc)
+    ld_t = dev_length(dt, fy, fc, True, A["psi_t"], A["ld_factor"])
+    ldh_t = hook_length(dt, fy, fc, A["hook_factor"])
     sh.text("REBAR_TEXT", (-col / 2, y0 + h + 420), 140,
             f"{tag}  {lines} line(s) x {nsp} spans  {b:.0f}x{h:.0f}   top {g['top_bars']} (T1 2Φ{dt} cont. + T2)  bottom {g['bottom_bars']} (B1)   "
             f"ld,top={ld_t}  ldh={ldh_t} (avail. {col - COVER_MM:.0f})")
@@ -277,14 +299,16 @@ def _column_bar_positions(n: int, b: float, h: float, inset: float) -> list[tupl
     return pts[:n] if len(pts) >= n else pts
 
 
-def _draw_column(sh: _Sheet, x0: float, g: dict[str, Any], inp, rows: list[BarRow]) -> float:
+def _draw_column(sh: _Sheet, x0: float, g: dict[str, Any], inp, rows: list[BarRow], A: dict[str, Any]) -> float:
     fy, fc = inp.fy_mpa, inp.fc_mpa
+    COVER_MM = float(A["cover_mm"])
+    hookx = float(A["stirrup_hook_db"])
     b, h = inp.column_b_m * 1000, inp.column_h_m * 1000
     H, hb = inp.storey_height_m * 1000, inp.beam_h_m * 1000
     n, d = parse_bars(g["bars"])
     dt, s0, s, l0 = parse_spacing(g["ties"])
     l0 = l0 or int(max(b, h, (H - hb) / 6, 450))
-    lap = lap_length(d, fy, fc)
+    lap = lap_length(d, fy, fc, False, A["splice_class"], A["psi_t"], A["ld_factor"])
     tag = g["group"]
     clear = H - hb
     # elevation (floor at y=0 .. beam soffit at clear .. top of beam at H)
@@ -321,16 +345,17 @@ def _draw_column(sh: _Sheet, x0: float, g: dict[str, Any], inp, rows: list[BarRo
     for px, py in pts:
         sh.circle("REBAR_MAIN", (x0 + px, oy + py), d / 2)
     n_cross = 0
-    for px in sorted({p[0] for p in pts if inset + 1 < p[0] < b - inset - 1}):
+    step = 2 if A["cross_ties"] == "alternate" else 1  # alternate: every other intermediate bar (corner bars are hooped)
+    for px in sorted({p[0] for p in pts if inset + 1 < p[0] < b - inset - 1})[::step]:
         sh.line("REBAR_STIRRUP", (x0 + px, oy + COVER_MM), (x0 + px, oy + h - COVER_MM)); n_cross += 1
-    for py in sorted({p[1] for p in pts if inset + 1 < p[1] < h - inset - 1}):
+    for py in sorted({p[1] for p in pts if inset + 1 < p[1] < h - inset - 1})[::step]:
         sh.line("REBAR_STIRRUP", (x0 + COVER_MM, oy + py), (x0 + b - COVER_MM, oy + py)); n_cross += 1
     sh.text("REBAR_TEXT", (x0 + b / 2, oy + h + 120), 80, f"{len(pts)}Φ{d} + hoop Φ{dt}", center=True)
-    hoop = _r10(2 * (b - 2 * COVER_MM) + 2 * (h - 2 * COVER_MM) + 20 * dt)
+    hoop = _r10(2 * (b - 2 * COVER_MM) + 2 * (h - 2 * COVER_MM) + 2 * hookx * dt)
     rows.append(BarRow(f"{tag}-V1", tag, d, "straight (lap above floor)", _r10(H + lap), n * g["members"]))
     rows.append(BarRow(f"{tag}-H1", tag, dt, "closed hoop 135°", hoop, len(ys) * g["members"]))
     if n_cross:
-        rows.append(BarRow(f"{tag}-H2", tag, dt, "cross-tie 135°/90°", _r10(max(b, h) - 2 * COVER_MM + 20 * dt), n_cross * len(ys) * g["members"]))
+        rows.append(BarRow(f"{tag}-H2", tag, dt, "cross-tie 135°/90°", _r10(max(b, h) - 2 * COVER_MM + 2 * hookx * dt), n_cross * len(ys) * g["members"]))
     return x0 + b + COL_PITCH
 
 
@@ -368,6 +393,7 @@ def _schedule(sh: _Sheet, rows: list[BarRow], top: float) -> float:
 def build_rebar_doc(inp, design: dict[str, Any], project: str = "3D frame") -> tuple[Any, list[BarRow], float]:
     if not design or not design.get("beams"):
         raise ValueError("rebar detailing needs the Mabhas 9 design (design_code MABHAS9)")
+    A = da.effective(getattr(inp, "assumptions", None))
     doc = ezdxf.new("R2010", setup=True)
     doc.header["$INSUNITS"] = 4  # mm
     doc.styles.add("LATIN", font="arial.ttf")
@@ -388,22 +414,24 @@ def build_rebar_doc(inp, design: dict[str, Any], project: str = "3D frame") -> t
     s1 = _Sheet(msp, 0, "R-01")
     y = 3500.0
     for g in sorted(beams, key=lambda g: (g["direction"], -g["storey"], g["position"]), reverse=False):
-        _draw_beam(s1, y + 700, g, inp, rows)
+        _draw_beam(s1, y + 700, g, inp, rows, A)
         y += beam_row_h
     # sheet 2: columns
     s2 = _Sheet(msp, pitch, "R-02")
     x = 1800.0
     s2.y0 = 4200.0  # above the title block
     for g in sorted(columns, key=lambda g: (g["storey"], g["position"])):
-        x = _draw_column(s2, x, g, inp, rows)
+        x = _draw_column(s2, x, g, inp, rows, A)
     # sheet 3: schedule
     s3 = _Sheet(msp, 2 * pitch, "R-03")
     heights[2] = len(rows) * 230 + 3000 + 3500 + 2500
     H = max(heights)
     s2.y0 = 0.0
     total = _schedule(s3, rows, H - 1600)
-    for i, s in enumerate(DETAILING_BASIS + DETAILING_ASSUMPTIONS):
-        s3.text("NOTES", (13200, H - 1600 - i * 260), 120, ("[code] " if i < len(DETAILING_BASIS) else "[assumed] ") + s)
+    notes = (["[code] " + s for s in DETAILING_BASIS] + ["[assumed] " + s for s in DETAILING_ASSUMPTIONS]
+             + ["PROJECT ASSUMPTIONS (change from chat):"] + ["  " + r for r in da.describe(A, inp, "en")])
+    for i, s in enumerate(notes):
+        s3.text("NOTES", (13200, H - 1600 - i * 260), 120, s)
     titles = [("نقشه آرماتوربندی تیرها", "BEAM REINFORCEMENT DETAILS"),
               ("نقشه آرماتوربندی ستون‌ها", "COLUMN REINFORCEMENT DETAILS"),
               ("جدول مشخصات و وزن میلگردها", "BAR BENDING SCHEDULE")]

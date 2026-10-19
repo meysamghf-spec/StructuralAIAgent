@@ -66,7 +66,7 @@ cd /opt/sazeh && git pull     # یا zip جدید
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
 docker image prune -f
 ```
-migrationها خودکار و فقط یک‌بار اجرا می‌شوند (جدول `schema_migrations`). قبل از هر به‌روزرسانی یک بکاپ بگیرید.
+migrationها خودکار و فقط یک‌بار اجرا می‌شوند (جدول `applied_migration_files`). قبل از هر به‌روزرسانی یک بکاپ بگیرید.
 
 ## ۶. گزینهٔ پشتیبان: لیارا
 1. در liara.ir: دو برنامهٔ Docker (`sazeh-backend` پلن مریخ، `sazeh-frontend` پلن زمین)، یک PostgreSQL (زمین) و یک دیسک `files` بسازید.
