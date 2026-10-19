@@ -66,12 +66,26 @@ def fa(text: str) -> str:
 @dataclass
 class TitleInfo:
     project: str = "StructuralAIAgent project"
-    employer: str = "To be confirmed / تعیین نشده"
+    employer: str = "تعیین نشده"
     designer: str = "StructuralAIAgent"
-    checker: str = "Pending check / در انتظار کنترل"
+    checker: str = "تعیین نشده"
     drawing_date: str = field(default_factory=lambda: date.today().isoformat())
     revisions: list[tuple[str, str, str]] = field(default_factory=lambda: [("0", date.today().isoformat(), "Issued for review / جهت بررسی")])
     code: str = "Mabhas 9 / Standard 2800"
+
+
+def title_info(inp=None, default_project: str = "3D RC frame") -> TitleInfo:
+    """Title-block fields from the project record (assumptions set from chat: «کارفرما: …», "checker: …")."""
+    rec: dict = {}
+    try:
+        from app.application import detailing_assumptions as da
+        rec = da.effective(getattr(inp, "assumptions", None)) if inp is not None else {}
+    except Exception:  # noqa: BLE001 - title block must never break a drawing
+        rec = {}
+    pick = lambda k, d: (str(rec.get(k)).strip() if rec.get(k) else None) or d  # noqa: E731
+    return TitleInfo(project=pick("project_name", getattr(inp, "project_name", None) or default_project),
+                     employer=pick("employer", "تعیین نشده"), designer=pick("designer", "StructuralAIAgent"),
+                     checker=pick("checker", "تعیین نشده"))
 
 
 def new_document() -> Any:

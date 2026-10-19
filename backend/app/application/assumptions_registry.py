@@ -76,6 +76,12 @@ def _parse_one(spec: AssumptionSpec, t: str) -> Any:
         return None
     if not al:
         return None
+    if spec.kind == "text":  # free text after "alias:" / "alias =" (names, project titles)
+        m = re.search(rf"{al}\s*[:=]\s*([^\n,;؛،]+)", t)
+        if not m:
+            return None
+        v = m.group(1).strip().rstrip(".")
+        return v.title() if v.isascii() else v
     if spec.kind == "list":
         m = re.search(rf"{al}[^\n.;؛]{{0,22}}?([Φφø]?\s*\d+(?:\s*(?:,|،|و|and|/|-)\s*[Φφø]?\s*\d+)*)", t)
         if not m:

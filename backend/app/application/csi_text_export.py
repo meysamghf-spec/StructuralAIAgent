@@ -600,7 +600,7 @@ def build_dxf_3d(inp, raw: dict[str, Any]) -> str:
     pen.text("S-NOTES", (u0, -28 * scale), "Isometric from SE: X to the right-up, Y to the left-up", h=2.5)
     pen.text("S-NOTES", (u0, -32.5 * scale), "3D model (true X/Y/Z, mm) is at the drawing origin: use 3D Orbit", h=2.5)
     pen.text("S-TITLE", ((u0 + u1) / 2, -18 * scale), "3D FRAME - ISOMETRIC VIEW / نمای ایزومتریک قاب", h=5, align="TOP_CENTER")
-    ds.add_sheet(doc, "S-3D", (u0 - 20 * scale, -38 * scale, u1 + 40 * scale, v1 + 10 * scale), ds.TitleInfo(),
+    ds.add_sheet(doc, "S-3D", (u0 - 20 * scale, -38 * scale, u1 + 40 * scale, v1 + 10 * scale), ds.title_info(inp),
                  "S-3D", "مدل سه‌بعدی قاب", "3D FRAME (ISOMETRIC)", scale=scale)
     buf = _io.StringIO()
     doc.write(buf)

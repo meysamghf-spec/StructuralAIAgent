@@ -15,6 +15,10 @@ from app.application.assumptions_registry import AssumptionSpec as S
 DUCTILITY_SYSTEM = {"ordinary": "RC_OMF", "intermediate": "RC_IMF", "special": "RC_SMF"}
 
 reg.register_module("rebar_detailing", [
+    S("project_name", "text", None, "Project name (title block)", "نام پروژه", "", None, (r"project(?: name)?", r"نام پروژه", r"پروژه")),
+    S("employer", "text", None, "Employer / client (title block)", "کارفرما", "", None, (r"employer", r"client", r"کارفرما")),
+    S("designer", "text", None, "Designer (title block)", "طراح", "", None, (r"designer", r"designed by", r"طراح")),
+    S("checker", "text", None, "Checker (title block)", "کنترل کننده", "", None, (r"checker", r"checked by", r"کنترل ?کننده", r"کنترل")),
     S("cover_mm", "number", 40, "Clear cover", "پوشش بتن", "mm", (15, 100),
       (r"(?<!footing )(?<!foundation )(?:clear )?cover", r"پوشش(?: بتن)?(?! (?:بتن )?(?:پی|فونداسیون))", r"کاور(?! (?:پی|فونداسیون))"), unit_scale={"cm": 10, "سانت": 10, "میلی": 1}),
     S("stock_length_m", "number", 12, "Stock bar length", "طول شاخه میلگرد", "m", (6, 18),

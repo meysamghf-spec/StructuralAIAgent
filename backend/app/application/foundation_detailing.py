@@ -57,7 +57,7 @@ def build_foundation_doc(inp, raw: dict[str, Any], design: dict[str, Any] | None
     if not fd or not fd.get("footings"):
         raise ValueError("foundation detailing needs the footing design (ask for 'foundation' in the frame request)")
     A = da.effective(getattr(inp, "assumptions", None))
-    info = info or ds.TitleInfo(project="3D RC frame")
+    info = info or ds.title_info(inp)
     doc = ds.new_document()
     msp = doc.modelspace()
     lay = frame_layout(inp)
@@ -71,7 +71,8 @@ def build_foundation_doc(inp, raw: dict[str, Any], design: dict[str, Any] | None
     for c in (design or {}).get("columns", []):
         if c["storey"] == 1:
             colbars[c["position"]] = c["bars"]
-    scale = ds.choose_sheet(W + 9000, H + 9000)[1]
+    # FD-01 is the setting-out drawing: 1:50 on A1 whenever plan + schedule fit, else the smallest standard scale
+    scale = 50 if (W / 50 + 300 <= 790 and H / 50 + 120 <= 470) else ds.choose_sheet(W + 9000, H + 9000)[1]
 
     # ---------------------------------------------------------------- FD-01: plan with tags, dims to axes, schedule
     pen = ds.Pen(msp, (0, 0), scale)

@@ -30,7 +30,7 @@ def _beam_tag(direction: str, edge: bool) -> str:
 
 
 def build_structural_doc(inp, raw: dict[str, Any], design: dict[str, Any] | None = None, info: ds.TitleInfo | None = None):
-    info = info or ds.TitleInfo(project=getattr(inp, "project_name", None) or "3D RC frame")
+    info = info or ds.title_info(inp)
     doc = ds.new_document()
     msp = doc.modelspace()
     lay = frame_layout(inp)

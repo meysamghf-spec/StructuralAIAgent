@@ -114,3 +114,18 @@ def test_plans_and_elevations_carry_orientation():
     assert texts.count("N") >= inp.storeys and ds.GRID_LEGEND[0] in texts
     assert any(t.startswith("ELEVATION GRID A, viewed along +Y") for t in texts)
     assert any(t.startswith("ELEVATION GRID 1, viewed along +X") for t in texts)
+
+
+def test_title_block_names_from_project_and_dense_sheets():
+    from app.application import csi_text_export as cte
+    from app.application import detailing_assumptions as da
+
+    rec, _ = da.parse_assumptions("کارفرما: شهرداری تهران، checker: M. Farahi") if hasattr(da, "parse_assumptions") else ({}, [])
+    inp, raw, design = _run()
+    inp.assumptions = {**(getattr(inp, "assumptions", None) or {}), "employer": "شهرداری تهران", "checker": "M. Farahi"}
+    info = ds.title_info(inp)
+    assert info.employer == "شهرداری تهران" and info.checker == "M. Farahi"
+    assert ds.title_info(None).employer == "تعیین نشده"
+    doc = ezdxf.read(io.StringIO(cte.build_export("dxf_rebar", inp, raw, design)))
+    names = [l.name for l in doc.layouts if l.name != "Model"]
+    assert "R-02" in names and "R-02.2" not in names and "R-03.2" not in names

@@ -11,8 +11,9 @@ Code basis vs assumptions is listed in DETAILING_BASIS / DETAILING_ASSUMPTIONS a
 
 from __future__ import annotations
 
-import io
 import math
+
+import io
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -27,6 +28,7 @@ from ezdxf.enums import TextEntityAlignment
 STOCK_LENGTH_MM = 12000
 FOOTING_DRAW_H = 600  # schematic footing depth drawn under ground-storey columns (details on the FD sheets)
 COL_PITCH = 4200
+FOOTING_PAD = 2600  # room below a column detail for the footing anchorage + labels
 MIN_TEXT = 100  # mm in model space = 2.0 mm on paper at the 1:50 detail scale  # horizontal gap between column details (labels left, lap note right)
 COVER_MM = 40
 DETAILING_BASIS = [
@@ -510,26 +512,35 @@ def _draw_column(sh: _Sheet, x0: float, g: dict[str, Any], inp, rows: list[BarRo
     return x0 + b + COL_PITCH
 
 
-def _schedule(sh: _Sheet, rows: list[BarRow], top: float) -> float:
+def _schedule(sh: _Sheet, rows: list[BarRow], top: float, max_rows: int = 10**6) -> tuple[float, float]:
+    """Bar schedule; wraps into side-by-side table blocks of at most `max_rows` rows. Returns (total kg, width)."""
     cols = [("Mark", 3200), ("Φ (mm)", 1100), ("Shape / شکل", 3300), ("Length (mm)", 1500), ("Count", 1100), ("Weight (kg)", 1500)]
-    rh, x, y = 230, 0.0, top
+    rh = 230
     widths = [w for _, w in cols]
     W = sum(widths)
-    sh.poly("TABLE", [(0, y), (W, y), (W, y - rh), (0, y - rh)], closed=True)
-    for name, w in cols:
-        sh.text("TABLE", (x + 60, y - rh + 60), 110, name, style="PERSIAN"); x += w
-    y -= rh
-    for r in rows:
-        vals = [r.mark, str(r.d), r.shape, str(r.length_mm), str(r.count), f"{r.weight_kg:.1f}"]
-        x = 0.0
-        for v, w in zip(vals, widths):
-            sh.text("TABLE", (x + 60, y - rh + 60), 100, v); x += w
+    nblk = max(1, -(-len(rows) // max_rows))
+    per = -(-len(rows) // nblk) if rows else 1
+    y_end = top
+    for k in range(nblk):
+        ox, y, part = k * (W + 1300), top, rows[k * per:(k + 1) * per]
+        sh.poly("TABLE", [(ox, y), (ox + W, y), (ox + W, y - rh), (ox, y - rh)], closed=True)
+        x = ox
+        for name, w in cols:
+            sh.text("TABLE", (x + 60, y - rh + 60), 110, name, style="PERSIAN"); x += w
         y -= rh
-        sh.line("TABLE", (0, y), (W, y))
-    xx = 0.0
-    for w in widths[:-1]:
-        xx += w; sh.line("TABLE", (xx, top), (xx, y))
-    sh.line("TABLE", (0, top), (0, y)); sh.line("TABLE", (W, top), (W, y))
+        for r in part:
+            vals = [r.mark, str(r.d), r.shape, str(r.length_mm), str(r.count), f"{r.weight_kg:.1f}"]
+            x = ox
+            for v, w in zip(vals, widths):
+                sh.text("TABLE", (x + 60, y - rh + 60), 100, v); x += w
+            y -= rh
+            sh.line("TABLE", (ox, y), (ox + W, y))
+        xx = ox
+        for w in widths[:-1]:
+            xx += w; sh.line("TABLE", (xx, top), (xx, y))
+        sh.line("TABLE", (ox, top), (ox, y)); sh.line("TABLE", (ox + W, top), (ox + W, y))
+        y_end = min(y_end, y)
+    y = y_end
     by_d: dict[int, float] = {}
     for r in rows:
         by_d[r.d] = by_d.get(r.d, 0) + r.weight_kg
@@ -538,7 +549,7 @@ def _schedule(sh: _Sheet, rows: list[BarRow], top: float) -> float:
         sh.text("TABLE", (0, y), 130, f"Φ{d}: {by_d[d]:.1f} kg"); y -= 230
     total = sum(by_d.values())
     sh.text("TABLE", (0, y - 80), 180, f"TOTAL STEEL / وزن کل میلگرد: {total:.1f} kg  (+ waste not included)", style="PERSIAN")
-    return total
+    return total, nblk * (W + 1300)
 
 
 def build_rebar_doc(inp, design: dict[str, Any], project: str = "3D frame") -> tuple[Any, list[BarRow], float]:
@@ -558,65 +569,108 @@ def build_rebar_doc(inp, design: dict[str, Any], project: str = "3D frame") -> t
     sheet_w = max(nsp_max + 10000, len(columns) * (inp.column_b_m * 1000 + COL_PITCH) + 3000, 12500, 20000)
     pitch = max(sheet_w + 4000, 90000.0)  # A1 viewport at 1:100 must not show the neighbouring sheet
     heights = [len(beams) * beam_row_h + 6000, inp.storey_height_m * 1000 + inp.column_h_m * 1000 + 6500, 0]
-    # sheet 1: beams
-    s1 = _Sheet(msp, 0, "R-01")
-    y = 3500.0
-    for g in sorted(beams, key=lambda g: (g["direction"], -g["storey"], g["position"]), reverse=False):
-        _draw_beam(s1, y + 700, g, inp, rows, A)
-        y += beam_row_h
-    # sheet 2: columns
+    # Pages are filled densely and evenly: an A1 sheet at 1:50 holds ~780 x 720 mm of drawing (39 m x 36 m model).
+    PAGE_W, PAGE_H = 38500.0, 23500.0
+    info = dstd.title_info(inp, project)
+    pages: list[tuple[_Sheet, float, float, str, str, str]] = []  # (sheet, width, height, name, fa, en)
+    # R-01 beams: rows split evenly over as few pages as possible, pages side by side in model space
+    bw = nsp_max + 10000
+    order = sorted(beams, key=lambda g: (g["direction"], -g["storey"], g["position"]))
+    rpp = max(1, int((PAGE_H - 4200 - 2400) // beam_row_h))
+    npg = math.ceil(len(order) / rpp)
+    per = math.ceil(len(order) / npg)
+    beam_sheets = []
+    for j in range(npg):
+        sh = _Sheet(msp, 0.0, "R-01")
+        sh.y0 = -j * 60000.0  # pages stacked far apart so a viewport never shows its neighbour
+        chunk = order[j * per:(j + 1) * per]
+        y = 3500.0
+        for g in reversed(chunk):  # first beam of the page at the top
+            _draw_beam(sh, y + 700, g, inp, rows, A)
+            y += beam_row_h
+        beam_sheets.append(sh)
+        pages.append((sh, bw, y + 1200, "R-01" if j == 0 else f"R-01.{j + 1}", "نقشه آرماتوربندی تیرها", "BEAM REINFORCEMENT DETAILS"))
+    # R-02 columns: details wrapped into balanced rows
     s2 = _Sheet(msp, pitch, "R-02")
-    x = 1800.0
-    s2.y0 = 4200.0  # above the title block
-    for g in sorted(columns, key=lambda g: (g["storey"], g["position"])):
-        x = _draw_column(s2, x, g, inp, rows, A)
-    # sheet 3: schedule
-    s3 = _Sheet(msp, 2 * pitch, "R-03")
-    heights[2] = len(rows) * 230 + 3000 + 3500 + 2500
-    H = max(heights)
+    cw = inp.column_b_m * 1000 + COL_PITCH
+    col_row_h = inp.storey_height_m * 1000 + 2900 + FOOTING_PAD
+    cols_sorted = sorted(columns, key=lambda g: (g["storey"], g["position"]))
+    cpr = max(1, int((PAGE_W - 3000) // cw))
+    nrows = math.ceil(len(cols_sorted) / cpr)
+    cpr = math.ceil(len(cols_sorted) / nrows)
+    for r in range(nrows):
+        s2.y0 = 4200.0 + (nrows - 1 - r) * col_row_h
+        x = 1800.0
+        for g in cols_sorted[r * cpr:(r + 1) * cpr]:
+            x = _draw_column(s2, x, g, inp, rows, A)
     s2.y0 = 0.0
-    total = _schedule(s3, rows, H - 1600)
+    col_h = 4200.0 + nrows * col_row_h - FOOTING_PAD + 1500
+    pages.append((s2, cpr * cw + 3000, col_h, "R-02", "نقشه آرماتوربندی ستون‌ها", "COLUMN REINFORCEMENT DETAILS"))
+    # R-03 schedule + notes, sized to its own content
+    s3 = _Sheet(msp, 2 * pitch, "R-03")
     notes = (["[code] " + s for s in DETAILING_BASIS] + ["[assumed] " + s for s in DETAILING_ASSUMPTIONS]
              + ["PROJECT ASSUMPTIONS (change from chat):"] + ["  " + r for r in da.describe(A, inp, "en")])
+    import textwrap
+    notes = [w for n_ in notes for w in (textwrap.wrap(n_, 105, subsequent_indent="    ") or [""])]
+    by_d_lines = len({r.d for r in rows}) * 230 + 900
+    max_rows = int((PAGE_H - 4500 - by_d_lines) // 230)
+    nblk = max(1, -(-len(rows) // max_rows))
+    H3 = max(-(-len(rows) // nblk) * 230 + by_d_lines + 1000, len(notes) * 260 + 2400) + 3500
+    total, tw = _schedule(s3, rows, H3 - 1600, max_rows)
     for i, s in enumerate(notes):
-        s3.text("NOTES", (13200, H - 1600 - i * 260), 120, s)
-    titles = [("نقشه آرماتوربندی تیرها", "BEAM REINFORCEMENT DETAILS"),
-              ("نقشه آرماتوربندی ستون‌ها", "COLUMN REINFORCEMENT DETAILS"),
-              ("جدول مشخصات و وزن میلگردها", "BAR BENDING SCHEDULE")]
+        s3.text("NOTES", (tw + 200, H3 - 1600 - i * 260), 120, s)
     gen = [f"Concrete C{inp.fc_mpa:g} (f'c = {inp.fc_mpa:g} MPa)   Rebar S{inp.fy_mpa:g} (fy = {inp.fy_mpa:g} MPa)",
            f"Clear cover {A['cover_mm']:g} mm   Lap splices class {A['splice_class']} (lengths on the drawing)   Stock length {A['stock_length_m']:g} m",
            "Hooks: stirrups/ties 135° with the extension shown; all dimensions in mm",
            "بتن و میلگرد طبق مبحث نهم؛ پوشش و طول وصله طبق یادداشت‌ها"]
     for i, s_ in enumerate(["GENERAL NOTES / یادداشت‌های عمومی"] + gen):
-        s3.text("NOTES", (13200, 2900 + (len(gen) - i) * 300), 160 if i == 0 else 120, s_)
-    info = dstd.TitleInfo(project=project)
-    for k, (sh, (fa, en)) in enumerate(zip((s1, s2, s3), titles), start=1):
-        sh.text("TITLE", (0, (H if k == 3 else heights[k - 1]) + 900), 420, f"R-{k:02d} {en}", center=False)
-        wk = (nsp_max + 10000, len(columns) * (inp.column_b_m * 1000 + COL_PITCH) + 3000, 27000)[k - 1]
-        hk = (H if k == 3 else heights[k - 1]) + 1500
-        opn = dstd.Pen(msp, (sh.x0, 0.0), 50)
+        s3.text("NOTES", (tw + 200, 2900 + (len(gen) - i) * 300), 160 if i == 0 else 120, s_)
+    pages.append((s3, tw + 8200, H3, "R-03", "جدول مشخصات و وزن میلگردها", "BAR BENDING SCHEDULE"))
+    for sh, wk, hk, name, fa, en in pages:
+        sh.text("TITLE", (0, hk - 600), 420, f"{name} {en}", center=False)
+        opn = dstd.Pen(msp, (sh.x0, sh.y0), 50)
         opn.north_arrow((wk - 1500, hk - 900))
         opn.axis_indicator((wk - 3500, hk - 1300))
-        dstd.add_sheet_tiles(doc, f"R-{k:02d}", (sh.x0 - 1500, 0.0, sh.x0 + wk, hk), info, fa, en, scale=50)
+        hk += 300
+        dstd.add_sheet_tiles(doc, name, (sh.x0 - 1500, sh.y0, sh.x0 + wk, sh.y0 + hk), info, fa, en, scale=50)
+    s1 = beam_sheets[0]
+    s1.secs = [sp for sh in beam_sheets for sp in sh.secs]
     # R-04: every section at 1:20, laid out in rows
     secs = s1.secs + s2.secs
     if secs:
-        pen = dstd.Pen(msp, (3 * pitch, 0.0), 20)
-        x = y_top = 0.0
-        row_h, rows_y, regs = 0.0, 0.0, []
         width_lim = 760 * 20
+        lines_, cur, x = [], [], 0.0  # 1) wrap sections into rows of the sheet width
         for sp in secs:
             w = sp["b"] + 105 * 20
-            if x + w > width_lim:
-                rows_y -= row_h + 25 * 20; x, row_h = 0.0, 0.0
-            hgt = sp["h"] + 50 * 20
-            regs.append(dstd.rc_section(pen, x + 25 * 20, rows_y - sp["h"], sp["b"], sp["h"], sp["cover"], sp["tie"], sp["bars"],
-                                        sp["groups"], sp["tie_label"], sp["ties"], sp["title"], sp["title_fa"], axes=sp.get("axes")))
-            x += w; row_h = max(row_h, hgt)
-        X0 = min(r[0] for r in regs); Y0 = min(r[1] for r in regs); X1 = max(r[2] for r in regs); Y1 = max(r[3] for r in regs)
-        pen.text("S-TITLE", (X0, Y1 + 8 * 20), "R-04 REINFORCED CONCRETE SECTIONS 1:20", h=5.0)
-        dstd.add_sheet_tiles(doc, "R-04", (3 * pitch + X0 - 400, Y0 - 400, 3 * pitch + X1 + 400, Y1 + 16 * 20 + 400), info,
-                             "برش‌های تیر و ستون", "BEAM & COLUMN SECTIONS", scale=20)
+            if cur and x + w > width_lim:
+                lines_.append(cur); cur, x = [], 0.0
+            cur.append(sp); x += w
+        lines_.append(cur)
+        row_hs = [max(sp["h"] for sp in ln_) + 50 * 20 + 25 * 20 for ln_ in lines_]
+        usable = (594 - 30 - 75) * 20 * 0.98 - 16 * 20 - 1200
+        npg, acc = 1, 0.0  # 2) as few pages as possible, rows split evenly
+        for rh_ in row_hs:
+            if acc + rh_ > usable:
+                npg += 1; acc = 0.0
+            acc += rh_
+        per = -(-len(lines_) // npg)
+        for pg in range(npg):
+            pen = dstd.Pen(msp, (3 * pitch, -pg * 40000.0), 20)
+            regs, rows_y = [], 0.0
+            for ln_, rh_ in zip(lines_[pg * per:(pg + 1) * per], row_hs[pg * per:(pg + 1) * per]):
+                x = 0.0
+                for sp in ln_:
+                    regs.append(dstd.rc_section(pen, x + 25 * 20, rows_y - sp["h"], sp["b"], sp["h"], sp["cover"], sp["tie"], sp["bars"],
+                                                sp["groups"], sp["tie_label"], sp["ties"], sp["title"], sp["title_fa"], axes=sp.get("axes")))
+                    x += sp["b"] + 105 * 20
+                rows_y -= rh_
+            if not regs:
+                continue
+            X0 = min(r[0] for r in regs); Y0 = min(r[1] for r in regs); X1 = max(r[2] for r in regs); Y1 = max(r[3] for r in regs)
+            name = "R-04" if pg == 0 else f"R-04.{pg + 1}"
+            pen.text("S-TITLE", (X0, Y1 + 8 * 20), f"{name} REINFORCED CONCRETE SECTIONS 1:20", h=5.0)
+            dstd.add_sheet_tiles(doc, name, (pen.ox + X0 - 400, pen.oy + Y0 - 400, pen.ox + X1 + 400, pen.oy + Y1 + 16 * 20 + 400), info,
+                                 "برش‌های تیر و ستون", "BEAM & COLUMN SECTIONS", scale=20)
     return doc, rows, total
 
 
