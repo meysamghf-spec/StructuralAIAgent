@@ -159,3 +159,9 @@ Proprietary — internal development.
 ### Phase 6: ETABS-style 3D viewer
 - "Open 3D view" on the 3D-frame result card opens a full-screen viewer (three.js 0.170.0, pinned; run `npm install` in `frontend/` after pulling): orbit/pan/zoom, 3D/Plan/Elevation X/Y presets, story filter and plan-at-story, grid bubbles, joint/frame-section labels, extruded sections, supports, rigid diaphragms, footings, deformed shape per case/combo (scale + animation), M3/V2/axial diagrams with hover values, Mabhas 9 D/C colour map with legend, model explorer, properties panel, story drift plot, story force/shear table and base reactions.
 - Backend payload `viewer`: nodes, members (section, design group, D/C, rebar), per-case member end forces and nodal displacements (combos rebuilt client-side by linear superposition), reactions, footings.
+
+### Phase 7: chat everywhere + usable manual workflow
+- Sticky sidebar with its own scroll; EN/فا UI toggle. Creating/opening a project goes to `/?project=<id>` (chat with the project selected); the current project is shared by all pages.
+- Collapsible project chat dock (💬, bottom-right) on every /projects and /workspace page — same thread and result cards (3D viewer included).
+- Model page: quick 3D-frame form (geometry, sections, materials, loads, 2800, Mabhas 9, allowable bearing, import from last chat frame) → `POST /api/v1/frame3d/run` (same engine as chat). Analysis/Results/Design pages show the same result card + 3D viewer; old PEM tools are collapsed under "Advanced".
+- Hidden from the menu (code kept; `NEXT_PUBLIC_SHOW_ALL_PAGES=1` shows them): Optimization, Learning, Traceability, Upgrades, AI Assistant.

@@ -2,9 +2,12 @@
 
 import { apiFetch, type CreateProjectResponse, type ProjectListResponse } from "@/lib/api";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { projectChatHref, setCurrentProjectId } from "@/lib/current-project";
 import { FormEvent, useEffect, useState } from "react";
 
 export default function ProjectsPage() {
+  const router = useRouter();
   const [projects, setProjects] = useState<ProjectListResponse["projects"]>([]);
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(true);
@@ -34,12 +37,14 @@ export default function ProjectsPage() {
     }
     setError(null);
     try {
-      await apiFetch<CreateProjectResponse>("/api/v1/projects", {
+      const created = await apiFetch<CreateProjectResponse>("/api/v1/projects", {
         method: "POST",
         body: JSON.stringify({ name: name.trim() }),
       });
       setName("");
-      await refreshProjects();
+      // go straight to the new project's chat, with the project selected
+      setCurrentProjectId(created.project.id);
+      router.push(projectChatHref(created.project.id));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create project");
     }
@@ -80,9 +85,14 @@ export default function ProjectsPage() {
                 <strong>{project.name}</strong>
                 <p className="muted">{project.description ?? "No description"}</p>
               </div>
-              <Link className="button secondary" href={`/projects/${project.id}`}>
-                Open
-              </Link>
+              <span className="project-actions">
+                <Link className="button" href={projectChatHref(project.id)} onClick={() => setCurrentProjectId(project.id)}>
+                  Open
+                </Link>
+                <Link className="button secondary" href={`/projects/${project.id}`}>
+                  Details
+                </Link>
+              </span>
             </li>
           ))}
         </ul>
