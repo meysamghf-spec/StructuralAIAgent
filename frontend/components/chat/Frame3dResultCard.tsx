@@ -126,6 +126,8 @@ export function Frame3dResultCard({ results }: Frame3dResultCardProps) {
         </div>
       ) : null}
 
+      {results.design ? <DesignSection design={results.design} /> : null}
+
       {results.storeyForces.length > 0 ? (
         <div className="engineering-result-block">
           <p className="engineering-result-label">Max member forces per storey (envelope)</p>
@@ -168,6 +170,108 @@ export function Frame3dResultCard({ results }: Frame3dResultCardProps) {
 
       {results.disclaimer ? <p className="muted chat-disclaimer">{results.disclaimer}</p> : null}
     </section>
+  );
+}
+
+const BEAM_COLUMNS: Array<[string, string]> = [
+  ["group", "Group"],
+  ["Mu_neg_kn_m", "Mu⁻"],
+  ["Mu_pos_kn_m", "Mu⁺"],
+  ["Vu_kn", "Vu"],
+  ["top_bars", "Top"],
+  ["bottom_bars", "Bottom"],
+  ["stirrups", "Stirrups"],
+  ["DC_flexure", "D/C M"],
+  ["DC_shear", "D/C V"],
+];
+const COLUMN_COLUMNS: Array<[string, string]> = [
+  ["group", "Group"],
+  ["Pu_kn", "Pu"],
+  ["Mu_y_kn_m", "Mu,y"],
+  ["Mu_z_kn_m", "Mu,z"],
+  ["bars", "Bars"],
+  ["rho_pct", "ρ %"],
+  ["ties", "Ties"],
+  ["DC", "D/C"],
+];
+
+export function designCsv(rows: Array<Record<string, string | number | null>>): string {
+  if (rows.length === 0) {
+    return "";
+  }
+  const keys = Object.keys(rows[0]);
+  const esc = (v: string | number | null | undefined) => {
+    const s = v === null || v === undefined ? "" : String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  return [keys.join(","), ...rows.map((r) => keys.map((k) => esc(r[k])).join(","))].join("\n");
+}
+
+function downloadCsv(name: string, rows: Array<Record<string, string | number | null>>) {
+  const blob = new Blob(["\ufeff" + designCsv(rows)], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function DesignTable({ rows, columns }: { rows: Array<Record<string, string | number | null>>; columns: Array<[string, string]> }) {
+  return (
+    <table className="engineering-result-table">
+      <thead>
+        <tr>
+          {columns.map(([key, label]) => (
+            <th key={key}>{label}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row) => (
+          <tr key={String(row.group)}>
+            {columns.map(([key]) => (
+              <td key={key}>{row[key] ?? "—"}</td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function DesignSection({ design }: { design: NonNullable<Frame3dResults["design"]> }) {
+  return (
+    <div className="engineering-result-block">
+      <p className="engineering-result-label">
+        Mabhas 9 RC design{design.ductility ? ` (${design.ductility} ductility)` : ""} — {design.status}
+      </p>
+      {design.message ? <p>{design.message}</p> : null}
+      {design.beams.length > 0 ? <DesignTable rows={design.beams} columns={BEAM_COLUMNS} /> : null}
+      {design.columns.length > 0 ? <DesignTable rows={design.columns} columns={COLUMN_COLUMNS} /> : null}
+      {design.scwb.length > 0 ? (
+        <ul>
+          {design.scwb.map((j) => (
+            <li key={String(j.level)}>
+              Level {j.level}: ΣMnc/ΣMnb min {j.min_ratio} at {j.joint} ({j.direction}) — {j.status}
+            </li>
+          ))}
+          {design.scwbNote ? <li className="muted">{design.scwbNote}</li> : null}
+        </ul>
+      ) : null}
+      {design.beams.length > 0 ? (
+        <p>
+          <button type="button" className="link-button" onClick={() => downloadCsv("mabhas9-beams.csv", design.beams)}>
+            Download beams CSV
+          </button>{" "}
+          <button type="button" className="link-button" onClick={() => downloadCsv("mabhas9-columns.csv", design.columns)}>
+            Download columns CSV
+          </button>
+        </p>
+      ) : null}
+      <TextList title="Implemented clauses" items={design.clausesImplemented} />
+      <TextList title="Simplified / not checked" items={design.clausesSimplified} />
+    </div>
   );
 }
 

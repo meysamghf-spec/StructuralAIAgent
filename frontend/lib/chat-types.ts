@@ -239,6 +239,19 @@ export type Frame3dModal = {
   spectrum: Frame3dSpectrumSummary[];
 };
 
+export type Frame3dDesign = {
+  code: string;
+  status: string;
+  ductility: string | null;
+  scwbNote: string | null;
+  beams: Array<Record<string, string | number | null>>;
+  columns: Array<Record<string, string | number | null>>;
+  scwb: Array<Record<string, string | number | null>>;
+  clausesImplemented: string[];
+  clausesSimplified: string[];
+  message: string | null;
+};
+
 export type Frame3dResults = {
   kind: "frame3d_analysis";
   status: string;
@@ -254,6 +267,7 @@ export type Frame3dResults = {
   baseShearStatus: string | null;
   driftCheck: string | null;
   modal: Frame3dModal | null;
+  design: Frame3dDesign | null;
   gridX: number[];
   gridY: number[];
   missing: string[];

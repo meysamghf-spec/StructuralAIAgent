@@ -179,6 +179,41 @@ function recordList(value: unknown): Array<Record<string, unknown>> {
     : [];
 }
 
+function flatRows(value: unknown): Array<Record<string, string | number | null>> {
+  return recordList(value).map((row) => {
+    const out: Record<string, string | number | null> = {};
+    for (const [key, v] of Object.entries(row)) {
+      if (typeof v === "number" || typeof v === "string") {
+        out[key] = v;
+      } else if (v === null || v === undefined) {
+        out[key] = null;
+      } else if (Array.isArray(v)) {
+        out[key] = v.filter((x) => typeof x === "string").join("; ");
+      }
+    }
+    return out;
+  });
+}
+
+function mapFrame3dDesign(raw: unknown): Frame3dResults["design"] {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const data = raw as Record<string, unknown>;
+  return {
+    code: String(data.code ?? ""),
+    status: String(data.status ?? ""),
+    ductility: typeof data.ductility === "string" ? data.ductility : null,
+    scwbNote: typeof data.scwb_note === "string" ? data.scwb_note : null,
+    beams: flatRows(data.beams),
+    columns: flatRows(data.columns),
+    scwb: flatRows(data.scwb),
+    clausesImplemented: stringList(data.clauses_implemented),
+    clausesSimplified: stringList(data.clauses_simplified),
+    message: typeof data.message === "string" ? data.message : null,
+  };
+}
+
 function mapFrame3dModal(raw: unknown): Frame3dResults["modal"] {
   if (!raw || typeof raw !== "object") {
     return null;
@@ -259,6 +294,7 @@ export function mapFrame3dResults(raw: unknown): Frame3dResults | null {
     baseShearStatus: baseShear && typeof baseShear.status === "string" ? baseShear.status : null,
     driftCheck: typeof data.drift_check === "string" ? data.drift_check : null,
     modal: mapFrame3dModal(data.modal),
+    design: mapFrame3dDesign(data.design),
     gridX: numberList(geometry.XS),
     gridY: numberList(geometry.YS),
     missing: stringList(data.missing_inputs),
