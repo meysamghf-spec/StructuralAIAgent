@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass
 
 from app.domain.models.agent import EngineeringAgentType
+from app.application.frame3d_chat_analysis import is_frame3d_request as _is_frame3d_request
 
 ATTACHMENT_CONTEXT_MARKERS: tuple[str, ...] = (
     "Attached files (engineering context):",
@@ -210,6 +211,19 @@ def score_agent_intents(text: str) -> list[AgentIntentScore]:
                 intent_label=intent_label,
                 score=score,
                 matched_keywords=hit_keywords,
+            )
+        )
+    if _is_frame3d_request(text or ""):
+        # A described multi-storey frame is an analysis request even if it mentions loads/seismic/concrete.
+        boosted = [m for m in matches if m.agent_type == EngineeringAgentType.ANALYSIS_AGENT]
+        base_score = max((m.score for m in matches), default=0.0) + 10.0
+        matches = [m for m in matches if m.agent_type != EngineeringAgentType.ANALYSIS_AGENT]
+        matches.append(
+            AgentIntentScore(
+                agent_type=EngineeringAgentType.ANALYSIS_AGENT,
+                intent_label="Run 3D frame analysis of the described building",
+                score=base_score,
+                matched_keywords=(boosted[0].matched_keywords if boosted else ()) + ("3d frame",),
             )
         )
     matches.sort(key=lambda item: (-item.score, _route_index(item.agent_type)))

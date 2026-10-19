@@ -114,6 +114,31 @@ def test_chat_rc_beam_request_does_not_route_to_load_assessment(api_client: Test
     assert capability
 
 
+def test_chat_frame3d_returns_analysis_results(api_client: TestClient) -> None:
+    token = _register(api_client)
+    project_id = _project(api_client, token)
+
+    response = api_client.post(
+        "/api/v1/chat",
+        json={
+            "message": (
+                "Analyze a 3-storey RC moment frame, 2x2 bays of 5 m in X and Y, storey height 3.2 m, "
+                "columns 40x40 cm, beams 30x45 cm, f'c=30 MPa, fy=400 MPa, dead load 6 kN/m2, "
+                "live load 2 kN/m2, equivalent static seismic C=0.165 in X and Y."
+            ),
+            "project_id": project_id,
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 201
+    metadata = response.json()["assistant_message"]["metadata"]
+    results = metadata.get("engineering_results") or {}
+    assert results.get("kind") == "frame3d_analysis"
+    assert results.get("status") == "completed"
+    assert abs(results["results"]["column_max_P_kn"] - 1175.42) < 0.5
+    assert abs(results["results"]["max_drift_amplified_pct"] - 2.126) < 0.005
+
+
 def test_chat_demo_rc_beam_returns_deterministic_results(api_client: TestClient) -> None:
     token = _register(api_client)
     project_id = _project(api_client, token)

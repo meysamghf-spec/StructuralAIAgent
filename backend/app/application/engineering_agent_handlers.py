@@ -22,6 +22,7 @@ from app.application.aci_rc_beam_check import is_aci_rc_beam_check_request, run_
 from app.application.aisc_steel_beam_check import is_aisc_steel_beam_check_request, run_aisc_steel_beam_check
 from app.application.building_brief_parser import BuildingBriefParser
 from app.application.demo_rc_beam_analysis import analyze_simply_supported_rc_beam
+from app.application.frame3d_chat_analysis import build_frame3d_payload, frame3d_markdown
 from app.application.engineering_agent_services import EngineeringAgentServices
 from app.application.structural_engineering_workflow import execute_structural_workflow
 from app.domain.models.reporting import ReportGenerationRequest, ReportType
@@ -112,6 +113,57 @@ def _looks_like_building_brief(user_request: str, parameters: dict[str, Any]) ->
         "زمین",
     )
     return any(marker in user_request or marker in lowered for marker in markers)
+
+
+def _frame3d_result(
+    *,
+    agent_type: EngineeringAgentType,
+    action: str,
+    user_request: str,
+    parameters: dict[str, Any],
+    context: dict[str, Any],
+) -> AgentResult | None:
+    payload = build_frame3d_payload(user_request)
+    if payload is None:
+        return None
+    payload["project_context_used"] = _context_summary(context)
+    completed = payload.get("status") == "completed"
+    capability_status = "SUCCESS" if completed else str(payload.get("status"))
+    summary = frame3d_markdown(payload)
+    return AgentResult(
+        structured_output=_base_output(
+            agent_type=agent_type,
+            action=action,
+            user_request=user_request,
+            parameters=parameters,
+            context=context,
+            capability_status=capability_status,
+            status_message=summary,
+            payload={"frame3d_analysis": payload, "user_summary": summary},
+        ),
+        confidence=1.0 if completed else 0.5,
+        generated_artifacts=(
+            [
+                {
+                    "type": "frame3d_analysis",
+                    "name": "3D frame analysis",
+                    "description": "Linear elastic 3D frame analysis with the internal solver (no Iranian code checks yet).",
+                }
+            ]
+            if completed
+            else []
+        ),
+        recommendations=[
+            "Compare drift and member forces with an ETABS model of the same frame before relying on them.",
+            "Next phases: Standard 2800 seismic loads and Mabhas 9 member design.",
+        ],
+        validation_information={
+            "capability_status": capability_status,
+            "demo": False,
+            "requires_approval": False,
+            "warnings": list(payload.get("warnings") or []),
+        },
+    )
 
 
 def _demo_rc_beam_result(
@@ -532,6 +584,15 @@ class AnalysisAgentHandler:
         parameters: dict[str, Any],
         context: dict[str, Any],
     ) -> AgentResult:
+        frame = _frame3d_result(
+            agent_type=self.agent_type,
+            action="analysis",
+            user_request=user_request,
+            parameters=parameters,
+            context=context,
+        )
+        if frame is not None:
+            return frame
         demo = _demo_rc_beam_result(
             agent_type=self.agent_type,
             action="analysis",
@@ -628,6 +689,15 @@ class ConcreteDesignAgentHandler:
         parameters: dict[str, Any],
         context: dict[str, Any],
     ) -> AgentResult:
+        frame = _frame3d_result(
+            agent_type=self.agent_type,
+            action="concrete_design",
+            user_request=user_request,
+            parameters=parameters,
+            context=context,
+        )
+        if frame is not None:
+            return frame
         aci = _aci_rc_beam_result(
             agent_type=self.agent_type,
             action="concrete_design",
