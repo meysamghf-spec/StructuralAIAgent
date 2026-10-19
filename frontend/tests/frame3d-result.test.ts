@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { mapFrame3dResults } from "../lib/chat-mappers";
-import { designCsv } from "../components/chat/Frame3dResultCard";
+import { designCsv, orderExports } from "../components/chat/Frame3dResultCard";
 
 describe("mapFrame3dResults", () => {
   it("maps a completed 3D frame payload", () => {
@@ -56,5 +56,26 @@ describe("mapFrame3dResults", () => {
 
   it("ignores other result kinds", () => {
     expect(mapFrame3dResults({ kind: "demo_rc_beam" })).toBeNull();
+  });
+
+  it("maps ETABS/SAFE/DXF export descriptors and keeps the inputs for the export endpoint", () => {
+    const mapped = mapFrame3dResults({
+      kind: "frame3d_analysis",
+      status: "completed",
+      inputs: { storeys: 3, bays_x: 2, bays_y: 2 },
+      parsed_from_request: ["storeys", "bays_x", "bays_y"],
+      export_requested: ["f2k"],
+      model_from_project_memory: true,
+      exports: [
+        { format: "e2k", filename: "model.e2k", label: "ETABS model (.e2k)", requested: false, notes: ["unverified"] },
+        { format: "f2k", filename: "foundation.f2k", label: "SAFE foundation loads (.f2k)", requested: true, notes: [] },
+        { bogus: true },
+      ],
+    });
+    expect(mapped?.exports.map((e) => e.format)).toEqual(["e2k", "f2k"]);
+    expect(mapped?.exportRequested).toEqual(["f2k"]);
+    expect(mapped?.modelFromProjectMemory).toBe(true);
+    expect(mapped?.inputs).toEqual({ storeys: 3, bays_x: 2, bays_y: 2, _p: ["storeys", "bays_x", "bays_y"] });
+    expect(orderExports(mapped?.exports ?? []).map((e) => e.filename)).toEqual(["foundation.f2k", "model.e2k"]);
   });
 });

@@ -1,6 +1,9 @@
 "use client";
 
-import type { Frame3dResults } from "@/lib/chat-types";
+import { useState } from "react";
+
+import { downloadFrame3dExport } from "@/lib/api";
+import type { Frame3dExport, Frame3dResults } from "@/lib/chat-types";
 
 type Frame3dResultCardProps = {
   results: Frame3dResults;
@@ -127,6 +130,15 @@ export function Frame3dResultCard({ results }: Frame3dResultCardProps) {
       ) : null}
 
       {results.design ? <DesignSection design={results.design} /> : null}
+
+      {results.exports.length > 0 && results.inputs ? (
+        <ExportSection
+          exports={results.exports}
+          inputs={results.inputs}
+          requested={results.exportRequested}
+          fromMemory={results.modelFromProjectMemory}
+        />
+      ) : null}
 
       {results.storeyForces.length > 0 ? (
         <div className="engineering-result-block">
@@ -271,6 +283,63 @@ function DesignSection({ design }: { design: NonNullable<Frame3dResults["design"
       ) : null}
       <TextList title="Implemented clauses" items={design.clausesImplemented} />
       <TextList title="Simplified / not checked" items={design.clausesSimplified} />
+    </div>
+  );
+}
+
+export function orderExports(exports: Frame3dExport[]): Frame3dExport[] {
+  return [...exports.filter((e) => e.requested), ...exports.filter((e) => !e.requested)];
+}
+
+function ExportSection({
+  exports,
+  inputs,
+  requested,
+  fromMemory,
+}: {
+  exports: Frame3dExport[];
+  inputs: Record<string, unknown>;
+  requested: string[];
+  fromMemory: boolean;
+}) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const notes = exports.filter((e) => (requested.length ? e.requested : true) && e.notes.length > 0);
+  async function run(e: Frame3dExport) {
+    setBusy(e.format);
+    setError(null);
+    try {
+      await downloadFrame3dExport(e.format, inputs, e.filename);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Export failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+  return (
+    <div className="engineering-result-block">
+      <p className="engineering-result-label">
+        Export model (ETABS / SAFE / AutoCAD){fromMemory ? " — re-analysed from the last frame in this project" : ""}
+      </p>
+      <p>
+        {orderExports(exports).map((e) => (
+          <button
+            key={e.format}
+            type="button"
+            className="link-button"
+            disabled={busy !== null}
+            onClick={() => void run(e)}
+          >
+            {busy === e.format ? "Preparing…" : `${e.requested ? "★ " : ""}${e.label}`}
+          </button>
+        ))}
+      </p>
+      {error ? <p className="muted">{error}</p> : null}
+      {notes.length > 0 ? (
+        <ul className="muted">
+          {notes.flatMap((e) => e.notes.map((n, i) => <li key={`${e.format}-${i}`}>{`${e.filename}: ${n}`}</li>))}
+        </ul>
+      ) : null}
     </div>
   );
 }

@@ -398,6 +398,36 @@ export async function downloadProjectFile(
   URL.revokeObjectURL(objectUrl);
 }
 
+export async function downloadFrame3dExport(
+  format: string,
+  inputs: Record<string, unknown>,
+  filename: string,
+): Promise<void> {
+  const response = await fetch(`${getApiBaseUrl()}/api/v1/frame3d/export`, {
+    method: "POST",
+    headers: buildJsonHeaders(),
+    body: JSON.stringify({ format, inputs }),
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    const message =
+      typeof body?.error?.message === "string"
+        ? body.error.message
+        : typeof body?.detail === "string"
+          ? body.detail
+          : `Export failed (${response.status})`;
+    throw new Error(message);
+  }
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(objectUrl);
+}
+
 export async function uploadProjectFile(projectId: string, file: File): Promise<ProjectFileSummary> {
   const formData = new FormData();
   formData.append("file", file);
