@@ -268,11 +268,23 @@ export type Frame3dResults = {
   driftCheck: string | null;
   modal: Frame3dModal | null;
   design: Frame3dDesign | null;
+  exports: Frame3dExport[];
+  exportRequested: string[];
+  modelFromProjectMemory: boolean;
+  inputs: Record<string, unknown> | null;
   gridX: number[];
   gridY: number[];
   missing: string[];
   assumptions: string[];
   warnings: string[];
+};
+
+export type Frame3dExport = {
+  format: string;
+  filename: string;
+  label: string;
+  requested: boolean;
+  notes: string[];
 };
 
 export type ChatMessage = {

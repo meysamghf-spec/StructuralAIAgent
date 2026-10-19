@@ -139,6 +139,34 @@ def test_chat_frame3d_returns_analysis_results(api_client: TestClient) -> None:
     assert abs(results["results"]["max_drift_amplified_pct"] - 2.126) < 0.005
 
 
+def test_chat_frame3d_export_follow_up_and_endpoint(api_client: TestClient) -> None:
+    token = _register(api_client)
+    project_id = _project(api_client, token)
+    first = api_client.post(
+        "/api/v1/chat",
+        json={"message": "Analyze a 3-storey RC moment frame, 2x2 bays of 5 m, storey height 3.2 m, C=0.165", "project_id": project_id},
+        headers=_headers(token),
+    )
+    assert first.status_code == 201
+    inputs = first.json()["assistant_message"]["metadata"]["engineering_results"]["inputs"]
+    follow = api_client.post(
+        "/api/v1/chat", json={"message": "خروجی ایتبس بده", "project_id": project_id}, headers=_headers(token)
+    )
+    assert follow.status_code == 201
+    results = follow.json()["assistant_message"]["metadata"].get("engineering_results") or {}
+    assert results.get("kind") == "frame3d_analysis"
+    assert results.get("status") == "completed"
+    assert results.get("export_requested") == ["e2k"]
+    assert results.get("model_from_project_memory") is True
+    exported = api_client.post(
+        "/api/v1/frame3d/export", json={"format": "e2k", "inputs": inputs}, headers=_headers(token)
+    )
+    assert exported.status_code == 200
+    assert 'filename="model.e2k"' in exported.headers["content-disposition"]
+    assert "$ LINE CONNECTIVITIES" in exported.text
+    assert api_client.post("/api/v1/frame3d/export", json={"format": "xyz", "inputs": inputs}, headers=_headers(token)).status_code == 422
+
+
 def test_chat_demo_rc_beam_returns_deterministic_results(api_client: TestClient) -> None:
     token = _register(api_client)
     project_id = _project(api_client, token)

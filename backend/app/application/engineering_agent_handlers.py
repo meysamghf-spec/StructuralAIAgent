@@ -22,7 +22,7 @@ from app.application.aci_rc_beam_check import is_aci_rc_beam_check_request, run_
 from app.application.aisc_steel_beam_check import is_aisc_steel_beam_check_request, run_aisc_steel_beam_check
 from app.application.building_brief_parser import BuildingBriefParser
 from app.application.demo_rc_beam_analysis import analyze_simply_supported_rc_beam
-from app.application.frame3d_chat_analysis import build_frame3d_payload, frame3d_markdown
+from app.application.frame3d_chat_analysis import build_frame3d_payload, frame3d_markdown, prior_frame3d_spec
 from app.application.engineering_agent_services import EngineeringAgentServices
 from app.application.structural_engineering_workflow import execute_structural_workflow
 from app.domain.models.reporting import ReportGenerationRequest, ReportType
@@ -123,7 +123,7 @@ def _frame3d_result(
     parameters: dict[str, Any],
     context: dict[str, Any],
 ) -> AgentResult | None:
-    payload = build_frame3d_payload(user_request)
+    payload = build_frame3d_payload(user_request, prior_frame3d_spec(context))
     if payload is None:
         return None
     payload["project_context_used"] = _context_summary(context)

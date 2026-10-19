@@ -12,6 +12,7 @@ import type {
   AgentRunStepState,
   AgentToolExecution,
   AciRcBeamResults,
+  Frame3dExport,
   Frame3dResults,
   DemoEngineeringResults,
   DemoRcBeamInputs,
@@ -245,6 +246,30 @@ function mapFrame3dModal(raw: unknown): Frame3dResults["modal"] {
   };
 }
 
+export function mapFrame3dExports(raw: unknown): Frame3dExport[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw.flatMap((item) => {
+    if (!item || typeof item !== "object") {
+      return [];
+    }
+    const e = item as Record<string, unknown>;
+    if (typeof e.format !== "string" || typeof e.filename !== "string") {
+      return [];
+    }
+    return [
+      {
+        format: e.format,
+        filename: e.filename,
+        label: typeof e.label === "string" ? e.label : e.filename,
+        requested: e.requested === true,
+        notes: stringList(e.notes),
+      },
+    ];
+  });
+}
+
 export function mapFrame3dResults(raw: unknown): Frame3dResults | null {
   if (!raw || typeof raw !== "object") {
     return null;
@@ -295,6 +320,13 @@ export function mapFrame3dResults(raw: unknown): Frame3dResults | null {
     driftCheck: typeof data.drift_check === "string" ? data.drift_check : null,
     modal: mapFrame3dModal(data.modal),
     design: mapFrame3dDesign(data.design),
+    exports: mapFrame3dExports(data.exports),
+    exportRequested: stringList(data.export_requested),
+    modelFromProjectMemory: data.model_from_project_memory === true,
+    inputs:
+      data.inputs && typeof data.inputs === "object"
+        ? { ...(data.inputs as Record<string, unknown>), _p: stringList(data.parsed_from_request) }
+        : null,
     gridX: numberList(geometry.XS),
     gridY: numberList(geometry.YS),
     missing: stringList(data.missing_inputs),

@@ -17,11 +17,14 @@ Extension points (not implemented yet, by design):
 
 from __future__ import annotations
 
+import json
 import math
 import re
 from dataclasses import asdict, dataclass, field
+from dataclasses import fields as dc_fields
 from typing import Any, Callable
 
+from app.application import csi_text_export as cte
 from app.application import iran2800
 from app.application import mabhas9_rc_design as m9
 from app.application.analysis.modal import combine_cqc, generalized_eigen_diag_mass
@@ -113,6 +116,71 @@ def is_frame3d_request(user_request: str) -> bool:
     storey = re.search(r"stor(e)?y|stories|storeys|floors?\b|طبقه", t)
     frame = re.search(r"\bframe\b|\bbays?\b|قاب|دهانه|3d|سه ?بعدی", t)
     return bool(storey and frame)
+
+
+_EXPORT_WORD = r"export|download|خروجی|اکسپورت|دانلود|فایل"
+_EXPORT_TARGETS = {
+    "e2k": r"etabs|\be2k\b|ایتبس|ای ?تبس",
+    "f2k": r"\bsafe\b|\bf2k\b|سیف|سیفی|فونداسیون|پی\b",
+    "dxf_plans": r"autocad|auto ?cad|\bdxf\b|\bcad\b|اتوکد|اتو ?کد|نقشه|پلان",
+    "dxf_3d": r"autocad|auto ?cad|\bdxf\b|\bcad\b|اتوکد|اتو ?کد|3d|سه ?بعدی",
+}
+
+
+def requested_export_formats(user_request: str) -> list[str]:
+    """Formats asked for in an export prompt ("خروجی ایتبس بده", "export to ETABS/SAFE/AutoCAD")."""
+    t = _norm(user_request).lower()
+    if not re.search(_EXPORT_WORD, t):
+        return []
+    found = [f for f, pat in _EXPORT_TARGETS.items() if re.search(pat, t)]
+    if "dxf_3d" in found and "dxf_plans" not in found and not re.search(r"autocad|auto ?cad|dxf|cad|اتوکد|اتو ?کد", t):
+        found.remove("dxf_3d")  # "3D" alone (e.g. in a frame description) is not a CAD request
+    if re.search(r"\ball\b|همه", t) and found:
+        found = list(_EXPORT_TARGETS)
+    return found
+
+
+def is_export_request(user_request: str) -> bool:
+    """ETABS/SAFE exports always; CAD-only exports when the frame/model is mentioned (other CAD exports keep their agents)."""
+    found = requested_export_formats(user_request)
+    if {"e2k", "f2k"} & set(found):
+        return True
+    return bool(found) and bool(re.search(r"frame|model|structure|قاب|مدل|سازه", _norm(user_request).lower()))
+
+
+SPEC_TAG = "[frame3d-spec]"
+
+
+def frame3d_spec(inp: "Frame3dInputs") -> str:
+    """Compact, re-parseable model spec stored as the first line of the project memory."""
+    d = {k: v for k, v in asdict(inp).items() if k != "parsed" and v != getattr(Frame3dInputs, k, None)}
+    d["_p"] = list(inp.parsed)
+    return SPEC_TAG + json.dumps(d, separators=(",", ":"), ensure_ascii=False)
+
+
+def inputs_from_dict(data: dict[str, Any]) -> "Frame3dInputs":
+    allowed = {f.name for f in dc_fields(Frame3dInputs)} - {"parsed"}
+    inp = Frame3dInputs(**{k: v for k, v in data.items() if k in allowed})
+    inp.parsed = [str(x) for x in data.get("_p", data.get("parsed_from_request", []))]
+    for name in ("storeys", "bays_x", "bays_y"):
+        v = getattr(inp, name)
+        if v is not None:
+            setattr(inp, name, int(v))
+    return inp
+
+
+def prior_frame3d_spec(context: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Latest frame spec found in the project memories passed in the agent context."""
+    found = None
+    for m in (context or {}).get("memories") or []:
+        content = str((m or {}).get("content") or "")
+        if content.startswith(SPEC_TAG):
+            line = content[len(SPEC_TAG):].split("\n", 1)[0]
+            try:
+                found = json.loads(line)
+            except ValueError:
+                continue
+    return found
 
 
 def _f(t: str, pats: tuple[str, ...], inp: Frame3dInputs, name: str, scale: float = 1.0, flags: int = re.IGNORECASE) -> None:
@@ -339,7 +407,8 @@ def run_frame3d(inp: Frame3dInputs) -> dict[str, Any]:
             applied = [applied[0] + e.udl_gx * L, applied[1] + e.udl_gy * L, applied[2] + e.udl_gz * L]
         reac = [sum(r.reactions[s.node_id][c] for s in supports) for c in range(3)]
         equilibrium[case] = max(abs(a + b) for a, b in zip(applied, reac))
-        base[case] = {"res": r, "ends": ends, "w": wloc, "reac": reac}
+        base[case] = {"res": r, "ends": ends, "w": wloc, "reac": reac,
+                      "supp": {s.node_id: [float(x) for x in r.reactions[s.node_id]] for s in supports}}
 
     combos: dict[str, dict[str, float]] = {"1.4D": {"D": 1.4}, "1.2D+1.6L": {"D": 1.2, "L": 1.6}}
     if V > 0:
@@ -427,6 +496,10 @@ def run_frame3d(inp: Frame3dInputs) -> dict[str, Any]:
         "combos": list(combos), "equilibrium_error_kn": max(equilibrium.values()),
         "gravity_reaction_kn": {"D": abs(base["D"]["reac"][2]), "L": abs(base["L"]["reac"][2]), "D+L": total_gravity},
         "beams": beam_env, "columns": col_env, "drift": drift, "base_shear": base_shear, "modal": modal,
+        # data needed by the ETABS/SAFE/DXF exporters (csi_text_export.py)
+        "export": {"reactions": {c: base[c]["supp"] for c in cases}, "combo_factors": combos, "sw_col_kn": sw_col,
+                   "beam_udl": {bid: {"D": beam_w("D", k, L, o, e), "L": beam_w("L", k, L, o, e)} for bid, a, b, k, L, o, e in beams},
+                   "Ec_kn_m2": Ec, "eccentricity": inp.accidental_ecc},
     }
 
 
@@ -643,10 +716,22 @@ def _r(v: float, n: int = 2) -> float:
     return round(float(v), n)
 
 
-def build_frame3d_payload(user_request: str) -> dict[str, Any] | None:
-    if not is_frame3d_request(user_request):
+def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    """Analyse a described frame, or re-run the project's last frame when only an export is asked for."""
+    export_formats = requested_export_formats(user_request) if (is_export_request(user_request) or is_frame3d_request(user_request)) else []
+    from_memory = False
+    if is_frame3d_request(user_request):
+        inp = parse_frame3d_request(user_request)
+    elif export_formats and prior_spec:
+        inp = inputs_from_dict(prior_spec); from_memory = True
+    elif export_formats:
+        msg = ("No 3D frame analysis was found in this project to export. Describe the frame first, e.g. "
+               "`3-storey RC frame, 2x2 bays of 5 m, storey height 3.2 m, zone high, soil II`, then ask for the ETABS/SAFE/AutoCAD export.")
+        return {"kind": KIND, "label": "3D FRAME ANALYSIS", "status": "MISSING_REQUIRED_INPUT", "missing_inputs": ["frame_model"],
+                "message": msg, "warnings": [msg], "export_requested": export_formats, "disclaimer": DISCLAIMER,
+                "inputs": {}, "parsed_from_request": [], "defaulted_inputs": []}
+    else:
         return None
-    inp = parse_frame3d_request(user_request)
     inputs = {k: v for k, v in asdict(inp).items() if k != "parsed"}
     defaulted = [k for k in inputs if k not in inp.parsed and k not in ("seismic_code", "design_code", "accidental_ecc")]
     common = {
@@ -656,6 +741,8 @@ def build_frame3d_payload(user_request: str) -> dict[str, Any] | None:
         "seismic_code": inp.seismic_code, "design_code": inp.design_code,
         "code": _code_label(inp),
         "inputs": inputs, "parsed_from_request": list(inp.parsed), "defaulted_inputs": defaulted,
+        "export_requested": export_formats, "model_from_project_memory": from_memory,
+        "spec": frame3d_spec(inp),
     }
     missing = missing_inputs(inp)
     if missing:
@@ -804,6 +891,8 @@ def build_frame3d_payload(user_request: str) -> dict[str, Any] | None:
         "envelopes": {"beams": [{**b, "M_neg_kn_m": _r(b["M_neg_kn_m"]), "M_pos_kn_m": _r(b["M_pos_kn_m"]), "V_kn": _r(b["V_kn"])} for b in beams],
                       "columns": [{k2: v for k2, v in {**c, "P_kn": _r(c["P_kn"]), "M_kn_m": _r(c["M_kn_m"])}.items() if k2 != "records"} for c in cols]},
         "assumptions": assumptions, "warnings": warnings, "fields": fields,
+        # ETABS/SAFE/DXF text exports, generated on demand by POST /api/v1/frame3d/export from `inputs`
+        "exports": cte.export_descriptors(export_formats),
     }
 
 
@@ -875,6 +964,15 @@ def frame3d_markdown(payload: dict[str, Any]) -> str:
     lines += [f"- Beam max M⁻ **{r['beam_max_M_neg_kn_m']:.1f} kN·m** ({r['beam_max_M_neg_id']}), M⁺ {r['beam_max_M_pos_kn_m']:.1f} kN·m, V {r['beam_max_V_kn']:.1f} kN",
               f"- Column max axial P **{r['column_max_P_kn']:.1f} kN** ({r['column_max_P_id']})",
               "", "Assumptions:", *[f"- {a}" for a in payload["assumptions"]]]
+    if payload.get("exports"):
+        req = [e for e in payload["exports"] if e["requested"]] or payload["exports"]
+        lines += ["", ("**Exports ready** (download from the result card): " if payload.get("export_requested") else "Exports available on the result card: ")
+                  + ", ".join(f"{e['label']} `{e['filename']}`" for e in req)]
+        if payload.get("model_from_project_memory"):
+            lines.append("Model re-analysed from the last 3D frame stored in this project.")
+        for e in req:
+            if e["format"] in ("e2k", "f2k") and (e["requested"] or not payload.get("export_requested")):
+                lines += [f"- {e['filename']}: " + " ".join(e["notes"])]
     if payload["warnings"]:
         lines += ["", "Warnings:", *[f"- {w}" for w in payload["warnings"]]]
     lines += ["", f"*{payload['disclaimer']}*"]
@@ -883,7 +981,21 @@ def frame3d_markdown(payload: dict[str, Any]) -> str:
 
 def frame3d_memory_summary(payload: dict[str, Any]) -> str:
     r = payload.get("results") or {}; ms = payload.get("model_summary") or {}
-    return (f"3D frame analysis: {ms.get('storeys')} storeys, {ms.get('bays_x')}x{ms.get('bays_y')} bays; "
+    spec = (payload.get("spec") or "") + "\n"
+    return spec + (f"3D frame analysis: {ms.get('storeys')} storeys, {ms.get('bays_x')}x{ms.get('bays_y')} bays; "
             f"max drift 0.7R {r.get('max_drift_amplified_pct')}% (storey {r.get('max_drift_storey')}), "
             f"beam M- {r.get('beam_max_M_neg_kn_m')} kN·m, column P {r.get('column_max_P_kn')} kN. "
-            "Seismic C user-supplied; no Iranian code checks yet.")
+            f"Seismic: {payload.get('seismic_code')}; design: {payload.get('design_code')}.")
+
+
+def run_frame3d_for_export(inputs: dict[str, Any]) -> tuple["Frame3dInputs", dict[str, Any], dict[str, Any] | None]:
+    """Re-run the (deterministic) analysis for an export request coming from the result card."""
+    inp = inputs_from_dict(inputs)
+    if missing_inputs(inp):
+        raise ValueError("storeys, bays_x and bays_y are required")
+    if (inp.storeys > MAX_STOREYS or max(inp.bays_x, inp.bays_y) > MAX_BAYS or min(inp.storeys, inp.bays_x, inp.bays_y) < 1
+            or (inp.bays_x + 1) * (inp.bays_y + 1) * (inp.storeys + 1) > MAX_NODES):
+        raise ValueError("model size outside the chat solver limits")
+    raw = run_frame3d(inp)
+    design = design_mabhas9(inp, raw) if inp.design_code == "MABHAS9" else None
+    return inp, raw, design

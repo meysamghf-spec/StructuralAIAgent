@@ -108,6 +108,15 @@ Add `design per Mabhas 9` to the Phase 2 prompt, e.g.
 `Analyze and design per Mabhas 9 a 3-storey RC intermediate moment frame, 2x2 bays of 5 m in X and Y, storey height 3.2 m, columns 40x40 cm, beams 30x45 cm, f'c=30 MPa, fy=400 MPa, dead load 6 kN/m2, live load 2 kN/m2, Standard 2800, high seismic hazard, soil type II, I=1.`
 (Persian: `... طبق ۲۸۰۰ تحلیل و طبق مبحث نهم طراحی کن`).
 
+### ETABS / SAFE / AutoCAD export (Phase 4)
+
+After any 3D frame analysis, the result card shows download buttons for **`model.e2k`** (ETABS text model: stories, grids, materials, rectangular RC sections with cracked modifiers, points/lines per story, fixed base, rigid diaphragm D1, Dead/Live line loads, EX/EY *User Coefficient* with the C and k used by the analysis, mass source 1.0D + 0.2L, linear-static + modal cases, all strength combos), **`foundation.f2k`** (SAFE tables: column points with DEAD/LIVE/EX/EY loads = − base reactions, strength + service combos, a clearly labelled *placeholder* mat 1 m beyond the grid, t = 0.6 m, ks = 20000 kN/m³), **`plans.dxf`** (one plan per storey with grids/bubbles, COLUMNS/BEAMS layers, section labels and — after a Mabhas 9 design — rebar text) and **`frame3d.dxf`** (3D wireframe: LINEs with Z + 3D polylines per column stack). Files are generated on demand by `POST /api/v1/frame3d/export` from the card's model inputs; no CSI API, no new dependencies.
+
+Follow-up prompts in the same project re-run the last frame and highlight the requested files: `خروجی ایتبس بده`, `فایل سیف برای فونداسیون بده`, `خروجی اتوکد قاب را بده`, `export to ETABS/SAFE/AutoCAD`.
+
+Syntax status: e2k/f2k lines are copied from public files exported by ETABS 2016/21 and ETABS→SAFE 2014, and round-trip through our own parsers in `tests/test_csi_text_export.py`, **but no import into licensed ETABS/SAFE has been done yet**. Known gaps: EX/EY are written without the ±5 % eccentricity (set "X + Ecc. Y" in ETABS), the f2k mat tables are a placeholder written from memory of SAFE 12 (delete them if SAFE rejects them), and slabs are not shells (floor loads are already on the beams). DXF files are R12 ASCII and open in ezdxf with 0 errors.
+
+
 The card adds group-wise design tables (beams: storey × direction × edge/interior; columns: storey × corner/edge/interior) with required As, suggested bars, stirrups/ties, D/C ratios, strong-column/weak-beam ratios per level, CSV downloads, and the lists of implemented vs simplified clauses. For the example: all member groups pass (max D/C 1.00; columns 8Φ16–12Φ16–8Φ22, ρ 1.0–1.9 %), SCWB min ratio 1.12 at level 2 → status CHECK.
 Implemented: φc = 0.65, φs = 0.85, εcu = 0.0035, α1/β1 block; beam flexure with As,min / ρ ≤ 0.025 / yielding check / M⁺ ≥ M⁻/3; beam shear Vc = 0.2φc√f'c·bd with spacing and end-zone limits; column P–M strain compatibility, Pr,max = 0.8Pr0, 1–6 % steel, tie spacing; ΣMnc ≥ 1.2ΣMnb. Simplified/not checked: linear biaxial load contour, shear from analysis (no capacity design), centre-line moments, column shear, slenderness, joint shear, Ash confinement, development lengths. Forces come from the equivalent static cases.
 
