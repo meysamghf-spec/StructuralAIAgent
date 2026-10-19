@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 
 import { EmptyHint, useLatestFrame3d } from "@/components/frame3d/Frame3dWorkspacePanel";
-import { createApprovalRequest, downloadFrame3dExport } from "@/lib/api";
+import { DxfViewer } from "@/components/cad/DxfViewer";
+import { createApprovalRequest, downloadFrame3dExport, fetchFrame3dExportText } from "@/lib/api";
 import { buildReportHtml } from "@/lib/frame3d-report";
 import { useUiLang } from "@/hooks/useUiLang";
 
@@ -12,6 +13,16 @@ export function ReportPanel() {
   const { t, lang } = useUiLang();
   const { projectId, results, inputs } = useLatestFrame3d();
   const html = useMemo(() => (results ? buildReportHtml(results, null, new Date().toLocaleString()) : null), [results]);
+  const [rebar, setRebar] = useState<{ text?: string; error?: string; busy?: boolean } | null>(null);
+  async function showRebar() {
+    if (!inputs) return;
+    setRebar({ busy: true });
+    try {
+      setRebar({ text: await fetchFrame3dExportText("dxf_rebar", inputs) });
+    } catch (e) {
+      setRebar({ error: e instanceof Error ? e.message : String(e) });
+    }
+  }
   const [approval, setApproval] = useState<"idle" | "busy" | "done" | string>("idle");
   async function submitForApproval() {
     if (!projectId || !results) return;
@@ -63,14 +74,23 @@ export function ReportPanel() {
               {t("Print / PDF")}
             </button>
             {inputs
-              ? ["e2k", "f2k", "dxf_plans", "dxf_3d"].map((f) => (
-                  <button key={f} type="button" className="link-button" onClick={() => void downloadFrame3dExport(f, inputs, { e2k: "model.e2k", f2k: "foundation.f2k", dxf_plans: "plans.dxf", dxf_3d: "frame3d.dxf" }[f]!)}>
+              ? ["e2k", "f2k", "dxf_plans", "dxf_3d", "dxf_rebar"].map((f) => (
+                  <button key={f} type="button" className="link-button" onClick={() => void downloadFrame3dExport(f, inputs, { e2k: "model.e2k", f2k: "foundation.f2k", dxf_plans: "plans.dxf", dxf_3d: "frame3d.dxf", dxf_rebar: "rebar-details.dxf" }[f]!)}>
                     {f}
                   </button>
                 ))
               : null}
           </div>
           <iframe className="report-frame" title={t("Calculation report")} srcDoc={html} />
+          <h3>{t("Rebar detailing drawings")}</h3>
+          {rebar?.text ? (
+            <DxfViewer text={rebar.text} filename="rebar-details.dxf" />
+          ) : (
+            <button type="button" className="button secondary" disabled={!inputs || rebar?.busy} onClick={() => void showRebar()}>
+              {rebar?.busy ? t("Preparing…") : t("Show rebar drawings")}
+            </button>
+          )}
+          {rebar?.error ? <p className="alert error">{rebar.error}</p> : null}
         </>
       )}
     </section>

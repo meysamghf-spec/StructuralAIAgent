@@ -1,0 +1,420 @@
+"""Construction rebar detailing sheets (DXF, ezdxf) from the Mabhas 9 design groups of the 3D frame.
+
+Sheets (side by side in model space, units = mm, each titled by a TEXT on layer TITLE for the in-app viewer):
+  1. Beam elevations: top/bottom bars, cut-offs, hooks/development, lap splices, stirrup zones (2h), sections A-A / B-B
+  2. Column elevations + sections: ties, confinement zones l0, lap splice in the middle half
+  3. Bar bending schedule (mark, diameter, shape, length, count, weight) + total steel weight
+Every sheet has a bilingual (Persian/English) title block.
+
+Code basis vs assumptions is listed in DETAILING_BASIS / DETAILING_ASSUMPTIONS and printed on the sheets.
+"""
+
+from __future__ import annotations
+
+import io
+import math
+import re
+from dataclasses import dataclass
+from typing import Any
+
+import ezdxf
+from ezdxf.enums import TextEntityAlignment
+
+STOCK_LENGTH_MM = 12000
+COL_PITCH = 2900  # horizontal gap between column details (labels left, lap note right)
+COVER_MM = 40
+DETAILING_BASIS = [
+    "Bars, stirrups, ties, 2h and l0 zones: from the Mabhas 9 design groups of this model (Ch. 9-20/9-21 checks in the app).",
+    "Development length ld = fy*psi_t/(2.1*sqrt(fc))*db (db<=18) or /(1.7*sqrt(fc)) (db>=20), psi_t=1.3 top bars, >=300 mm (Mabhas 9 / ACI 318 simplified).",
+    "Standard 90 deg hook ldh = 0.24*fy/sqrt(fc)*db >= max(8db,150 mm); hook extension 12db.",
+    "Lap splices class B = 1.3*ld; column laps in the middle half of the clear height; no laps inside joints or 2h zones.",
+]
+DETAILING_ASSUMPTIONS = [
+    f"Clear cover {COVER_MM} mm; stock bar length {STOCK_LENGTH_MM / 1000:.0f} m; unit weight 0.00617*d^2 kg/m.",
+    "Top bars: 2 corner bars continuous; extra bars over supports cut off at ln/3 from the support face (standard practice, not a moment-curve cut-off).",
+    "Bottom bars all continuous, hooked into the end columns; top laps at midspan, bottom laps just outside the 2h zone.",
+    "Every intermediate column bar is held by a cross-tie (135 deg hooks); ties continue through the joint at the l0 spacing.",
+    "Stirrup/tie cut length = hoop perimeter + 2 x 10db hooks. Lengths rounded up to 10 mm. One typical member drawn per design group.",
+    "Check against the final architectural/structural drawings; a licensed engineer must review before construction.",
+]
+
+
+def unit_weight(d_mm: float) -> float:
+    return 0.00617 * d_mm * d_mm
+
+
+def parse_bars(s: str | None) -> tuple[int, int]:
+    m = re.search(r"(\d+)\s*[ΦφØø]\s*(\d+)", s or "")
+    if not m:
+        raise ValueError(f"cannot read bars {s!r}")
+    return int(m.group(1)), int(m.group(2))
+
+
+def parse_spacing(s: str | None) -> tuple[int, int, int, int | None]:
+    """'Φ10@95 (2h = 900 mm), Φ10@175 elsewhere' / 'Φ10@125 over l0 = 458 mm at both ends, Φ10@250 elsewhere'
+    -> (d, s_end, s_mid, zone_mm)."""
+    pairs = re.findall(r"[ΦφØø]\s*(\d+)\s*@\s*(\d+)", s or "")
+    if not pairs:
+        raise ValueError(f"cannot read stirrups/ties {s!r}")
+    zone = re.search(r"(?:2h|l0)\s*=\s*(\d+)", s or "")
+    d, s_end = int(pairs[0][0]), int(pairs[0][1])
+    s_mid = int(pairs[1][1]) if len(pairs) > 1 else s_end
+    return d, s_end, s_mid, int(zone.group(1)) if zone else None
+
+
+def _r10(x: float) -> int:
+    return int(math.ceil(x / 10.0) * 10)
+
+
+def dev_length(db: float, fy: float, fc: float, top: bool = False) -> int:
+    psi_t = 1.3 if top else 1.0
+    k = 2.1 if db <= 18 else 1.7
+    return _r10(max(fy * psi_t / (k * math.sqrt(fc)) * db, 300))
+
+
+def hook_length(db: float, fy: float, fc: float) -> int:
+    return _r10(max(0.24 * fy / math.sqrt(fc) * db, 8 * db, 150))
+
+
+def lap_length(db: float, fy: float, fc: float, top: bool = False) -> int:
+    return _r10(1.3 * dev_length(db, fy, fc, top))
+
+
+def zone_positions(f0: float, f1: float, zone: float, s_end: float, s_mid: float, first: float = 50.0) -> list[float]:
+    """Stirrup/tie positions between faces f0..f1: s_end over `zone` at both ends, middle spaced evenly at <= s_mid."""
+    head, x = [], f0 + first
+    while x <= f0 + zone and x <= (f0 + f1) / 2:
+        head.append(x); x += s_end
+    tail, x = [], f1 - first
+    while x >= f1 - zone and x > (f0 + f1) / 2 + 1:
+        tail.append(x); x -= s_end
+    tail.reverse()
+    a, b = head[-1], tail[0] if tail else f1
+    n = max(1, math.ceil((b - a) / s_mid))
+    mid = [a + (b - a) * i / n for i in range(1, n)]
+    return head + mid + tail
+
+
+def split_bar(total: float, lap: float, centers: list[float], limit: float = STOCK_LENGTH_MM) -> list[tuple[float, float]]:
+    """Split a continuous bar [0,total] into stock lengths with laps centred on allowed points."""
+    pieces, start = [], 0.0
+    while total - start > limit:
+        ok = [c for c in centers if c - lap / 2 > start + lap and c + lap / 2 - start <= limit]
+        if not ok:
+            raise ValueError("no permitted lap-splice location within one stock length")
+        c = max(ok)
+        pieces.append((start, c + lap / 2))
+        start = c - lap / 2
+    pieces.append((start, total))
+    return pieces
+
+
+@dataclass
+class BarRow:
+    mark: str
+    member: str
+    d: int
+    shape: str
+    length_mm: int
+    count: int
+
+    @property
+    def weight_kg(self) -> float:
+        return self.length_mm / 1000 * self.count * unit_weight(self.d)
+
+
+class _Sheet:
+    def __init__(self, msp, x0: float, title: str) -> None:
+        self.msp, self.x0, self.y0 = msp, x0, 0.0
+        self.title = title
+
+    def line(self, layer, a, b):
+        self.msp.add_line((self.x0 + a[0], self.y0 + a[1]), (self.x0 + b[0], self.y0 + b[1]), dxfattribs={"layer": layer})
+
+    def poly(self, layer, pts, closed=False):
+        self.msp.add_lwpolyline([(self.x0 + x, self.y0 + y) for x, y in pts], close=closed, dxfattribs={"layer": layer})
+
+    def circle(self, layer, c, r):
+        self.msp.add_circle((self.x0 + c[0], self.y0 + c[1]), r, dxfattribs={"layer": layer})
+
+    def text(self, layer, p, h, s, center=False, style="LATIN"):
+        t = self.msp.add_text(s, height=h, dxfattribs={"layer": layer, "style": style})
+        t.set_placement((self.x0 + p[0], self.y0 + p[1]), align=TextEntityAlignment.CENTER if center else TextEntityAlignment.LEFT)
+
+
+LAYERS = {"TITLE": 2, "TITLE_BLOCK": 7, "CONCRETE": 8, "REBAR_MAIN": 1, "REBAR_STIRRUP": 3, "REBAR_TEXT": 4,
+          "DIM": 6, "ZONE": 5, "NOTES": 7, "TABLE": 7}
+
+
+def _title_block(sh: _Sheet, w: float, h: float, sheet_no: int, fa: str, en: str, project: str) -> None:
+    sh.poly("TITLE_BLOCK", [(0, 0), (w, 0), (w, h), (0, h)], closed=True)
+    bx, by = w - 9000, 0
+    sh.poly("TITLE_BLOCK", [(bx, by), (w, by), (w, by + 2600), (bx, by + 2600)], closed=True)
+    for yy in (650, 1300, 1950):
+        sh.line("TITLE_BLOCK", (bx, yy), (w, yy))
+    sh.text("TITLE_BLOCK", (bx + 200, 2150), 260, f"StructuralAIAgent - {project}")
+    sh.text("TITLE_BLOCK", (bx + 200, 1500), 260, en)
+    sh.text("TITLE_BLOCK", (bx + 200, 850), 260, fa, style="PERSIAN")
+    sh.text("TITLE_BLOCK", (bx + 200, 200), 200, f"Sheet R-{sheet_no:02d}   Units: mm   Code: Mabhas 9 (Iran)   Status: FOR REVIEW / جهت بررسی", style="PERSIAN")
+
+
+def _beam_spans(inp, direction: str) -> tuple[int, float, float]:
+    n = inp.bays_x if direction == "X" else inp.bays_y
+    L = (inp.bay_x_m if direction == "X" else inp.bay_y_m) * 1000
+    col = (inp.column_b_m if direction == "X" else inp.column_h_m) * 1000
+    return n, L, col
+
+
+def _draw_beam(sh: _Sheet, y0: float, g: dict[str, Any], inp, rows: list[BarRow]) -> float:
+    fy, fc = inp.fy_mpa, inp.fc_mpa
+    b, h = inp.beam_b_m * 1000, inp.beam_h_m * 1000
+    nt, dt = parse_bars(g["top_bars"])
+    nb, dbb = parse_bars(g["bottom_bars"])
+    ds, s_end, s_mid, zone = parse_spacing(g["stirrups"])
+    zone = zone or int(2 * h)
+    nsp, L, col = _beam_spans(inp, g["direction"])
+    total = nsp * L  # centre line of end columns
+    ln = L - col
+    x_end0, x_end1 = -col / 2 + COVER_MM, total + col / 2 - COVER_MM  # bar ends inside end columns
+    tag = g["group"]
+    lines = max(1, round(g["members"] / nsp))  # design "members" counts spans; one continuous beam line has nsp spans
+    # concrete outline + columns
+    sh.poly("CONCRETE", [(-col / 2, y0), (total + col / 2, y0), (total + col / 2, y0 + h), (-col / 2, y0 + h)], closed=True)
+    for k in range(nsp + 1):
+        x = k * L
+        sh.poly("CONCRETE", [(x - col / 2, y0 - 700), (x - col / 2, y0 + h + 700)])
+        sh.poly("CONCRETE", [(x + col / 2, y0 - 700), (x + col / 2, y0 + h + 700)])
+    yt, yb = y0 + h - COVER_MM - ds - dt / 2, y0 + COVER_MM + ds + dbb / 2
+    hk_t, hk_b = 12 * dt, 12 * dbb
+    lt, lb = lap_length(dt, fy, fc, True), lap_length(dbb, fy, fc)
+    run = x_end1 - x_end0
+    # top continuous (2 bars) with laps at midspans
+    top_pieces = split_bar(run, lt, [(k + 0.5) * L - x_end0 for k in range(nsp)], STOCK_LENGTH_MM - hk_t)
+    for i, (a, e) in enumerate(top_pieces):
+        xa, xe = x_end0 + a, x_end0 + e
+        pts = ([(xa, yt - hk_t)] if i == 0 else []) + [(xa, yt), (xe, yt)] + ([(xe, yt - hk_t)] if i == len(top_pieces) - 1 else [])
+        sh.poly("REBAR_MAIN", [(x, y + (8 if i % 2 else 0)) for x, y in pts])
+        L_bar = _r10(e - a + (hk_t if i == 0 else 0) + (hk_t if i == len(top_pieces) - 1 else 0))
+        rows.append(BarRow(f"{tag}-T1{chr(97 + i) if len(top_pieces) > 1 else ''}", tag, dt,
+                           "L 90° hooks" if len(top_pieces) == 1 else "straight + hook", L_bar, 2 * lines))
+    if len(top_pieces) > 1:
+        for a, e in zip(top_pieces[1:], top_pieces[:-1]):
+            sh.text("REBAR_TEXT", (x_end0 + a[0], yt + 120), 90, f"lap {lt}")
+    # extra top bars over supports, ln/3 beyond each face
+    ext = _r10(ln / 3)
+    n_extra = nt - 2
+    if n_extra > 0:
+        for k in range(nsp + 1):
+            x = k * L
+            a = x_end0 if k == 0 else x - col / 2 - ext
+            e = x_end1 if k == nsp else x + col / 2 + ext
+            yy = yt - dt - 25
+            pts = ([(a, yy - hk_t)] if k == 0 else []) + [(a, yy), (e, yy)] + ([(e, yy - hk_t)] if k == nsp else [])
+            sh.poly("REBAR_MAIN", pts)
+            sh.text("REBAR_TEXT", (x - col / 2, y0 + h + 160), 100, f"{n_extra}Φ{dt} (T2) ln/3={ext}")
+        L_end = _r10(col / 2 - COVER_MM + col / 2 + ext + hk_t)
+        L_int = _r10(col + 2 * ext)
+        rows.append(BarRow(f"{tag}-T2e", tag, dt, "L 90° hook", L_end, n_extra * 2 * lines))
+        if nsp > 1:
+            rows.append(BarRow(f"{tag}-T2i", tag, dt, "straight", L_int, n_extra * (nsp - 1) * lines))
+    # bottom continuous with laps just outside the 2h zone
+    bot_c = [k * L + col / 2 + zone + lb / 2 - x_end0 for k in range(nsp)]
+    bot_pieces = split_bar(run, lb, bot_c, STOCK_LENGTH_MM - hk_b)
+    for i, (a, e) in enumerate(bot_pieces):
+        xa, xe = x_end0 + a, x_end0 + e
+        pts = ([(xa, yb + hk_b)] if i == 0 else []) + [(xa, yb), (xe, yb)] + ([(xe, yb + hk_b)] if i == len(bot_pieces) - 1 else [])
+        sh.poly("REBAR_MAIN", [(x, y - (8 if i % 2 else 0)) for x, y in pts])
+        L_bar = _r10(e - a + (hk_b if i == 0 else 0) + (hk_b if i == len(bot_pieces) - 1 else 0))
+        rows.append(BarRow(f"{tag}-B1{chr(97 + i) if len(bot_pieces) > 1 else ''}", tag, dbb,
+                           "L 90° hooks" if len(bot_pieces) == 1 else "straight + hook", L_bar, nb * lines))
+    # stirrups
+    n_st = 0
+    for k in range(nsp):
+        f0, f1 = k * L + col / 2, (k + 1) * L - col / 2
+        xs = zone_positions(f0, f1, zone, s_end, s_mid)
+        n_st += len(xs)
+        for x in xs:
+            sh.line("REBAR_STIRRUP", (x, y0 + COVER_MM), (x, y0 + h - COVER_MM))
+        for za, zb, lab in ((f0, f0 + zone, f"2h={zone}: Φ{ds}@{s_end}"), (f0 + zone, f1 - zone, f"Φ{ds}@{s_mid}"), (f1 - zone, f1, f"Φ{ds}@{s_end}")):
+            sh.line("ZONE", (za, y0 - 250), (zb, y0 - 250))
+            sh.line("ZONE", (za, y0 - 320), (za, y0 - 180))
+            sh.text("REBAR_TEXT", ((za + zb) / 2, y0 - 450), 90, lab, center=True)
+    st_len = _r10(2 * (b - 2 * COVER_MM) + 2 * (h - 2 * COVER_MM) + 20 * ds)
+    rows.append(BarRow(f"{tag}-S1", tag, ds, "closed stirrup 135°", st_len, n_st * lines))
+    ld_t, ldh_t = dev_length(dt, fy, fc, True), hook_length(dt, fy, fc)
+    sh.text("REBAR_TEXT", (-col / 2, y0 + h + 420), 140,
+            f"{tag}  {lines} line(s) x {nsp} spans  {b:.0f}x{h:.0f}   top {g['top_bars']} (T1 2Φ{dt} cont. + T2)  bottom {g['bottom_bars']} (B1)   "
+            f"ld,top={ld_t}  ldh={ldh_t} (avail. {col - COVER_MM:.0f})")
+    # sections A-A (support) and B-B (midspan)
+    sx = total + col / 2 + 900
+    for j, (lab, ntop) in enumerate((("A-A support", nt), ("B-B midspan", 2))):
+        ox = sx + j * (b + 900)
+        sh.poly("CONCRETE", [(ox, y0), (ox + b, y0), (ox + b, y0 + h), (ox, y0 + h)], closed=True)
+        sh.poly("REBAR_STIRRUP", [(ox + COVER_MM, y0 + COVER_MM), (ox + b - COVER_MM, y0 + COVER_MM),
+                                  (ox + b - COVER_MM, y0 + h - COVER_MM), (ox + COVER_MM, y0 + h - COVER_MM)], closed=True)
+        for n, d, yy in ((ntop, dt, yt), (nb, dbb, yb)):
+            xa, xb = ox + COVER_MM + ds + d / 2, ox + b - COVER_MM - ds - d / 2
+            for i in range(n):
+                sh.circle("REBAR_MAIN", (xa + (xb - xa) * (i / (n - 1) if n > 1 else 0.5), yy), d / 2)
+        sh.text("REBAR_TEXT", (ox + b / 2, y0 - 250), 90, lab, center=True)
+        sh.text("REBAR_TEXT", (ox + b / 2, y0 + h + 120), 80, f"{ntop}Φ{dt}", center=True)
+        sh.text("REBAR_TEXT", (ox + b / 2, y0 - 130), 80, f"{nb}Φ{dbb}", center=True)
+    return sx + 2 * (b + 900)
+
+
+def _column_bar_positions(n: int, b: float, h: float, inset: float) -> list[tuple[float, float]]:
+    """n bars around a b x h perimeter (4 corners + the rest split between faces in proportion to side length)."""
+    extra = max(n - 4, 0)
+    nb_side = int(round(extra * b / (2 * (b + h))))
+    nh_side = extra // 2 - nb_side
+    pts = []
+    xs = [inset + (b - 2 * inset) * i / (nb_side + 1) for i in range(nb_side + 2)]
+    ys = [inset + (h - 2 * inset) * i / (nh_side + 1) for i in range(1, nh_side + 1)]
+    for x in xs:
+        pts += [(x, inset), (x, h - inset)]
+    for y in ys:
+        pts += [(inset, y), (b - inset, y)]
+    return pts[:n] if len(pts) >= n else pts
+
+
+def _draw_column(sh: _Sheet, x0: float, g: dict[str, Any], inp, rows: list[BarRow]) -> float:
+    fy, fc = inp.fy_mpa, inp.fc_mpa
+    b, h = inp.column_b_m * 1000, inp.column_h_m * 1000
+    H, hb = inp.storey_height_m * 1000, inp.beam_h_m * 1000
+    n, d = parse_bars(g["bars"])
+    dt, s0, s, l0 = parse_spacing(g["ties"])
+    l0 = l0 or int(max(b, h, (H - hb) / 6, 450))
+    lap = lap_length(d, fy, fc)
+    tag = g["group"]
+    clear = H - hb
+    # elevation (floor at y=0 .. beam soffit at clear .. top of beam at H)
+    sh.poly("CONCRETE", [(x0, 0), (x0 + b, 0), (x0 + b, H), (x0, H)], closed=True)
+    sh.line("CONCRETE", (x0 - 300, clear), (x0 + b + 300, clear))
+    sh.line("CONCRETE", (x0 - 300, H), (x0 + b + 300, H))
+    lap_lo = clear / 4 + (clear / 2 - lap) / 2  # lap centred in the middle half
+    if lap > clear / 2:
+        lap_lo = clear / 4
+    xi = x0 + COVER_MM + dt + d / 2
+    sh.line("REBAR_MAIN", (xi, -300), (xi, lap_lo + lap))  # bar from the storey below
+    sh.line("REBAR_MAIN", (xi + 14, lap_lo), (xi + 14, H + 200))  # this storey's bar
+    sh.text("REBAR_TEXT", (x0 + b + 150, lap_lo + lap / 2), 90, f"lap {lap}")
+    sh.text("REBAR_TEXT", (x0 + b + 150, lap_lo + lap / 2 - 150), 70, "(middle half)")
+    ys = zone_positions(0, clear, l0, s0, s)
+    y = clear + s0
+    while y < H:
+        ys.append(y); y += s0  # through the joint
+    for y in ys:
+        sh.line("REBAR_STIRRUP", (x0 + COVER_MM, y), (x0 + b - COVER_MM, y))
+    for za, zb, lab in ((0, l0, f"l0={l0}: Φ{dt}@{s0}"), (l0, clear - l0, f"Φ{dt}@{s}"), (clear - l0, clear, f"l0: Φ{dt}@{s0}")):
+        sh.line("ZONE", (x0 - 250, za), (x0 - 250, zb))
+        sh.line("ZONE", (x0 - 320, za), (x0 - 180, za))
+        sh.text("REBAR_TEXT", (x0 - 1300, (za + zb) / 2), 80, lab)
+    sh.text("REBAR_TEXT", (x0 - 1300, H + 560), 120, tag)
+    sh.text("REBAR_TEXT", (x0 - 1300, H + 380), 90, f"{g['members']} col.  {b:.0f}x{h:.0f}  {g['bars']}")
+    # section
+    oy = H + 900
+    sh.poly("CONCRETE", [(x0, oy), (x0 + b, oy), (x0 + b, oy + h), (x0, oy + h)], closed=True)
+    sh.poly("REBAR_STIRRUP", [(x0 + COVER_MM, oy + COVER_MM), (x0 + b - COVER_MM, oy + COVER_MM),
+                              (x0 + b - COVER_MM, oy + h - COVER_MM), (x0 + COVER_MM, oy + h - COVER_MM)], closed=True)
+    inset = COVER_MM + dt + d / 2
+    pts = _column_bar_positions(n, b, h, inset)
+    for px, py in pts:
+        sh.circle("REBAR_MAIN", (x0 + px, oy + py), d / 2)
+    n_cross = 0
+    for px in sorted({p[0] for p in pts if inset + 1 < p[0] < b - inset - 1}):
+        sh.line("REBAR_STIRRUP", (x0 + px, oy + COVER_MM), (x0 + px, oy + h - COVER_MM)); n_cross += 1
+    for py in sorted({p[1] for p in pts if inset + 1 < p[1] < h - inset - 1}):
+        sh.line("REBAR_STIRRUP", (x0 + COVER_MM, oy + py), (x0 + b - COVER_MM, oy + py)); n_cross += 1
+    sh.text("REBAR_TEXT", (x0 + b / 2, oy + h + 120), 80, f"{len(pts)}Φ{d} + hoop Φ{dt}", center=True)
+    hoop = _r10(2 * (b - 2 * COVER_MM) + 2 * (h - 2 * COVER_MM) + 20 * dt)
+    rows.append(BarRow(f"{tag}-V1", tag, d, "straight (lap above floor)", _r10(H + lap), n * g["members"]))
+    rows.append(BarRow(f"{tag}-H1", tag, dt, "closed hoop 135°", hoop, len(ys) * g["members"]))
+    if n_cross:
+        rows.append(BarRow(f"{tag}-H2", tag, dt, "cross-tie 135°/90°", _r10(max(b, h) - 2 * COVER_MM + 20 * dt), n_cross * len(ys) * g["members"]))
+    return x0 + b + COL_PITCH
+
+
+def _schedule(sh: _Sheet, rows: list[BarRow], top: float) -> float:
+    cols = [("Mark", 3200), ("Φ (mm)", 1100), ("Shape / شکل", 3300), ("Length (mm)", 1500), ("Count", 1100), ("Weight (kg)", 1500)]
+    rh, x, y = 230, 0.0, top
+    widths = [w for _, w in cols]
+    W = sum(widths)
+    sh.poly("TABLE", [(0, y), (W, y), (W, y - rh), (0, y - rh)], closed=True)
+    for name, w in cols:
+        sh.text("TABLE", (x + 60, y - rh + 60), 110, name, style="PERSIAN"); x += w
+    y -= rh
+    for r in rows:
+        vals = [r.mark, str(r.d), r.shape, str(r.length_mm), str(r.count), f"{r.weight_kg:.1f}"]
+        x = 0.0
+        for v, w in zip(vals, widths):
+            sh.text("TABLE", (x + 60, y - rh + 60), 100, v); x += w
+        y -= rh
+        sh.line("TABLE", (0, y), (W, y))
+    xx = 0.0
+    for w in widths[:-1]:
+        xx += w; sh.line("TABLE", (xx, top), (xx, y))
+    sh.line("TABLE", (0, top), (0, y)); sh.line("TABLE", (W, top), (W, y))
+    by_d: dict[int, float] = {}
+    for r in rows:
+        by_d[r.d] = by_d.get(r.d, 0) + r.weight_kg
+    y -= 350
+    for d in sorted(by_d):
+        sh.text("TABLE", (0, y), 130, f"Φ{d}: {by_d[d]:.1f} kg"); y -= 230
+    total = sum(by_d.values())
+    sh.text("TABLE", (0, y - 80), 180, f"TOTAL STEEL / وزن کل میلگرد: {total:.1f} kg  (+ waste not included)", style="PERSIAN")
+    return total
+
+
+def build_rebar_doc(inp, design: dict[str, Any], project: str = "3D frame") -> tuple[Any, list[BarRow], float]:
+    if not design or not design.get("beams"):
+        raise ValueError("rebar detailing needs the Mabhas 9 design (design_code MABHAS9)")
+    doc = ezdxf.new("R2010", setup=True)
+    doc.header["$INSUNITS"] = 4  # mm
+    doc.styles.add("LATIN", font="arial.ttf")
+    doc.styles.add("PERSIAN", font="tahoma.ttf")
+    for name, color in LAYERS.items():
+        if name not in doc.layers:
+            doc.layers.add(name, color=color)
+    msp = doc.modelspace()
+    rows: list[BarRow] = []
+    beams, columns = design["beams"], design["columns"]
+    # layout sizes
+    nsp_max = max(_beam_spans(inp, g["direction"])[0] * _beam_spans(inp, g["direction"])[1] for g in beams)
+    beam_row_h = inp.beam_h_m * 1000 + 2400
+    sheet_w = max(nsp_max + 8000, len(columns) * (inp.column_b_m * 1000 + COL_PITCH) + 3000, 12500, 20000)
+    pitch = sheet_w + 4000
+    heights = [len(beams) * beam_row_h + 6000, inp.storey_height_m * 1000 + inp.column_h_m * 1000 + 6500, 0]
+    # sheet 1: beams
+    s1 = _Sheet(msp, 0, "R-01")
+    y = 3500.0
+    for g in sorted(beams, key=lambda g: (g["direction"], -g["storey"], g["position"]), reverse=False):
+        _draw_beam(s1, y + 700, g, inp, rows)
+        y += beam_row_h
+    # sheet 2: columns
+    s2 = _Sheet(msp, pitch, "R-02")
+    x = 1800.0
+    s2.y0 = 4200.0  # above the title block
+    for g in sorted(columns, key=lambda g: (g["storey"], g["position"])):
+        x = _draw_column(s2, x, g, inp, rows)
+    # sheet 3: schedule
+    s3 = _Sheet(msp, 2 * pitch, "R-03")
+    heights[2] = len(rows) * 230 + 3000 + 3500 + 2500
+    H = max(heights)
+    s2.y0 = 0.0
+    total = _schedule(s3, rows, H - 1600)
+    for i, s in enumerate(DETAILING_BASIS + DETAILING_ASSUMPTIONS):
+        s3.text("NOTES", (13200, H - 1600 - i * 260), 120, ("[code] " if i < len(DETAILING_BASIS) else "[assumed] ") + s)
+    titles = [("نقشه آرماتوربندی تیرها", "BEAM REINFORCEMENT DETAILS"),
+              ("نقشه آرماتوربندی ستون‌ها", "COLUMN REINFORCEMENT DETAILS"),
+              ("جدول مشخصات و وزن میلگردها", "BAR BENDING SCHEDULE")]
+    for k, (sh, (fa, en)) in enumerate(zip((s1, s2, s3), titles), start=1):
+        sh.text("TITLE", (0.25 * pitch, H + 600), 420, f"R-{k:02d} {en}", center=False)
+        _title_block(sh, sheet_w, H + 1500, k, fa, en, project)
+    return doc, rows, total
+
+
+def build_dxf_rebar(inp, raw: dict[str, Any] | None = None, design: dict[str, Any] | None = None) -> str:
+    doc, _, _ = build_rebar_doc(inp, design or {})
+    buf = io.StringIO()
+    doc.write(buf)
+    return buf.getvalue()
