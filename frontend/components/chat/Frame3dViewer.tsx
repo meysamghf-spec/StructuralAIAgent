@@ -28,7 +28,7 @@ type Display = "NONE" | DiagramKind | "DC";
 
 const BG = 0x1f2a38;
 
-export default function Frame3dViewer({ data, results, t, onClose }: { data: ViewerData; results: Frame3dResults; t: T; onClose: () => void }) {
+export default function Frame3dViewer({ data, results, t, onClose, embedded = false }: { data: ViewerData; results: Frame3dResults; t: T; onClose?: () => void; embedded?: boolean }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const apiRef = useRef<{ setView: (v: ViewPreset) => void } | null>(null);
   const camRef = useRef<{ pos: number[]; target: number[]; rotate: boolean } | null>(null);
@@ -369,7 +369,7 @@ export default function Frame3dViewer({ data, results, t, onClose }: { data: Vie
   const driftMax = Math.max(0.01, ...drift.map((d) => d.ratioAmplifiedPct ?? 0), results.driftReferenceLimitPct ?? 0);
 
   return (
-    <div className="v3d-overlay" dir={rtl ? "rtl" : "ltr"} lang={results.lang} role="dialog" aria-label={t("3D model view")}>
+    <div className={embedded ? "v3d-overlay v3d-embedded" : "v3d-overlay"} dir={rtl ? "rtl" : "ltr"} lang={results.lang} role="dialog" aria-label={t("3D model view")}>
       <div className="v3d-toolbar">
         <strong>{t("3D model view")}</strong>
         {(["3D", "PLAN", "ELEV_X", "ELEV_Y"] as ViewPreset[]).map((v) => (
@@ -418,9 +418,11 @@ export default function Frame3dViewer({ data, results, t, onClose }: { data: Vie
         <label><input type="checkbox" checked={showDeformed} onChange={(e) => setShowDeformed(e.target.checked)} /> {t("Deformed")}</label>
         <input type="range" min={0.2} max={5} step={0.1} value={scaleMul} onChange={(e) => setScaleMul(Number(e.target.value))} aria-label={t("Scale")} />
         <label><input type="checkbox" checked={animate} onChange={(e) => setAnimate(e.target.checked)} /> {t("Animate")}</label>
-        <button type="button" className="v3d-btn v3d-close" onClick={onClose}>
-          {t("Close")}
-        </button>
+        {onClose ? (
+          <button type="button" className="v3d-btn v3d-close" onClick={onClose}>
+            {t("Close")}
+          </button>
+        ) : null}
       </div>
       <div className="v3d-body">
         <aside className="v3d-tree">

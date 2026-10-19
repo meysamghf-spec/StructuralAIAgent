@@ -165,3 +165,7 @@ Proprietary — internal development.
 - Collapsible project chat dock (💬, bottom-right) on every /projects and /workspace page — same thread and result cards (3D viewer included).
 - Model page: quick 3D-frame form (geometry, sections, materials, loads, 2800, Mabhas 9, allowable bearing, import from last chat frame) → `POST /api/v1/frame3d/run` (same engine as chat). Analysis/Results/Design pages show the same result card + 3D viewer; old PEM tools are collapsed under "Advanced".
 - Hidden from the menu (code kept; `NEXT_PUBLIC_SHOW_ALL_PAGES=1` shows them): Optimization, Learning, Traceability, Upgrades, AI Assistant.
+
+### Phase 8: every sidebar page shows the project's content
+- CAD: built-in DXF viewer (plans.dxf incl. foundation plan sheet, frame3d.dxf) with layer toggles, sheet/story selector, pan/zoom, fit, downloads (DXF/e2k/f2k) — no AutoCAD needed.
+- Model/Analysis/Results/Design: embedded 3D viewer + result tables (Design opens in D/C colour view). Reports: rendered HTML calculation report (download / print to PDF) + exports. Files: inline preview (images, PDF, DXF in the DXF viewer, text/e2k/f2k). Memory: list with empty-state hint. Empty states link to the project chat.

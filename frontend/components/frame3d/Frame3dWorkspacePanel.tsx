@@ -3,7 +3,11 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import dynamic from "next/dynamic";
+
 import { Frame3dResultCard } from "@/components/chat/Frame3dResultCard";
+import { makeT } from "@/lib/frame3d-i18n";
+import { projectChatHref } from "@/lib/current-project";
 import { apiFetch } from "@/lib/api";
 import { mapFrame3dResults } from "@/lib/chat-mappers";
 import { getCurrentProjectId, PROJECT_EVENT } from "@/lib/current-project";
@@ -19,6 +23,8 @@ import {
   saveFrame3dPayload,
 } from "@/lib/frame3d-store";
 import { useUiLang } from "@/hooks/useUiLang";
+
+const Frame3dViewer = dynamic(() => import("@/components/chat/Frame3dViewer"), { ssr: false });
 
 type Mode = "model" | "analysis" | "results" | "design";
 
@@ -161,11 +167,68 @@ export function Frame3dWorkspacePanel({ mode }: { mode: Mode }) {
       ) : null}
       {note ? <p className="muted">{note}</p> : null}
       {error ? <p className="alert error">{error}</p> : null}
+      {results?.viewer ? (
+        <Frame3dViewer data={results.viewer} results={results} t={makeT(results.lang)} embedded />
+      ) : null}
       {results ? (
         <Frame3dResultCard results={results} />
       ) : mode !== "model" ? (
-        <p className="muted">{t("No 3D frame result yet. Build one on the Model page or describe a frame in the chat.")}</p>
+        <EmptyHint projectId={projectId} />
       ) : null}
     </section>
   );
+}
+
+export function EmptyHint({ projectId, text }: { projectId: string | null; text?: string }) {
+  const { t } = useUiLang();
+  return (
+    <div className="empty-state">
+      <p>{text ?? t("No 3D frame result yet. Build one on the Model page or describe a frame in the chat.")}</p>
+      <p>
+        {t("Example prompt")}: <code dir="ltr">3-storey RC frame, 2x2 bays of 5 m, storey height 3.2 m, Standard 2800 high hazard soil II, design per Mabhas 9, foundation</code>
+      </p>
+      <p>
+        <Link className="button" href={projectId ? projectChatHref(projectId) : "/"}>
+          {t("Create in chat")}
+        </Link>{" "}
+        <Link className="button secondary" href="/workspace/model">
+          {t("Go to Model")}
+        </Link>
+      </p>
+    </div>
+  );
+}
+
+/** Latest frame3d result of the current project (payload stored by chat/manual runs; re-run from saved inputs if needed). */
+export function useLatestFrame3d() {
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [payload, setPayload] = useState<unknown>(null);
+  const [inputs, setInputs] = useState<Record<string, unknown> | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    const sync = () => {
+      const pid = getCurrentProjectId();
+      setProjectId(pid);
+      const saved = loadFrame3dInputs(pid);
+      setInputs(saved);
+      const p = loadFrame3dPayload(pid);
+      setPayload(p);
+      if (!p && saved) {
+        runFrame3d(saved)
+          .then((fresh) => {
+            saveFrame3dPayload(pid, fresh);
+          })
+          .catch((err) => setError(err instanceof Error ? err.message : String(err)));
+      }
+    };
+    sync();
+    window.addEventListener(PROJECT_EVENT, sync);
+    window.addEventListener(FRAME3D_EVENT, sync);
+    return () => {
+      window.removeEventListener(PROJECT_EVENT, sync);
+      window.removeEventListener(FRAME3D_EVENT, sync);
+    };
+  }, []);
+  const results = payload ? mapFrame3dResults(payload) : null;
+  return { projectId, payload, inputs: (results?.inputs as Record<string, unknown> | null) ?? inputs, results, error };
 }

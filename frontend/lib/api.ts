@@ -879,3 +879,26 @@ export async function archiveBuilderAgent(agentId: string): Promise<AgentDefinit
     method: "POST",
   });
 }
+
+
+/** Fetch a frame3d export (e2k/f2k/dxf) as text, for in-page viewers. */
+export async function fetchFrame3dExportText(format: string, inputs: Record<string, unknown>): Promise<string> {
+  const response = await fetch(`${getApiBaseUrl()}/api/v1/frame3d/export`, {
+    method: "POST",
+    headers: buildJsonHeaders(),
+    body: JSON.stringify({ format, inputs }),
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(`Export failed (${response.status})`);
+  return response.text();
+}
+
+/** Fetch a project file as a Blob (for inline preview). */
+export async function fetchProjectFileBlob(projectId: string, fileId: string): Promise<Blob> {
+  const response = await fetch(`${getApiBaseUrl()}/api/v1/projects/${projectId}/files/${fileId}/content`, {
+    headers: getAuthHeaders(),
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(`Preview failed (${response.status})`);
+  return response.blob();
+}

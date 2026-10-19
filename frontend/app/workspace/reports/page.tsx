@@ -1,10 +1,14 @@
-import { Suspense } from "react";
+import { LegacySection } from "@/components/frame3d/LegacySection";
+import { ReportPanel } from "@/components/frame3d/ReportPanel";
 import ReportsWorkspaceClient from "./ReportsWorkspaceClient";
 
 export default function ReportsWorkspacePage() {
   return (
-    <Suspense fallback={<p className="muted">Loading reports…</p>}>
-      <ReportsWorkspaceClient />
-    </Suspense>
+    <>
+      <ReportPanel />
+      <LegacySection label="reports">
+        <ReportsWorkspaceClient />
+      </LegacySection>
+    </>
   );
 }

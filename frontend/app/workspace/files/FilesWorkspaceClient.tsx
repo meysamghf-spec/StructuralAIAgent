@@ -5,12 +5,19 @@ import { useProjectScope } from "@/hooks/useProjectScope";
 import { listProjectFiles, uploadProjectFile, type ProjectFileSummary } from "@/lib/api";
 import { formatWorkspaceDate, getFileStatusLabel } from "@/lib/workspace";
 import { useCallback, useEffect, useState } from "react";
+import { FilePreview } from "@/components/files/FilePreview";
+import { downloadProjectFile } from "@/lib/api";
+import { useUiLang } from "@/hooks/useUiLang";
+import Link from "next/link";
+import { projectChatHref } from "@/lib/current-project";
 
 export default function FilesWorkspaceClient() {
   const { projects, selectedProjectId, setSelectedProjectId, loading, error, setError } =
     useProjectScope();
   const [files, setFiles] = useState<ProjectFileSummary[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const { t } = useUiLang();
 
   const refresh = useCallback(async (projectId: string) => {
     if (!projectId) {
@@ -82,7 +89,15 @@ export default function FilesWorkspaceClient() {
 
       <section className="card">
         <h3>Uploaded files</h3>
-        {files.length === 0 ? <p className="muted">No files uploaded yet.</p> : null}
+        {files.length === 0 ? (
+          <div className="empty-state">
+            <p>{t("No files uploaded yet.")}</p>
+            <p>
+              {t("Upload above, or attach files in the chat.")}{" "}
+              <Link href={selectedProjectId ? projectChatHref(selectedProjectId) : "/"}>{t("Create in chat")}</Link>
+            </p>
+          </div>
+        ) : null}
         <ul className="workspace-list">
           {files.map((file) => (
             <li key={file.id} className="workspace-list-item compact">
@@ -91,6 +106,15 @@ export default function FilesWorkspaceClient() {
                 <p className="muted">
                   {getFileStatusLabel(file.extraction_status)} · Uploaded {formatWorkspaceDate(file.upload_time)}
                 </p>
+                <p>
+                  <button type="button" className="link-button" onClick={() => setPreviewId(previewId === file.id ? null : file.id)}>
+                    {previewId === file.id ? t("Hide preview") : t("Preview")}
+                  </button>{" "}
+                  <button type="button" className="link-button" onClick={() => void downloadProjectFile(selectedProjectId, file.id, file.filename)}>
+                    {t("Download")}
+                  </button>
+                </p>
+                {previewId === file.id && selectedProjectId ? <FilePreview projectId={selectedProjectId} file={file} /> : null}
               </div>
             </li>
           ))}

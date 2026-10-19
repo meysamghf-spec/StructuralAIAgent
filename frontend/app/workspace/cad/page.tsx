@@ -1,10 +1,14 @@
-import { Suspense } from "react";
+import { CadDrawingsPanel } from "@/components/cad/CadDrawingsPanel";
+import { LegacySection } from "@/components/frame3d/LegacySection";
 import CadWorkspaceClient from "./CadWorkspaceClient";
 
 export default function CadWorkspacePage() {
   return (
-    <Suspense fallback={<p className="muted">Loading CAD workspace…</p>}>
-      <CadWorkspaceClient />
-    </Suspense>
+    <>
+      <CadDrawingsPanel />
+      <LegacySection label="cad">
+        <CadWorkspaceClient />
+      </LegacySection>
+    </>
   );
 }

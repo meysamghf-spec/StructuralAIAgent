@@ -1,4 +1,5 @@
 "use client";
+import { useUiLang } from "@/hooks/useUiLang";
 
 import { ProjectScopePanel } from "@/components/workspace/ProjectScopePanel";
 import { useProjectScope } from "@/hooks/useProjectScope";
@@ -7,6 +8,7 @@ import { formatWorkspaceDate, getMemoryTypeLabel, truncateText } from "@/lib/wor
 import { useCallback, useEffect, useState } from "react";
 
 export default function MemoryWorkspaceClient() {
+  const { t } = useUiLang();
   const { projects, selectedProjectId, setSelectedProjectId, loading, error, setError } =
     useProjectScope();
   const [memories, setMemories] = useState<MemorySummary[]>([]);
@@ -68,7 +70,12 @@ export default function MemoryWorkspaceClient() {
 
       <section className="card">
         <h3>Recent memory</h3>
-        {memories.length === 0 ? <p className="muted">No project memory recorded yet.</p> : null}
+        {memories.length === 0 ? (
+          <div className="empty-state">
+            <p>{t("No project memory recorded yet.")}</p>
+            <p>{t("Memory is filled automatically when you analyse a frame or discuss decisions in the project chat.")}</p>
+          </div>
+        ) : null}
         <ul className="workspace-list">
           {memories.map((memory) => (
             <li key={memory.id} className="workspace-list-item compact">
