@@ -161,3 +161,23 @@ def test_meysam_prompt_routes_to_frame3d_handler():
         out = res.structured_output
         assert out["frame3d_analysis"]["status"] == "completed" and out["frame3d_analysis"]["design"]["status"] in ("PASS", "CHECK")
         assert "solver adapter" not in str(out.get("user_summary"))
+
+
+def test_viewer_payload_consistent_and_compact():
+    import json
+    p = f3.build_frame3d_payload(MEYSAM)
+    v = p["viewer"]
+    assert len(json.dumps(v)) < 200_000
+    assert set(v["cases"]) >= {"D", "L", "Ex", "Ey"} and v["combos"]["1.2D+1.6L"] == {"D": 1.2, "L": 1.6}
+    ids = {n["id"] for n in v["nodes"]}
+    assert all(m["i"] in ids and m["j"] in ids for m in v["members"])
+    # beam equilibrium: Mj = Mi + L*Vi + w L^2/2
+    for m in v["members"]:
+        if m["type"] == "beam":
+            N, Vi, Mi, Mj, w = v["forces"]["D"][m["id"]]
+            assert abs(Mi + 5 * Vi + w * 12.5 - Mj) < 0.1
+    assert all(m["dc"] is not None and m["section"] for m in v["members"])
+    # base reactions balance the gravity reaction of the D case
+    fz = sum(r[2] for r in v["reactions"]["D"].values())
+    assert abs(fz - p["gravity_reaction_kn"]["D"]) < 1.0
+    assert len(v["footings"]) == 9

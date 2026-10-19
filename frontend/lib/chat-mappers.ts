@@ -1,3 +1,4 @@
+import { mapViewerData, storeyShears } from "./frame3d-viewer";
 /** Map backend chat payloads to frontend chat domain types. */
 
 import { mapToolExecution } from "./agent-run-sse";
@@ -342,6 +343,12 @@ export function mapFrame3dResults(raw: unknown): Frame3dResults | null {
     modal: mapFrame3dModal(data.modal),
     design: mapFrame3dDesign(data.design),
     lang: data.lang === "fa" ? "fa" : "en",
+    viewer: mapViewerData(data.viewer),
+    storeyLateral: storeyShears(
+      data.seismic && typeof data.seismic === "object"
+        ? ((data.seismic as Record<string, unknown>).F_level_kn as Record<string, number> | undefined)
+        : undefined,
+    ),
     foundation: mapFrame3dFoundation(data.foundation),
     exports: mapFrame3dExports(data.exports),
     exportRequested: stringList(data.export_requested),

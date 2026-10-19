@@ -4,7 +4,10 @@ import { useState } from "react";
 
 import { downloadFrame3dExport } from "@/lib/api";
 import type { Frame3dExport, Frame3dResults } from "@/lib/chat-types";
+import dynamic from "next/dynamic";
 import { isRtl, makeT } from "@/lib/frame3d-i18n";
+
+const Frame3dViewer = dynamic(() => import("./Frame3dViewer"), { ssr: false });
 
 type T = (key: string) => string;
 
@@ -18,6 +21,7 @@ export function Frame3dResultCard({ results }: Frame3dResultCardProps) {
   const t = makeT(results.lang);
   const rtl = isRtl(results.lang);
   const is2800 = results.seismicCode === "IRAN_2800";
+  const [viewerOpen, setViewerOpen] = useState(false);
 
   return (
     <section className="engineering-result-card" aria-label={t("3D frame analysis")} dir={rtl ? "rtl" : "ltr"} lang={results.lang}>
@@ -56,6 +60,16 @@ export function Frame3dResultCard({ results }: Frame3dResultCardProps) {
       {completed && results.gridX.length > 1 && results.gridY.length > 1 ? (
         <div className="engineering-result-block">
           <p className="engineering-result-label">{t("Plan (beams and columns)")}</p>
+          {results.viewer ? (
+            <p>
+              <button type="button" className="button" onClick={() => setViewerOpen(true)}>
+                {t("Open 3D view")}
+              </button>
+            </p>
+          ) : null}
+          {viewerOpen && results.viewer ? (
+            <Frame3dViewer data={results.viewer} results={results} t={t} onClose={() => setViewerOpen(false)} />
+          ) : null}
           <PlanView xs={results.gridX} ys={results.gridY} label={t("Frame plan")} />
         </div>
       ) : null}

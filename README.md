@@ -155,3 +155,7 @@ Proprietary — internal development.
 - Isolated-footing design (service bearing + kern, one-way/punching shear, flexure, overlap check) runs in the 3D-frame chat flow; allowable bearing from the prompt (`تنش مجاز خاک 200 kPa` / `allowable bearing 200 kPa`, default 150 kPa flagged as assumed). Footings appear in the card, `plans.dxf` (FOUNDATION layer) and `.f2k`.
 - The result card and chat reply follow the prompt language (Persian → RTL Persian card). Backend: `frame3d_i18n.py`; frontend: `lib/frame3d-i18n.ts`.
 - The "Run analysis" page under /workspace/analysis does not read prompts; send frame descriptions in Chat.
+
+### Phase 6: ETABS-style 3D viewer
+- "Open 3D view" on the 3D-frame result card opens a full-screen viewer (three.js 0.170.0, pinned; run `npm install` in `frontend/` after pulling): orbit/pan/zoom, 3D/Plan/Elevation X/Y presets, story filter and plan-at-story, grid bubbles, joint/frame-section labels, extruded sections, supports, rigid diaphragms, footings, deformed shape per case/combo (scale + animation), M3/V2/axial diagrams with hover values, Mabhas 9 D/C colour map with legend, model explorer, properties panel, story drift plot, story force/shear table and base reactions.
+- Backend payload `viewer`: nodes, members (section, design group, D/C, rebar), per-case member end forces and nodal displacements (combos rebuilt client-side by linear superposition), reactions, footings.
