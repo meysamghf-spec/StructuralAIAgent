@@ -30,7 +30,43 @@ export type ViewerData = {
   xs: number[];
   ys: number[];
   zs: number[];
+  /** Mode shapes (any model): nodal displacement vectors normalised to max |u| = 1. */
+  modes: ViewerMode[];
 };
+export type ViewerMode = {
+  mode: number;
+  T: number;
+  freq: number;
+  mass: { ux: number; uy: number; rz: number };
+  disp: Record<string, number[]>;
+};
+
+export function parseModes(raw: unknown): ViewerMode[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((m): m is Record<string, unknown> => !!m && typeof m === "object" && !!(m as Record<string, unknown>).disp)
+    .map((m, i) => ({
+      mode: num(m.mode, i + 1),
+      T: num(m.T_s),
+      freq: num(m.freq_hz) || (num(m.T_s) > 0 ? 1 / num(m.T_s) : 0),
+      mass: { ux: num(m.mass_x_pct), uy: num(m.mass_y_pct), rz: num(m.mass_rz_pct) },
+      disp: m.disp as Record<string, number[]>,
+    }));
+}
+
+/** Animated mode displacement of one node: amplitude × φ × sin(2π·speed·t) (sinusoidal, any model). */
+export function modeOffset(mode: ViewerMode, nodeId: string, amplitude: number, timeS: number, speed = 1): [number, number, number] {
+  const u = mode.disp[nodeId] ?? [0, 0, 0];
+  const f = amplitude * Math.sin(2 * Math.PI * speed * timeS);
+  return [(u[0] ?? 0) * f, (u[1] ?? 0) * f, (u[2] ?? 0) * f];
+}
+
+/** "animate mode 2" / «مود ۲ را نشان بده» -> 2 */
+export function requestedMode(text: string): number | null {
+  const t = text.replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d))).toLowerCase();
+  const m = /(?:mode|مود)\s*(?:shape\s*)?(?:no\.?\s*)?(\d+)/.exec(t);
+  return m ? Number(m[1]) : null;
+}
 export type DiagramKind = "M3" | "V2" | "P";
 
 function num(v: unknown, d = 0): number {
@@ -92,6 +128,7 @@ export function mapViewerData(raw: unknown): ViewerData | null {
     xs: uniqSorted(nodes.map((n) => n.x)),
     ys: uniqSorted(nodes.map((n) => n.y)),
     zs: uniqSorted(nodes.map((n) => n.z)),
+    modes: parseModes(d.modes),
   };
 }
 

@@ -119,6 +119,15 @@ def _norm(text: str) -> str:
     return (text or "").translate(_PERSIAN_DIGITS).replace("×", "x").replace("*", "x")
 
 
+def requested_mode_shape(user_request: str) -> int | None:
+    """'animate mode 2' / 'show mode shape 3' / «مود ۲ را نشان بده» / «شکل مود ۲» -> mode number."""
+    t = _norm(user_request).lower()
+    m = re.search(r"(?:animate|show|display|نمایش|انیمیشن|شکل)?\s*(?:mode|مود)\s*(?:shape\s*)?(?:no\.?\s*|شماره\s*)?(\d{1,2})", t)
+    if not m or not re.search(r"animate|show|display|view|نشان|نمایش|انیمیشن|شکل|ببینم", t):
+        return None
+    return int(m.group(1))
+
+
 def is_frame3d_request(user_request: str) -> bool:
     t = _norm(user_request).lower()
     storey = re.search(r"stor(e)?y|stories|storeys|floors?\b|طبقه", t)
@@ -745,7 +754,18 @@ def _modal_response_spectrum(inp, lateral_prep, nodes, XS, YS, Z, W, centre, V_s
         rs[dname] = {"V_dynamic_kn": v_dyn, "V_static_kn": V_static, "ratio": v_dyn / V_static,
                      "scale_factor": scale, "V_dynamic_scaled_kn": v_dyn * scale, "drift": drift_rows}
     modes_90 = {key: next((m["mode"] for m in mode_table if m[f"cum_{key.lower()}_pct"] >= 90.0), None) for key in ("X", "Y")}
-    return {"method": "Modal (condensed diaphragm DOFs) + Standard 2800 design spectrum A·B·I/R, CQC (5% damping)",
+    # nodal mode shapes for the viewer animation: static response to the modal inertia forces ω²·M·φ, normalised to 1
+    shapes = []
+    for i, (r, w) in enumerate(zip(rows[:MAX_MODE_SHAPES], omegas)):
+        res = solve([mass[q] * r["phi"][q] * w * w for q in range(n)])
+        disp = {nid: list(u[:3]) for nid, u in res.displacements.items()}
+        peak = max((max(abs(c) for c in u) for u in disp.values()), default=0.0) or 1.0
+        t_row = mode_table[i]
+        shapes.append({"mode": i + 1, "T_s": round(r["T"], 4), "freq_hz": round(1.0 / r["T"], 4),
+                       "mass_x_pct": round(t_row["mass_x_pct"], 2), "mass_y_pct": round(t_row["mass_y_pct"], 2),
+                       "mass_rz_pct": round(t_row["mass_rz_pct"], 2),
+                       "disp": {nid: [round(c / peak, 4) for c in u] for nid, u in disp.items()}})
+    return {"shapes": shapes, "method": "Modal (condensed diaphragm DOFs) + Standard 2800 design spectrum A·B·I/R, CQC (5% damping)",
             "modes": mode_table, "modes_for_90pct": modes_90, "response_spectrum": rs,
             "T_fundamental_s": mode_table[0]["T_s"] if mode_table else None}
 
@@ -767,6 +787,9 @@ def _r(v: float, n: int = 2) -> float:
 def _loc(payload: dict[str, Any]) -> dict[str, Any]:
     """Persian prompt -> Persian free text (status codes / ids / numbers stay as they are)."""
     return i18n.translate_payload(payload) if payload.get("lang") == "fa" else payload
+
+
+MAX_MODE_SHAPES = 6
 
 
 def _viewer_raw(nodes, beams, cols, base, cases, combos, supports) -> dict[str, Any]:
@@ -840,7 +863,8 @@ def _viewer_payload(raw: dict[str, Any], inp: "Frame3dInputs", design: dict[str,
     return {**{k: v[k] for k in ("nodes", "supports", "cases", "combos", "forces", "displacements_mm", "reactions")},
             "members": members,
             "footings": (fdn or {}).get("footings") or [],
-            "diaphragm_levels": list(range(1, inp.storeys + 1))}
+            "diaphragm_levels": list(range(1, inp.storeys + 1)),
+            "modes": (raw.get("modal") or {}).get("shapes") or []}
 
 
 def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None = None, *,
@@ -852,7 +876,9 @@ def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None =
     from_memory = False
     a_upd, inp_upd = da.parse_assumptions(user_request) if manual_inputs is None else ({}, {})
     show_assumptions = manual_inputs is None and da.is_show_assumptions(user_request)
-    assumption_cmd = bool(a_upd or inp_upd or show_assumptions)
+    # input-only values (fy, fc, ...) count as an assumption command only on an existing project frame
+    animate_mode = requested_mode_shape(user_request) if manual_inputs is None else None
+    assumption_cmd = bool(a_upd or show_assumptions or (inp_upd and prior_spec) or animate_mode)
     if manual_inputs is not None:
         inp = inputs_from_dict(manual_inputs)
         inp.parsed = [k for k, v in manual_inputs.items() if v is not None and not k.startswith("_")]
@@ -867,7 +893,9 @@ def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None =
         if wants_foundation(user_request):
             inp.foundation = True
         if "dxf_rebar" in export_formats or a_upd:
-            inp.design_code = "MABHAS9"  # detailing is built from the Mabhas 9 design groups
+            inp.design_code = "MABHAS9"
+        if animate_mode:
+            inp.seismic_code = "IRAN_2800"  # mode shapes come from the 2800 modal analysis  # detailing is built from the Mabhas 9 design groups
         if "allowable_bearing_kpa" in follow.parsed:
             inp.allowable_bearing_kpa = follow.allowable_bearing_kpa
             inp.parsed = [*inp.parsed, "allowable_bearing_kpa"]
@@ -899,7 +927,7 @@ def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None =
         "export_requested": export_formats, "model_from_project_memory": from_memory,
         "spec": frame3d_spec(inp), "lang": inp.lang,
         "detailing_assumptions": da.describe(inp.assumptions, inp, inp.lang, changed),
-        "assumptions_changed": sorted(changed), "assumptions_command": "show" if show_assumptions and not changed else ("update" if changed else None),
+        "assumptions_changed": sorted(changed), "animate_mode": animate_mode, "assumptions_command": "show" if show_assumptions and not changed else ("update" if changed else None),
     }
     missing = missing_inputs(inp)
     if missing:

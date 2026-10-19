@@ -173,3 +173,19 @@ def test_assumption_prompt_routes_to_frame_agent():
     from app.application.agent_intent_routing import score_agent_intents
     top = max(score_agent_intents("پوشش ۵۰ میلی‌متر، قطع آرماتور در ln/4"), key=lambda m: m.score)
     assert top.agent_type.value == "ANALYSIS_AGENT"
+
+
+def test_mode_shapes_in_viewer_and_chat_command():
+    from app.application.frame3d_chat_analysis import requested_mode_shape
+
+    assert requested_mode_shape("مود ۲ را نشان بده") == 2 and requested_mode_shape("animate mode 3") == 3
+    assert requested_mode_shape("3 storey frame, 2 modes") is None
+    p = build_frame3d_payload("مود ۲ را نشان بده", prior_spec=dict(INPUTS))
+    assert p["status"] == "completed" and p["animate_mode"] == 2
+    modes = p["viewer"]["modes"]
+    assert len(modes) == 6 and modes[1]["mode"] == 2 and modes[1]["T_s"] > 0
+    assert abs(modes[0]["freq_hz"] - 1 / modes[0]["T_s"]) < 1e-3
+    assert {"mass_x_pct", "mass_y_pct", "mass_rz_pct"} <= set(modes[0])
+    disp = modes[0]["disp"]
+    assert set(disp) == {n["id"] for n in p["viewer"]["nodes"]}
+    assert max(max(abs(c) for c in u) for u in disp.values()) == 1.0

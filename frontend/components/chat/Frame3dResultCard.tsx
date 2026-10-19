@@ -23,7 +23,7 @@ export function Frame3dResultCard({ results }: Frame3dResultCardProps) {
   const t = makeT(results.lang);
   const rtl = isRtl(results.lang);
   const is2800 = results.seismicCode === "IRAN_2800";
-  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(results.animateMode != null);
   useEffect(() => {
     if (results.status === "completed" && results.inputs) saveFrame3dInputs(getCurrentProjectId(), results.inputs);
   }, [results.status, results.inputs]);
@@ -73,7 +73,7 @@ export function Frame3dResultCard({ results }: Frame3dResultCardProps) {
             </p>
           ) : null}
           {viewerOpen && results.viewer ? (
-            <Frame3dViewer data={results.viewer} results={results} t={t} onClose={() => setViewerOpen(false)} />
+            <Frame3dViewer data={results.viewer} results={results} t={t} onClose={() => setViewerOpen(false)} initialMode={results.animateMode ?? null} />
           ) : null}
           <PlanView xs={results.gridX} ys={results.gridY} label={t("Frame plan")} />
         </div>

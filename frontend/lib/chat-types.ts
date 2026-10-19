@@ -269,6 +269,7 @@ export type Frame3dResults = {
   kind: "frame3d_analysis";
   lang: "en" | "fa";
   viewer: import("./frame3d-viewer").ViewerData | null;
+  animateMode?: number | null;
   storeyLateral: Array<{ storey: number; forceKn: number; shearKn: number }>;
   foundation: Frame3dFoundation | null;
   status: string;

@@ -484,7 +484,27 @@ class ConversationService:
         self._maybe_persist_demo_memory(conversation, account, assistant_metadata)
         self._maybe_persist_frame3d_memory(conversation, account, assistant_metadata)
         self._maybe_persist_aci_beam_memory(conversation, account, assistant_metadata)
+        self._maybe_create_run_approval(conversation, account, assistant_metadata)
         return assistant_content, assistant_metadata
+
+    def _maybe_create_run_approval(self, conversation, account: AuthenticatedAccount, assistant_metadata: dict) -> None:
+        """Every completed engineering run (any registered module kind) gets a pending approval item (revision 1)."""
+        if conversation.project_id is None:
+            return
+        payload = assistant_metadata.get("engineering_results")
+        if not isinstance(payload, dict):
+            return
+        try:
+            from app.application import revision_workflow
+            from app.application.service_factory import build_human_approval_service
+
+            approval = revision_workflow.create_run_approval(
+                build_human_approval_service(), conversation.project_id, account.account_id, payload,
+                conversation_id=str(conversation.id))
+        except Exception:  # noqa: BLE001 - the chat answer must not fail because of the approval item
+            return
+        if approval is not None:
+            assistant_metadata["run_approval_id"] = str(approval.id)
 
     def _run_general_chat(
         self,

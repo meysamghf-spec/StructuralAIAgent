@@ -16,6 +16,7 @@ import {
   maxAbs,
   memberForces,
   memberLength,
+  modeOffset,
   nodeDisplacement,
   type DiagramKind,
   type ViewerData,
@@ -28,7 +29,7 @@ type Display = "NONE" | DiagramKind | "DC";
 
 const BG = 0x1f2a38;
 
-export default function Frame3dViewer({ data, results, t, onClose, embedded = false }: { data: ViewerData; results: Frame3dResults; t: T; onClose?: () => void; embedded?: boolean }) {
+export default function Frame3dViewer({ data, results, t, onClose, embedded = false, initialMode = null }: { data: ViewerData; results: Frame3dResults; t: T; onClose?: () => void; embedded?: boolean; initialMode?: number | null }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const apiRef = useRef<{ setView: (v: ViewPreset) => void } | null>(null);
   const camRef = useRef<{ pos: number[]; target: number[]; rotate: boolean } | null>(null);
@@ -39,6 +40,16 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
   const [extruded, setExtruded] = useState(false);
   const [showDeformed, setShowDeformed] = useState(false);
   const [animate, setAnimate] = useState(false);
+  const modes = data.modes ?? [];
+  const [modeNo, setModeNo] = useState<number | null>(initialMode && modes.some((m) => m.mode === initialMode) ? initialMode : null);
+  const [playing, setPlaying] = useState(true);
+  const [modeScale, setModeScale] = useState(1);
+  const [modeSpeed, setModeSpeed] = useState(0.5);
+  const modeCtl = useRef({ scale: 1, speed: 0.5, playing: true, phaseT: 0 });
+  modeCtl.current.scale = modeScale;
+  modeCtl.current.speed = modeSpeed;
+  modeCtl.current.playing = playing;
+  const activeMode = modes.find((m) => m.mode === modeNo) ?? null;
   const [display, setDisplay] = useState<Display>(data.members.some((m) => m.dc !== null) ? "DC" : "NONE");
   const loads = useMemo(() => loadOptions(data), [data]);
   const [load, setLoad] = useState<string>(loads.find((l) => l.startsWith("1.2D+1.6L")) ?? loads[0] ?? "D");
@@ -186,7 +197,7 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
         if (extruded) {
           const len = A.distanceTo(B);
           const geo = new THREE.BoxGeometry(m.b, m.h, len);
-          const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: memberColor(m), transparent: showDeformed, opacity: showDeformed ? 0.35 : 1 }));
+          const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: memberColor(m), transparent: showDeformed || !!activeMode, opacity: activeMode ? 0.18 : showDeformed ? 0.35 : 1 }));
           mesh.position.copy(A.clone().add(B).multiplyScalar(0.5));
           const dir = B.clone().sub(A).normalize();
           mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
@@ -194,7 +205,7 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
           obj = mesh;
         } else {
           const geo = new THREE.BufferGeometry().setFromPoints([A, B]);
-          obj = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: memberColor(m), transparent: showDeformed, opacity: showDeformed ? 0.35 : 1 }));
+          obj = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: memberColor(m), transparent: showDeformed || !!activeMode, opacity: activeMode ? 0.18 : showDeformed ? 0.35 : 1 }));
         }
         obj.userData = { id: m.id };
         scene.add(obj);
@@ -275,6 +286,32 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
       };
       placeDeformed(1);
 
+      // mode shape animation (generic: nodal φ vectors; members drawn as straight lines between displaced nodes)
+      const modeLines: Array<{ line: import("three").Line; m: ViewerMember }> = [];
+      if (activeMode) {
+        for (const m of visible) {
+          const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineBasicMaterial({ color: 0x4fc3f7 }));
+          scene.add(line);
+          modeLines.push({ line, m });
+        }
+      }
+      const span = Math.max(...data.xs, 1) - Math.min(...data.xs, 0) + Math.max(...data.zs, 1);
+      const placeMode = (tS: number) => {
+        if (!activeMode) return;
+        const amp = 0.06 * span * modeCtl.current.scale;
+        for (const { line, m } of modeLines) {
+          const arr: number[] = [];
+          for (const nid of [m.i, m.j]) {
+            const n = nodeById.get(nid)!;
+            const u = modeOffset(activeMode, nid, amp, tS, modeCtl.current.speed);
+            arr.push(n.x + u[0], n.y + u[1], n.z + u[2]);
+          }
+          line.geometry.setAttribute("position", new THREE.Float32BufferAttribute(arr, 3));
+          line.geometry.attributes.position.needsUpdate = true;
+        }
+      };
+      placeMode(0.25 / Math.max(modeCtl.current.speed, 0.01));
+
       // selection highlight
       for (const { m, obj } of objs) {
         if (m.id === selected) {
@@ -327,9 +364,16 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
 
       let raf = 0;
       const t0 = performance.now();
+      let lastFrame = t0;
       const loop = () => {
         raf = requestAnimationFrame(loop);
         if (showDeformed && animate) placeDeformed(Math.sin(((performance.now() - t0) / 1000) * Math.PI));
+        if (activeMode) {
+          const now = performance.now();
+          if (modeCtl.current.playing) modeCtl.current.phaseT += (now - lastFrame) / 1000;
+          lastFrame = now;
+          placeMode(modeCtl.current.phaseT + 0.25 / Math.max(modeCtl.current.speed, 0.01));
+        }
         controls.update();
         renderer.render(scene, camera);
         labelRenderer.render(scene, camera);
@@ -354,7 +398,7 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
     };
     // camera preset is applied separately; everything else rebuilds the scene
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, storey, jointLabels, frameLabels, extruded, showDeformed, animate, display, load, scaleMul, baseScale, selected, view === "PLAN"]);
+  }, [data, storey, jointLabels, frameLabels, extruded, showDeformed, animate, display, load, scaleMul, baseScale, selected, view === "PLAN", modeNo]);
 
   useEffect(() => {
     apiRef.current?.setView(view);
@@ -418,6 +462,28 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
         <label><input type="checkbox" checked={showDeformed} onChange={(e) => setShowDeformed(e.target.checked)} /> {t("Deformed")}</label>
         <input type="range" min={0.2} max={5} step={0.1} value={scaleMul} onChange={(e) => setScaleMul(Number(e.target.value))} aria-label={t("Scale")} />
         <label><input type="checkbox" checked={animate} onChange={(e) => setAnimate(e.target.checked)} /> {t("Animate")}</label>
+        {modes.length ? (
+          <span className="v3d-modes">
+            <label>
+              {t("Mode shape")}{" "}
+              <select aria-label={t("Mode shape")} value={modeNo ?? ""} onChange={(e) => setModeNo(e.target.value ? Number(e.target.value) : null)}>
+                <option value="">{t("Off")}</option>
+                {modes.map((m) => (
+                  <option key={m.mode} value={m.mode}>
+                    {`${t("Mode")} ${m.mode}: T=${m.T.toFixed(3)} s, f=${m.freq.toFixed(2)} Hz, UX ${m.mass.ux.toFixed(1)}% UY ${m.mass.uy.toFixed(1)}% RZ ${m.mass.rz.toFixed(1)}%`}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {activeMode ? (
+              <>
+                <button type="button" className="v3d-btn" onClick={() => setPlaying((p) => !p)}>{playing ? t("Pause") : t("Play")}</button>
+                <label>{t("Scale")} <input type="range" min={0.2} max={4} step={0.1} value={modeScale} onChange={(e) => setModeScale(Number(e.target.value))} aria-label={t("Mode scale")} /></label>
+                <label>{t("Speed")} <input type="range" min={0.1} max={2} step={0.05} value={modeSpeed} onChange={(e) => setModeSpeed(Number(e.target.value))} aria-label={t("Mode speed")} /></label>
+              </>
+            ) : null}
+          </span>
+        ) : null}
         {onClose ? (
           <button type="button" className="v3d-btn v3d-close" onClick={onClose}>
             {t("Close")}
@@ -461,6 +527,7 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
             </div>
           ) : null}
           <div className="v3d-status" dir="ltr">
+            {activeMode ? `${t("Mode")} ${activeMode.mode} · T=${activeMode.T.toFixed(3)} s · f=${activeMode.freq.toFixed(2)} Hz · UX ${activeMode.mass.ux.toFixed(1)}% UY ${activeMode.mass.uy.toFixed(1)}% RZ ${activeMode.mass.rz.toFixed(1)}% · ` : ""}
             {load}
             {showDeformed ? ` · ×${(baseScale * scaleMul).toFixed(0)}` : ""}
           </div>
