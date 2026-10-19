@@ -7,6 +7,7 @@ from threading import Event, Thread
 from typing import Any, Iterator
 from uuid import UUID
 
+from app.application.frame3d_chat_analysis import frame3d_memory_summary
 from app.application.agent_run_events import (
     EVENT_APPROVAL_REQUIRED,
     EVENT_COMPLETED,
@@ -481,6 +482,7 @@ class ConversationService:
             assistant_metadata["attachment_context"] = attachment_context.to_dict()
             assistant_metadata["attachment_file_ids"] = attachment_context.file_ids
         self._maybe_persist_demo_memory(conversation, account, assistant_metadata)
+        self._maybe_persist_frame3d_memory(conversation, account, assistant_metadata)
         self._maybe_persist_aci_beam_memory(conversation, account, assistant_metadata)
         return assistant_content, assistant_metadata
 
@@ -555,6 +557,33 @@ class ConversationService:
             content,
             source_type="demo_rc_beam",
             metadata={"kind": "demo_rc_beam", "conversation_id": str(conversation.id)},
+            created_by=account.account_id,
+        )
+
+    def _maybe_persist_frame3d_memory(
+        self,
+        conversation,
+        account: AuthenticatedAccount,
+        assistant_metadata: dict,
+    ) -> None:
+        if conversation.project_id is None:
+            return
+        payload = assistant_metadata.get("engineering_results")
+        if not isinstance(payload, dict) or payload.get("kind") != "frame3d_analysis":
+            return
+        if payload.get("status") != "completed":
+            return
+        self._project_memory.create_memory(
+            conversation.project_id,
+            MemoryType.ASSUMPTION,
+            frame3d_memory_summary(payload),
+            source_type="frame3d_analysis",
+            metadata={
+                "kind": "frame3d_analysis",
+                "conversation_id": str(conversation.id),
+                "inputs": payload.get("inputs"),
+                "results": payload.get("results"),
+            },
             created_by=account.account_id,
         )
 
@@ -1023,6 +1052,9 @@ def _extract_engineering_results(record) -> dict | None:
     demo = output.get("demo_rc_beam")
     if isinstance(demo, dict):
         return demo
+    frame = output.get("frame3d_analysis")
+    if isinstance(frame, dict):
+        return frame
     aci = output.get("aci_rc_beam")
     return aci if isinstance(aci, dict) else None
 

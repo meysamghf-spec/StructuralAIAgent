@@ -21,6 +21,7 @@ import { ArtifactCard } from "./ArtifactCard";
 import { AttachmentChip } from "./AttachmentChip";
 import { AciRcBeamResultCard } from "./AciRcBeamResultCard";
 import { EngineeringResultCard } from "./EngineeringResultCard";
+import { Frame3dResultCard } from "./Frame3dResultCard";
 import { MessageContent } from "./MessageContent";
 import { ToolExecutionCard } from "./ToolExecutionCard";
 
@@ -155,6 +156,9 @@ export function ChatThread({
                   ) : null}
                   {message.engineeringResult.demoResults ? (
                     <EngineeringResultCard results={message.engineeringResult.demoResults} />
+                  ) : null}
+                  {message.engineeringResult.frame3dResults ? (
+                    <Frame3dResultCard results={message.engineeringResult.frame3dResults} />
                   ) : null}
                   {message.engineeringResult.aciBeamResults ? (
                     <AciRcBeamResultCard results={message.engineeringResult.aciBeamResults} />

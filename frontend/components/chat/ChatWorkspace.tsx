@@ -67,6 +67,7 @@ export default function ChatWorkspace() {
     latestEngineering?.agentRun ||
       latestEngineering?.demoResults ||
       latestEngineering?.aciBeamResults ||
+      latestEngineering?.frame3dResults ||
       latestEngineering?.requiresApproval,
   );
 
@@ -80,6 +81,7 @@ export default function ChatWorkspace() {
     latestEngineering?.agentRun?.lifecycle,
     latestEngineering?.demoResults?.kind,
     latestEngineering?.aciBeamResults?.kind,
+    latestEngineering?.frame3dResults?.kind,
   ]);
 
   const composerProps = {

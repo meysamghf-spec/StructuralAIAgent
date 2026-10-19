@@ -242,6 +242,17 @@ def capability_tool_payload(
                 "state": "complete",
             }
         )
+    frame = output.get("frame3d_analysis")
+    if isinstance(frame, dict):
+        operations.append("ENGINEERING_ANALYSIS")
+        done = frame.get("status") == "completed"
+        details.append(
+            {
+                "key": "frame3d_analysis",
+                "label": "3D frame analysis completed" if done else "3D frame analysis waiting for inputs",
+                "state": "complete" if done else "current",
+            }
+        )
     aci = output.get("aci_rc_beam")
     if isinstance(aci, dict):
         operations.append("ENGINEERING_CODE_CHECK")

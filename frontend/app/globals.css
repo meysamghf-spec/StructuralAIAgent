@@ -2132,3 +2132,22 @@ a {
   stroke-width: 0.12;
 }
 
+
+.engineering-result-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.engineering-result-table th,
+.engineering-result-table td {
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid rgba(127, 127, 127, 0.25);
+  text-align: right;
+}
+
+.engineering-result-table th:first-child,
+.engineering-result-table td:first-child {
+  text-align: left;
+}

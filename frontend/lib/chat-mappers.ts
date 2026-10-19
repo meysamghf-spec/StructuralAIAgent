@@ -12,6 +12,7 @@ import type {
   AgentRunStepState,
   AgentToolExecution,
   AciRcBeamResults,
+  Frame3dResults,
   DemoEngineeringResults,
   DemoRcBeamInputs,
   DemoRcBeamNumericResults,
@@ -162,6 +163,77 @@ function mapDemoResults(raw: unknown): DemoEngineeringResults | null {
   };
 }
 
+function stringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function numberList(value: unknown): number[] {
+  return Array.isArray(value)
+    ? value.map((item) => parseOptionalNumber(item)).filter((item): item is number => item !== null)
+    : [];
+}
+
+function recordList(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value)
+    ? value.filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+    : [];
+}
+
+export function mapFrame3dResults(raw: unknown): Frame3dResults | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const data = raw as Record<string, unknown>;
+  if (data.kind !== "frame3d_analysis") {
+    return null;
+  }
+  const geometry = data.geometry && typeof data.geometry === "object" ? (data.geometry as Record<string, unknown>) : {};
+  const baseShear =
+    data.base_shear_check && typeof data.base_shear_check === "object"
+      ? (data.base_shear_check as Record<string, unknown>)
+      : null;
+  const columns = recordList(data.column_forces_by_storey);
+  return {
+    kind: "frame3d_analysis",
+    status: typeof data.status === "string" ? data.status : "completed",
+    message: typeof data.message === "string" ? data.message : null,
+    disclaimer: typeof data.disclaimer === "string" ? data.disclaimer : null,
+    code: typeof data.code === "string" ? data.code : null,
+    seismicCode: typeof data.seismic_code === "string" ? data.seismic_code : null,
+    designCode: typeof data.design_code === "string" ? data.design_code : null,
+    fields: recordList(data.fields).map((item) => ({
+      label: String(item.label ?? ""),
+      value: String(item.value ?? ""),
+      unit: item.unit ? String(item.unit) : null,
+    })),
+    drift: recordList(data.drift).map((item) => ({
+      direction: String(item.direction ?? ""),
+      storey: Number(item.storey ?? 0),
+      driftElasticMm: parseOptionalNumber(item.drift_elastic_mm),
+      ratioElasticPct: parseOptionalNumber(item.ratio_elastic_pct),
+      ratioAmplifiedPct: parseOptionalNumber(item.ratio_amplified_pct),
+    })),
+    driftReferenceLimitPct: parseOptionalNumber(data.drift_reference_limit_pct),
+    storeyForces: recordList(data.beam_forces_by_storey).map((item) => {
+      const storey = Number(item.storey ?? 0);
+      const column = columns.find((row) => Number(row.storey) === storey);
+      return {
+        storey,
+        beamMNegKnM: parseOptionalNumber(item.M_neg_kn_m),
+        beamMPosKnM: parseOptionalNumber(item.M_pos_kn_m),
+        beamVKn: parseOptionalNumber(item.V_kn),
+        columnPKn: column ? parseOptionalNumber(column.P_kn) : null,
+      };
+    }),
+    baseShearStatus: baseShear && typeof baseShear.status === "string" ? baseShear.status : null,
+    gridX: numberList(geometry.XS),
+    gridY: numberList(geometry.YS),
+    missing: stringList(data.missing_inputs),
+    assumptions: stringList(data.assumptions),
+    warnings: stringList(data.warnings),
+  };
+}
+
 function mapAciBeamResults(raw: unknown): AciRcBeamResults | null {
   if (!raw || typeof raw !== "object") {
     return null;
@@ -282,6 +354,7 @@ function mapEngineeringResult(metadata: Record<string, unknown>): EngineeringRes
     actions,
     demoResults: mapDemoResults(metadata.engineering_results),
     aciBeamResults: mapAciBeamResults(metadata.engineering_results),
+    frame3dResults: mapFrame3dResults(metadata.engineering_results),
     agentRun: mapAgentRun(metadata.agent_run),
   };
 }

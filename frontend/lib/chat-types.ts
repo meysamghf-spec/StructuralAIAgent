@@ -196,7 +196,44 @@ export type EngineeringResult = {
   actions: Array<{ label: string; href: string }>;
   demoResults: DemoEngineeringResults | null;
   aciBeamResults: AciRcBeamResults | null;
+  frame3dResults: Frame3dResults | null;
   agentRun: AgentRun | null;
+};
+
+export type Frame3dDriftRow = {
+  direction: string;
+  storey: number;
+  driftElasticMm: number | null;
+  ratioElasticPct: number | null;
+  ratioAmplifiedPct: number | null;
+};
+
+export type Frame3dStoreyForces = {
+  storey: number;
+  beamMNegKnM: number | null;
+  beamMPosKnM: number | null;
+  beamVKn: number | null;
+  columnPKn: number | null;
+};
+
+export type Frame3dResults = {
+  kind: "frame3d_analysis";
+  status: string;
+  message: string | null;
+  disclaimer: string | null;
+  code: string | null;
+  seismicCode: string | null;
+  designCode: string | null;
+  fields: Array<{ label: string; value: string; unit: string | null }>;
+  drift: Frame3dDriftRow[];
+  driftReferenceLimitPct: number | null;
+  storeyForces: Frame3dStoreyForces[];
+  baseShearStatus: string | null;
+  gridX: number[];
+  gridY: number[];
+  missing: string[];
+  assumptions: string[];
+  warnings: string[];
 };
 
 export type ChatMessage = {
