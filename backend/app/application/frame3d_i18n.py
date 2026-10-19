@@ -208,7 +208,7 @@ def fa_markdown(text: str) -> str:
 _SKIP = {"kind", "status", "format", "filename", "spec", "seismic_code", "design_code", "inputs", "group", "node", "column", "position",
          "direction", "joint", "governing_combo", "bearing_combo", "id", "mime", "lang", "unit", "a", "b", "ductility", "code_enum",
          "parsed_from_request", "defaulted_inputs", "missing_inputs", "export_requested", "load_combinations", "combos", "zone", "soil",
-         "system", "T_formula", "vertical_distribution", "method"}
+         "system", "T_formula", "vertical_distribution", "method", "viewer"}
 
 
 def translate_payload(value: Any, key: str | None = None) -> Any:

@@ -2155,3 +2155,39 @@ a {
 .engineering-result-card[dir="rtl"] { text-align: right; }
 .engineering-result-card[dir="rtl"] .engineering-result-table td,
 .engineering-result-card[dir="rtl"] .engineering-result-field dd { direction: ltr; unicode-bidi: plaintext; text-align: right; }
+
+/* ETABS-style 3D viewer */
+.v3d-overlay { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; background: #1f2a38; color: #dbe3ee; font-size: 13px; }
+.v3d-toolbar { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; padding: 6px 10px; background: linear-gradient(#3a4656, #2c3644); border-bottom: 1px solid #0f1620; }
+.v3d-toolbar select { background: #18212c; color: #dbe3ee; border: 1px solid #4b5a6d; border-radius: 3px; padding: 2px 4px; }
+.v3d-btn { background: #2f3b4b; color: #dbe3ee; border: 1px solid #4b5a6d; border-radius: 3px; padding: 3px 9px; cursor: pointer; }
+.v3d-btn:disabled { opacity: 0.45; cursor: default; }
+.v3d-on { background: #2f6fb3; border-color: #5fa8ff; }
+.v3d-close { margin-inline-start: auto; }
+.v3d-sep { width: 1px; height: 20px; background: #4b5a6d; }
+.v3d-body { flex: 1; display: grid; grid-template-columns: 210px 1fr 280px; min-height: 0; }
+.v3d-tree, .v3d-props { overflow: auto; padding: 8px; background: #243142; border-inline-end: 1px solid #0f1620; }
+.v3d-props { border-inline-end: none; border-inline-start: 1px solid #0f1620; }
+.v3d-h { font-weight: 600; margin: 0 0 6px; color: #9fc6ff; }
+.v3d-tree ul { list-style: none; margin: 2px 0 6px; padding-inline-start: 12px; }
+.v3d-item { background: none; border: none; color: #dbe3ee; cursor: pointer; padding: 1px 4px; font-family: monospace; }
+.v3d-item.v3d-on { background: #2f6fb3; }
+.v3d-canvas { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: radial-gradient(#2e3d52, #1a2330); }
+.v3d-canvas canvas { display: block; }
+.v3d-tip { position: absolute; z-index: 5; background: #0f1620ee; border: 1px solid #5fa8ff; padding: 3px 6px; border-radius: 3px; pointer-events: none; white-space: nowrap; }
+.v3d-legend { position: absolute; z-index: 5; inset-inline-end: 10px; top: 10px; background: #0f1620cc; padding: 6px 8px; border-radius: 4px; }
+.v3d-legend p { margin: 0 0 4px; font-weight: 600; }
+.v3d-legend span { display: inline-block; width: 14px; height: 10px; margin-inline-end: 6px; }
+.v3d-status { position: absolute; z-index: 5; left: 10px; bottom: 8px; color: #9aa4b1; }
+.v3d-bubble { border: 1px solid #c9d6e6; border-radius: 50%; width: 20px; height: 20px; line-height: 18px; text-align: center; font-size: 11px; color: #e8eef6; background: #1f2a38; }
+.v3d-joint-label { font-size: 10px; color: #ffd54f; transform: translate(8px, -8px); }
+.v3d-frame-label { font-size: 10px; color: #9fe7ff; background: #1f2a38aa; padding: 0 2px; }
+.v3d-props dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 8px; margin: 0 0 10px; }
+.v3d-props dt { color: #9aa4b1; }
+.v3d-props dd { margin: 0; }
+.v3d-muted { color: #9aa4b1; }
+.v3d-tabs { display: flex; gap: 4px; margin: 8px 0; flex-wrap: wrap; }
+.v3d-drift { width: 100%; background: #1a2330; border-radius: 4px; }
+.v3d-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.v3d-table th, .v3d-table td { border-bottom: 1px solid #34465c; padding: 2px 4px; text-align: right; }
+.v3d-sum td { font-weight: 600; }

@@ -518,6 +518,7 @@ def run_frame3d(inp: Frame3dInputs) -> dict[str, Any]:
         "combos": list(combos), "equilibrium_error_kn": max(equilibrium.values()),
         "gravity_reaction_kn": {"D": abs(base["D"]["reac"][2]), "L": abs(base["L"]["reac"][2]), "D+L": total_gravity},
         "beams": beam_env, "columns": col_env, "drift": drift, "base_shear": base_shear, "modal": modal,
+        "viewer": _viewer_raw(nodes, beams, cols, base, cases, combos, supports),
         # data needed by the ETABS/SAFE/DXF exporters (csi_text_export.py)
         "export": {"reactions": {c: base[c]["supp"] for c in cases}, "combo_factors": combos, "sw_col_kn": sw_col,
                    "beam_udl": {bid: {"D": beam_w("D", k, L, o, e), "L": beam_w("L", k, L, o, e)} for bid, a, b, k, L, o, e in beams},
@@ -745,6 +746,80 @@ def _loc(payload: dict[str, Any]) -> dict[str, Any]:
     return i18n.translate_payload(payload) if payload.get("lang") == "fa" else payload
 
 
+def _viewer_raw(nodes, beams, cols, base, cases, combos, supports) -> dict[str, Any]:
+    """Compact per-case data for the interactive 3D viewer (linear: combos are rebuilt client-side from factors).
+
+    member force row per case: [N (compression +), V at i-end, M at i-end, M at j-end, w (local UDL)];
+    M(x) = Mi + (Mj-Mi)x/L + w(x^2 - xL)/2 for the major plane (beams: vertical plane; columns: plane with larger end M).
+    """
+    def r3(v: float, n: int = 2) -> float:
+        return round(float(v), n)
+    members = [{"id": bid, "i": a, "j": b, "type": "beam", "storey": k} for bid, a, b, k, *_ in beams] + \
+              [{"id": cid, "i": a, "j": b, "type": "column", "storey": k} for cid, a, b, k in cols]
+    forces: dict[str, dict[str, list[float]]] = {}
+    disp: dict[str, dict[str, list[float]]] = {}
+    for c in cases:
+        ends, w = base[c]["ends"], base[c]["w"]
+        row = {}
+        for m in members:
+            f = ends[m["id"]]
+            if m["type"] == "beam":
+                row[m["id"]] = [r3(f[0]), r3(f[2]), r3(f[4]), r3(-f[10]), r3(w[m["id"]][2], 3)]
+            else:
+                use_y = max(abs(f[4]), abs(f[10])) >= max(abs(f[5]), abs(f[11]))
+                mi, mj, v = (f[4], -f[10], f[2]) if use_y else (f[5], -f[11], -f[1])
+                row[m["id"]] = [r3(f[0]), r3(v), r3(mi), r3(mj), 0.0]
+        forces[c] = row
+        d = base[c]["res"].displacements
+        disp[c] = {n.id: [r3(d[n.id][0] * 1000, 3), r3(d[n.id][1] * 1000, 3), r3(d[n.id][2] * 1000, 3)] for n in nodes}
+    return {
+        "nodes": [{"id": n.id, "x": n.x, "y": n.y, "z": n.z} for n in nodes],
+        "supports": [s.node_id for s in supports],
+        "members": members, "cases": list(cases), "combos": combos,
+        "forces": forces, "displacements_mm": disp,
+        "reactions": {c: {nid: [r3(x) for x in v] for nid, v in base[c]["supp"].items()} for c in cases},
+    }
+
+
+def _viewer_payload(raw: dict[str, Any], inp: "Frame3dInputs", design: dict[str, Any] | None, fdn: dict[str, Any] | None) -> dict[str, Any] | None:
+    v = raw.get("viewer")
+    if not v:
+        return None
+    nx, ny = inp.bays_x, inp.bays_y
+    groups: dict[tuple, dict] = {}
+    if design:
+        for r in design.get("beams", []):
+            groups[("beam", r.get("storey"), r.get("direction"), r.get("position"))] = r
+        for r in design.get("columns", []):
+            groups[("column", r.get("storey"), None, r.get("position"))] = r
+    members = []
+    for m in v["members"]:
+        ii, jj = (int(x) for x in m["id"][2 if m["type"] == "beam" else 1:].split("_")[:2])
+        if m["type"] == "beam":
+            d = m["id"][1]
+            edge = (jj in (0, ny)) if d == "X" else (ii in (0, nx))
+            key = ("beam", m["storey"], d, "edge" if edge else "interior")
+            section = f"B{round(inp.beam_b_m * 100)}x{round(inp.beam_h_m * 100)}"
+            b, h = inp.beam_b_m, inp.beam_h_m
+        else:
+            on_x, on_y = ii in (0, nx), jj in (0, ny)
+            key = ("column", m["storey"], None, "corner" if on_x and on_y else "edge" if on_x or on_y else "interior")
+            section = f"C{round(inp.column_b_m * 100)}x{round(inp.column_h_m * 100)}"
+            b, h = inp.column_b_m, inp.column_h_m
+        g = groups.get(key)
+        dc = None
+        if g:
+            dc = max(x for x in (g.get("DC_flexure"), g.get("DC_shear"), g.get("DC")) if isinstance(x, (int, float))) if any(
+                isinstance(g.get(k), (int, float)) for k in ("DC_flexure", "DC_shear", "DC")) else None
+        members.append({**m, "section": section, "b": b, "h": h, "group": g.get("group") if g else None,
+                        "dc": dc, "design_status": g.get("status") if g else None,
+                        "rebar": (f"{g.get('top_bars')} / {g.get('bottom_bars')}" if m["type"] == "beam" else g.get("bars")) if g else None})
+    return {**{k: v[k] for k in ("nodes", "supports", "cases", "combos", "forces", "displacements_mm", "reactions")},
+            "members": members,
+            "footings": (fdn or {}).get("footings") or [],
+            "diaphragm_levels": list(range(1, inp.storeys + 1))}
+
+
 def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None = None) -> dict[str, Any] | None:
     """Analyse a described frame, or re-run the project's last frame when only an export is asked for."""
     export_formats = requested_export_formats(user_request) if (is_export_request(user_request) or is_frame3d_request(user_request)) else []
@@ -942,6 +1017,7 @@ def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None =
         # ETABS/SAFE/DXF text exports, generated on demand by POST /api/v1/frame3d/export from `inputs`
         "exports": cte.export_descriptors(export_formats),
         "foundation": ({k: v for k, v in fdn.items() if k != "footings"} if fdn else None),
+        "viewer": _viewer_payload(raw, inp, design, fdn),
     })
 
 
