@@ -1561,7 +1561,7 @@ a {
   grid-template-columns: 1fr;
 }
 
-@media (min-width: 640px) {
+@media max-width: 1100px: 640px) {
   .chat-prompt-examples {
     grid-template-columns: 1fr 1fr;
   }
@@ -2214,3 +2214,19 @@ a {
 .frame3d-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.5rem 0; }
 .legacy-section { margin-top: 1rem; border-top: 1px solid #334155; padding-top: 0.5rem; }
 .legacy-section > summary { cursor: pointer; color: #94a3b8; margin-bottom: 0.5rem; }
+
+/* built-in DXF viewer */
+.dxf-viewer { border: 1px solid #334155; border-radius: 6px; background: #0b1220; padding: 0.5rem; margin: 0.75rem 0; }
+.dxf-toolbar { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; margin-bottom: 0.4rem; }
+.dxf-layers { display: flex; flex-wrap: wrap; gap: 0.2rem 0.9rem; font-size: 0.8rem; margin-bottom: 0.4rem; font-family: monospace; }
+.dxf-canvas { width: 100%; background: #111827; border-radius: 4px; cursor: grab; touch-action: none; }
+.dxf-hint { font-size: 0.75rem; margin: 0.2rem 0 0; }
+.v3d-embedded { position: relative !important; inset: auto !important; z-index: 1 !important; height: 680px; border-radius: 6px; overflow: hidden; margin: 0.75rem 0; }
+.report-frame { width: 100%; height: 720px; border: 1px solid #334155; border-radius: 6px; background: #fff; }
+.file-preview { margin-top: 0.75rem; }
+.file-preview img { max-width: 100%; border-radius: 4px; }
+.file-preview iframe { width: 100%; height: 640px; border: 1px solid #334155; background: #fff; }
+.file-preview pre { max-height: 420px; overflow: auto; background: #0b1220; padding: 0.5rem; font-size: 0.75rem; }
+.empty-state { border: 1px dashed #475569; border-radius: 6px; padding: 1rem; color: #94a3b8; }
+.v3d-embedded .v3d-body { grid-template-columns: 190px minmax(320px, 1fr) 250px; }
+@media (max-width: 1100px) { .v3d-embedded .v3d-body { grid-template-columns: minmax(320px, 1fr) 240px; } .v3d-embedded .v3d-tree { display: none; } }
