@@ -18,7 +18,8 @@ class EntitlementAuthorizationService:
 
     @property
     def enforcement_enabled(self) -> bool:
-        return get_settings().entitlement_enforcement_enabled
+        settings = get_settings()
+        return settings.entitlement_enforcement_enabled and settings.payments_enabled
 
     def require_feature(self, account_id: str, feature: PlatformFeature) -> None:
         if not self.enforcement_enabled:

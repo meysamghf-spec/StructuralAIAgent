@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     auth_token_expiry_hours: int = 24
     project_access_enforced: bool = False
     entitlement_enforcement_enabled: bool = False
+    # Free-launch mode (e.g. Iran hosting, where the crypto payment gateway and CoinGecko are not usable):
+    # PAYMENTS_ENABLED=false turns off paid-feature gating and the payment/exchange-rate production checks.
+    payments_enabled: bool = True
+    # Allow the deterministic in-house engine (frame3d solver, no external LLM) to answer in production.
+    ai_allow_deterministic_in_production: bool = False
 
     ai_provider: str = "stub"
     openai_api_key: SecretStr | None = None
@@ -77,7 +82,7 @@ class Settings(BaseSettings):
             issues.append("AUTH_REQUIRED must be true in production")
         if not self.project_access_enforced:
             issues.append("PROJECT_ACCESS_ENFORCED must be true in production")
-        if not self.entitlement_enforcement_enabled:
+        if self.payments_enabled and not self.entitlement_enforcement_enabled:
             issues.append("ENTITLEMENT_ENFORCEMENT_ENABLED must be true in production")
         if self.auth_allow_legacy_actor:
             issues.append("AUTH_ALLOW_LEGACY_ACTOR must be false in production")
@@ -102,7 +107,8 @@ class Settings(BaseSettings):
         issues: list[str] = []
         ai_provider = self.ai_provider.strip().lower()
         if ai_provider in {"", "stub"}:
-            issues.append("AI_PROVIDER must not be stub in production")
+            if not self.ai_allow_deterministic_in_production:
+                issues.append("AI_PROVIDER must not be stub in production")
         elif ai_provider in {"openai", "openai_compatible", "openai-compatible"}:
             api_key = self.openai_api_key.get_secret_value().strip() if self.openai_api_key else ""
             if not api_key:
@@ -113,7 +119,9 @@ class Settings(BaseSettings):
             issues.append(f"AI_PROVIDER '{self.ai_provider}' is not supported in production")
 
         rate_provider = self.exchange_rate_provider.strip().lower()
-        if rate_provider in {"", "stub"}:
+        if not self.payments_enabled:
+            pass
+        elif rate_provider in {"", "stub"}:
             issues.append("EXCHANGE_RATE_PROVIDER must not be stub in production")
         elif rate_provider != "coingecko":
             issues.append(

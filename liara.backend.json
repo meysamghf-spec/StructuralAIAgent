@@ -1,0 +1,8 @@
+{
+  "platform": "docker",
+  "app": "sazeh-backend",
+  "port": 8000,
+  "build": { "dockerfile": "backend/Dockerfile", "location": "iran" },
+  "disks": [{ "name": "files", "mountTo": "/data/files" }],
+  "healthCheck": { "command": "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')\"" }
+}

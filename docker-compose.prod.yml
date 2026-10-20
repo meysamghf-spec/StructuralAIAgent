@@ -1,52 +1,53 @@
+# Single-VPS production stack: Caddy (HTTPS, automatic Let's Encrypt) -> frontend + backend, PostgreSQL, file volume.
+# Usage:  cp .env.production.example .env.production  (edit)  then
+#         docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+name: structuralaiaagent
+
 services:
   db:
-    image: postgres:16-alpine
+    image: ${REGISTRY:-}postgres:16-alpine
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: structuralaiaagent
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-structuralaiaagent}
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./backups:/backups
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app} -d ${POSTGRES_DB:-structuralaiaagent}"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+    # small VPS: keep Postgres modest
+    command: ["postgres", "-c", "shared_buffers=128MB", "-c", "max_connections=40"]
 
   backend:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      args:
+        REGISTRY: ${REGISTRY:-}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+    restart: unless-stopped
+    env_file: .env.production
     environment:
       APP_ENV: production
-      DATABASE_URL: postgresql://postgres@db:5432/structuralaiaagent
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      AUTH_REQUIRED: "true"
-      PROJECT_ACCESS_ENFORCED: "true"
-      AUTH_ALLOW_LEGACY_ACTOR: "false"
-      ENTITLEMENT_ENFORCEMENT_ENABLED: "true"
-      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET}
-      CRYPTO_PAYMENT_GATEWAY: ${CRYPTO_PAYMENT_GATEWAY:-btcpay}
-      CRYPTO_PAYMENT_WEBHOOK_SECRET: ${CRYPTO_PAYMENT_WEBHOOK_SECRET}
-      BTCPAY_SERVER_URL: ${BTCPAY_SERVER_URL}
-      BTCPAY_API_KEY: ${BTCPAY_API_KEY}
-      BTCPAY_STORE_ID: ${BTCPAY_STORE_ID}
-      BTCPAY_WEBHOOK_SECRET: ${BTCPAY_WEBHOOK_SECRET}
-      EXCHANGE_RATE_PROVIDER: ${EXCHANGE_RATE_PROVIDER:-coingecko}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-structuralaiaagent}
+      FILE_STORAGE_ROOT: /data/files
       RUN_MIGRATIONS_ON_STARTUP: "true"
       TRUST_PROXY_HEADERS: "true"
-      FILE_STORAGE_ROOT: /data/files
+      TRUSTED_PROXY_HOSTS: ${TRUSTED_PROXY_HOSTS:-172.16.0.0/12}
     volumes:
       - file_storage:/data/files
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready')\""]
-      interval: 10s
+      interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 40s
     depends_on:
       db:
         condition: service_healthy
@@ -56,13 +57,35 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-    ports:
-      - "3000:3000"
+        REGISTRY: ${REGISTRY:-}
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org/}
+        NEXT_PUBLIC_API_URL: https://${DOMAIN:?set DOMAIN}
+    restart: unless-stopped
+    expose:
+      - "3000"
     depends_on:
       backend:
         condition: service_healthy
 
+  caddy:
+    image: ${REGISTRY:-}caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+
 volumes:
   pgdata:
   file_storage:
+  caddy_data:
+  caddy_config:
