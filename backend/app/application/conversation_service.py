@@ -425,6 +425,9 @@ class ConversationService:
         )
 
         if conversation.project_id is not None:
+            imported = self._maybe_plan_import(conversation, account, user_content, attachments)
+            if imported is not None:
+                return imported
             return self._run_project_orchestration(
                 conversation=conversation,
                 account=account,
@@ -489,6 +492,29 @@ class ConversationService:
         self._maybe_persist_aci_beam_memory(conversation, account, assistant_metadata)
         self._maybe_create_run_approval(conversation, account, assistant_metadata)
         return assistant_content, assistant_metadata
+
+    def _maybe_plan_import(self, conversation, account: AuthenticatedAccount, user_content: str,
+                           attachments: list[MessageAttachment]) -> tuple[str, dict] | None:
+        """Plan drawing -> DRAFT model with an 'Imported model review' approval (see plan_import_flow)."""
+        try:
+            from app.application import plan_import_flow
+            from app.application.service_factory import build_human_approval_service
+
+            project_id = conversation.project_id
+            out = plan_import_flow.handle_chat(
+                project_id=project_id, conversation_id=conversation.id, actor=account.account_id, text=user_content,
+                attachments=attachments, approval_service=build_human_approval_service(),
+                read_file=lambda file_id: self._file_ingestion.get_file_content(project_id, file_id)[1])
+        except Exception:  # noqa: BLE001 - fall back to the normal agent orchestration
+            logger.exception("plan import step failed")
+            return None
+        if out is None:
+            return None
+        content, metadata = out
+        if metadata.get("mode") == "plan_import_analysis":
+            self._maybe_persist_frame3d_memory(conversation, account, metadata)
+            self._maybe_create_run_approval(conversation, account, metadata)
+        return content, metadata
 
     def _maybe_create_run_approval(self, conversation, account: AuthenticatedAccount, assistant_metadata: dict) -> None:
         """Every completed engineering run (any registered module kind) gets a pending approval item (revision 1)."""

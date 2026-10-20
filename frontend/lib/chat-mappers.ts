@@ -21,6 +21,7 @@ import type {
   DemoRcBeamNumericResults,
   EngineeringArtifact,
   EngineeringResult,
+  PlanImportResult,
 } from "./chat-types";
 
 type BackendAttachment = {
@@ -437,8 +438,49 @@ function mapAciBeamResults(raw: unknown): AciRcBeamResults | null {
   };
 }
 
+const _nums = (v: unknown): number[] => (Array.isArray(v) ? v.map(Number).filter((n) => Number.isFinite(n)) : []);
+const _strs = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
+
+export function mapPlanImport(raw: unknown, approvalId: unknown): PlanImportResult | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const data = raw as Record<string, unknown>;
+  if (data.kind !== "plan_import" || !data.draft || typeof data.draft !== "object") {
+    return null;
+  }
+  const d = data.draft as Record<string, unknown>;
+  const c = (d.confidence && typeof d.confidence === "object" ? d.confidence : {}) as Record<string, unknown>;
+  const labelsX = _strs(d.labels_x);
+  const labelsY = _strs(d.labels_y);
+  return {
+    kind: "plan_import",
+    revision: Number(data.revision ?? 1),
+    filename: String(d.filename ?? ""),
+    method: String(d.method ?? ""),
+    spansXM: _nums(d.spans_x_m),
+    spansYM: _nums(d.spans_y_m),
+    labelsX,
+    labelsY,
+    columns: Array.isArray(d.columns) ? d.columns.length : 0,
+    intersections: labelsX.length * labelsY.length,
+    storeys: typeof d.storeys === "number" ? d.storeys : null,
+    storeyHeightM: typeof d.storey_height_m === "number" ? d.storey_height_m : null,
+    confidence: {
+      grid: Number(c.grid ?? 0),
+      spacing: Number(c.spacing ?? 0),
+      columns: Number(c.columns ?? 0),
+      overall: Number(c.overall ?? 0),
+    },
+    notes: _strs(d.notes),
+    edits: _strs(data.edits),
+    previewPng: typeof data.preview_png === "string" && data.preview_png.startsWith("data:image/png") ? data.preview_png : null,
+    approvalId: typeof approvalId === "string" ? approvalId : null,
+  };
+}
+
 function mapEngineeringResult(metadata: Record<string, unknown>): EngineeringResult | null {
-  if (metadata.mode !== "agent_execution") {
+  if (metadata.mode !== "agent_execution" && metadata.mode !== "plan_import" && metadata.mode !== "plan_import_analysis") {
     return null;
   }
 
@@ -488,6 +530,7 @@ function mapEngineeringResult(metadata: Record<string, unknown>): EngineeringRes
     demoResults: mapDemoResults(metadata.engineering_results),
     aciBeamResults: mapAciBeamResults(metadata.engineering_results),
     frame3dResults: mapFrame3dResults(metadata.engineering_results),
+    planImport: mapPlanImport(metadata.engineering_results, metadata.run_approval_id),
     agentRun: mapAgentRun(metadata.agent_run),
   };
 }

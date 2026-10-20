@@ -116,6 +116,11 @@ def approve_request(
         approver=account.account_id,
         decision_note=body.decision_note,
     )
+    from app.application import plan_import_flow
+
+    note = plan_import_flow.approved_message(request)
+    if note:
+        _post_chat_message((request.metadata or {}).get("conversation_id"), note)
     return HumanApprovalResponse.from_domain(request)
 
 

@@ -69,8 +69,9 @@ def _sec(prefix: str, b: float, h: float) -> str:
 def frame_layout(inp) -> dict[str, Any]:
     """Plan points, plan lines and story names shared by all exporters."""
     nx, ny, ns = inp.bays_x, inp.bays_y, inp.storeys
-    XS = [i * inp.bay_x_m for i in range(nx + 1)]
-    YS = [j * inp.bay_y_m for j in range(ny + 1)]
+    from app.application.frame3d_chat_analysis import grid_coords
+
+    XS, YS = grid_coords(inp)
     Z = [k * inp.storey_height_m for k in range(ns + 1)]
     pts = {(i, j): str(i * (ny + 1) + j + 1) for i in range(nx + 1) for j in range(ny + 1)}
     lines = []  # (plan name, model-id prefix, point a, point b, dir)

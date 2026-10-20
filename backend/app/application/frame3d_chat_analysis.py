@@ -83,6 +83,8 @@ class Frame3dInputs:
     bays_y: int | None = None
     bay_x_m: float = 5.0
     bay_y_m: float = 5.0
+    spans_x_m: list | None = None  # unequal grid spacings (e.g. from an imported plan); overrides bays_x/bay_x_m
+    spans_y_m: list | None = None
     storey_height_m: float = 3.2
     column_b_m: float = 0.40
     column_h_m: float = 0.40
@@ -199,7 +201,31 @@ def inputs_from_dict(data: dict[str, Any]) -> "Frame3dInputs":
         v = getattr(inp, name)
         if v is not None:
             setattr(inp, name, int(v))
+    normalize_spans(inp)
     return inp
+
+
+def normalize_spans(inp) -> None:
+    """Unequal spacings drive the bay counts; bay_x/y_m keep the largest span (used where one span is assumed)."""
+    for ax in ("x", "y"):
+        sp = getattr(inp, f"spans_{ax}_m", None)
+        if sp:
+            sp = [float(v) for v in sp]
+            setattr(inp, f"spans_{ax}_m", sp)
+            setattr(inp, f"bays_{ax}", len(sp))
+            setattr(inp, f"bay_{ax}_m", max(sp))
+
+
+def grid_coords(inp) -> tuple[list[float], list[float]]:
+    """Grid line coordinates (m) along X and Y, from unequal spans when given, else uniform bays."""
+    out = []
+    for ax in ("x", "y"):
+        sp = getattr(inp, f"spans_{ax}_m", None) or [getattr(inp, f"bay_{ax}_m")] * int(getattr(inp, f"bays_{ax}"))
+        c = [0.0]
+        for v in sp:
+            c.append(round(c[-1] + float(v), 6))
+        out.append(c)
+    return out[0], out[1]
 
 
 def prior_frame3d_spec(context: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -334,8 +360,7 @@ def _matvec(a, v):
 
 def run_frame3d(inp: Frame3dInputs) -> dict[str, Any]:
     nx, ny, ns = inp.bays_x, inp.bays_y, inp.storeys
-    XS = [i * inp.bay_x_m for i in range(nx + 1)]
-    YS = [j * inp.bay_y_m for j in range(ny + 1)]
+    XS, YS = grid_coords(inp)
     Z = [k * inp.storey_height_m for k in range(ns + 1)]
     fc, h = inp.fc_mpa, inp.storey_height_m
     Ec = 4700 * math.sqrt(fc) * 1000  # kN/m2
@@ -358,10 +383,12 @@ def run_frame3d(inp: Frame3dInputs) -> dict[str, Any]:
             for j in range(ny + 1):
                 if i < nx:
                     edge = j in (0, ny)
-                    beams.append((f"BX{i}_{j}_{k}", _nid(i, j, k), _nid(i + 1, j, k), k, inp.bay_x_m, inp.bay_y_m, edge))
+                    oth = [YS[q + 1] - YS[q] for q in (j - 1, j) if 0 <= q < ny]
+                    beams.append((f"BX{i}_{j}_{k}", _nid(i, j, k), _nid(i + 1, j, k), k, XS[i + 1] - XS[i], sum(oth) / len(oth), edge))
                 if j < ny:
                     edge = i in (0, nx)
-                    beams.append((f"BY{i}_{j}_{k}", _nid(i, j, k), _nid(i, j + 1, k), k, inp.bay_y_m, inp.bay_x_m, edge))
+                    oth = [XS[q + 1] - XS[q] for q in (i - 1, i) if 0 <= q < nx]
+                    beams.append((f"BY{i}_{j}_{k}", _nid(i, j, k), _nid(i, j + 1, k), k, YS[j + 1] - YS[j], sum(oth) / len(oth), edge))
     cols = [(f"C{i}_{j}_{k}", _nid(i, j, k - 1), _nid(i, j, k), k)
             for k in range(1, ns + 1) for i in range(nx + 1) for j in range(ny + 1)]
 

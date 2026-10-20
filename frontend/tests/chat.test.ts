@@ -1011,3 +1011,35 @@ describe("first request UX", () => {
   });
 });
 
+
+describe("plan import mapping", () => {
+  it("maps a plan_import draft with preview and confidence", async () => {
+    const { mapPlanImport } = await import("@/lib/chat-mappers");
+    const r = mapPlanImport(
+      {
+        kind: "plan_import",
+        revision: 2,
+        edits: ["spacing 2-3 = 4.5 m"],
+        preview_png: "data:image/png;base64,AAAA",
+        draft: {
+          filename: "plan.pdf",
+          spans_x_m: [5, 4.5, 6],
+          spans_y_m: [4.5, 5],
+          labels_x: ["1", "2", "3", "4"],
+          labels_y: ["A", "B", "C"],
+          columns: [[0, 0], [1, 1]],
+          storeys: 3,
+          confidence: { grid: 0.95, spacing: 0.9, columns: 0.8, overall: 0.8 },
+          notes: [],
+        },
+      },
+      "ap-1",
+    );
+    expect(r?.spansXM).toEqual([5, 4.5, 6]);
+    expect(r?.intersections).toBe(12);
+    expect(r?.columns).toBe(2);
+    expect(r?.previewPng).toContain("data:image/png");
+    expect(r?.approvalId).toBe("ap-1");
+    expect(mapPlanImport({ kind: "frame3d_analysis" }, null)).toBeNull();
+  });
+});

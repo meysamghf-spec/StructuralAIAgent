@@ -53,6 +53,8 @@ def handle_rejection(approval_service: Any, project_id: UUID, rejected: Any, rea
         msg = ("I could not turn the rejection reason into a change. Please say what to change, e.g. "
                "'increase column size', 'column 50x50', 'use Φ20', 'drift too high', 'cover 50 mm', or any of: " + keys
                + "\n— دلیل رد را به تغییر مشخصی تبدیل نکردم؛ لطفاً بنویسید چه چیزی تغییر کند (مثلاً «ابعاد ستون را افزایش بده»، «ستون ۵۰×۵۰»، «با Φ20»، «پوشش ۵۰ میلی‌متر»).")
+        if adapter.extra.get("reject_hint"):
+            msg = adapter.extra["reject_hint"]
         if errors:
             msg = "\n".join(errors) + "\n" + msg
         return {"outcome": "clarify", "message": msg}

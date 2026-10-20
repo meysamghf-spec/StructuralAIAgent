@@ -256,21 +256,24 @@ def column_points(inp, position: str) -> list[str]:
 
 def _key_plan(sh: "_Sheet", ox: float, oy: float, size: float, inp, hi: list[tuple[str, int]]) -> None:
     """Small key plan: all grid lines thin, the member's line(s)/point(s) highlighted. hi: ("X"|"Y"|"P", index...)"""
-    W, H = inp.bays_x * inp.bay_x_m, inp.bays_y * inp.bay_y_m
+    from app.application.frame3d_chat_analysis import grid_coords
+
+    gx, gy = grid_coords(inp)
+    W, H = gx[-1], gy[-1]
     k = size / max(W, H)
-    for i in range(inp.bays_x + 1):
-        sh.line("KEYPLAN", (ox + i * inp.bay_x_m * k, oy), (ox + i * inp.bay_x_m * k, oy + H * k))
-    for j in range(inp.bays_y + 1):
-        sh.line("KEYPLAN", (ox, oy + j * inp.bay_y_m * k), (ox + W * k, oy + j * inp.bay_y_m * k))
+    for x_ in gx:
+        sh.line("KEYPLAN", (ox + x_ * k, oy), (ox + x_ * k, oy + H * k))
+    for y_ in gy:
+        sh.line("KEYPLAN", (ox, oy + y_ * k), (ox + W * k, oy + y_ * k))
     for kind, *v in hi:
         if kind == "X":  # beam along X on lettered line j
-            yy = oy + v[0] * inp.bay_y_m * k
+            yy = oy + gy[v[0]] * k
             sh.msp.add_lwpolyline([(sh.x0 + ox, sh.y0 + yy), (sh.x0 + ox + W * k, sh.y0 + yy)], dxfattribs={"layer": "KEYPLAN_HI", "const_width": 40})
         elif kind == "Y":
-            xx = ox + v[0] * inp.bay_x_m * k
+            xx = ox + gx[v[0]] * k
             sh.msp.add_lwpolyline([(sh.x0 + xx, sh.y0 + oy), (sh.x0 + xx, sh.y0 + oy + H * k)], dxfattribs={"layer": "KEYPLAN_HI", "const_width": 40})
         else:
-            cx, cy = ox + v[0] * inp.bay_x_m * k, oy + v[1] * inp.bay_y_m * k
+            cx, cy = ox + gx[v[0]] * k, oy + gy[v[1]] * k
             sh.poly("KEYPLAN_HI", [(cx - 60, cy - 60), (cx + 60, cy - 60), (cx + 60, cy + 60), (cx - 60, cy + 60)], closed=True)
     sh.text("KEYPLAN", (ox + W * k / 2, oy - 220), 100, "KEY PLAN", center=True)
 
