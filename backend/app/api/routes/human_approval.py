@@ -23,6 +23,7 @@ from app.api.schemas.human_approval import (
     ApprovalRejectRequest,
     HumanApprovalResponse,
 )
+from app.application import revision_workflow
 from app.application.human_approval_service import HumanApprovalService
 from app.application.project_access_service import ProjectAccessService
 from app.domain.models.human_approval import ApprovalStatus
@@ -132,7 +133,30 @@ def reject_request(
         approver=account.account_id,
         rejection_reason=body.rejection_reason,
     )
-    return HumanApprovalResponse.from_domain(request)
+    response = HumanApprovalResponse.from_domain(request)
+    outcome = revision_workflow.handle_rejection(approval_service, project.id, request, body.rejection_reason, account.account_id)
+    if outcome["outcome"] == "revised":
+        changes = "; ".join(f"{c['key']}: {c['old']} → {c['new']}" for c in outcome["changes"])
+        response.revision_outcome, response.next_approval_id = "revised", outcome["approval"].id
+        response.revision_message = f"Re-ran and created revision {outcome['approval'].metadata.get('revision')}: {changes}"
+    elif outcome["outcome"] == "clarify":
+        response.revision_outcome, response.revision_message = "clarify", outcome["message"]
+        _post_chat_message((request.metadata or {}).get("conversation_id"), outcome["message"])
+    return response
+
+
+def _post_chat_message(conversation_id: str | None, text: str) -> None:
+    """Ask for clarification in the conversation that produced the run (best effort)."""
+    if not conversation_id:
+        return
+    try:
+        from app.domain.models.conversation import MessageRole
+        from app.infrastructure.repositories.postgres_conversation_repository import PostgresConversationRepository
+
+        PostgresConversationRepository().create_message(conversation_id=UUID(conversation_id), role=MessageRole.ASSISTANT,
+                                                         content=text, metadata={"kind": "approval_clarification"})
+    except Exception:  # noqa: BLE001 - never fail the rejection because the chat note could not be written
+        pass
 
 
 @router.post("/{request_id}/cancel", response_model=HumanApprovalResponse)

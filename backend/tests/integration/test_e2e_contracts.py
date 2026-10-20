@@ -18,7 +18,7 @@ def test_migration_017_foreign_keys_and_indexes() -> None:
 
 def test_migration_order_includes_all_foundation_files() -> None:
     files = sorted(path.name for path in get_migrations_dir().glob("*.sql"))
-    assert files[-1] == "021_engineering_learning_foundation.sql"
+    assert files[-1] == "022_seed_agent_capabilities.sql"
     assert "001_bootstrap.sql" in files
 
 

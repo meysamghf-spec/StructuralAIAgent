@@ -17,7 +17,7 @@ def get_migrations_dir() -> Path:
     return migrations_dir
 
 
-TRACKING_TABLE = "schema_migrations"
+TRACKING_TABLE = "applied_migration_files"  # schema_migrations (version, name) is owned by the SQL files themselves
 
 
 def pending_migrations(all_files: list[str], already: set[str]) -> list[str]:
@@ -26,7 +26,7 @@ def pending_migrations(all_files: list[str], already: set[str]) -> list[str]:
 
 
 def apply_migrations(database_url: str | None = None) -> list[str]:
-    """Apply *.sql migrations in lexical order, once each (tracked in schema_migrations).
+    """Apply *.sql migrations in lexical order, once each (tracked in applied_migration_files).
 
     Each migration runs in its own transaction. On a database created before tracking existed, a migration
     whose objects already exist (duplicate table/object/column) is recorded as applied instead of failing.

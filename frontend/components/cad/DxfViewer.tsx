@@ -134,7 +134,7 @@ export function DxfViewer({ text, filename, height = 560 }: { text: string; file
           if (e.type === "LINE" || e.type === "POLY") {
             const pts = e.pts.map(P).map((p) => p.join(",")).join(" ");
             return e.type === "POLY" && e.closed ? (
-              <polygon key={k} points={pts} fill="none" stroke={c} strokeWidth={stroke} />
+              <polygon key={k} points={pts} fill={e.fill ? c : "none"} fillOpacity={e.fill ? 0.35 : undefined} stroke={c} strokeWidth={stroke} />
             ) : (
               <polyline key={k} points={pts} fill="none" stroke={c} strokeWidth={stroke} />
             );

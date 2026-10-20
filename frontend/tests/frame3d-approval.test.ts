@@ -16,12 +16,11 @@ describe("frame3d design approval", () => {
     expect(JSON.parse(String(init.body))).toMatchObject({ project_id: "p1", target_type: "DESIGN_DECISION", target_action: "frame3d.design_approval" });
   });
 
-  it("hides half-working pages unless NEXT_PUBLIC_SHOW_ALL_PAGES is set", () => {
-    const hrefs = visibleNavItems(false).map((i) => i.href);
-    for (const h of ["/workspace/agents", "/workspace/agents/builder", "/workspace/memory", "/workspace/validation", "/workspace/integrations"]) {
-      expect(hrefs).not.toContain(h);
+  it("shows all completed pages in the sidebar", () => {
+    const hrefs = visibleNavItems().map((i) => i.href);
+    for (const h of ["/workspace/agents", "/workspace/agents/builder", "/workspace/memory", "/workspace/validation", "/workspace/integrations",
+      "/workspace/optimization", "/workspace/learning", "/workspace/traceability", "/workspace/upgrades", "/workspace/ai", "/workspace/approvals"]) {
+      expect(hrefs).toContain(h);
     }
-    expect(hrefs).toContain("/workspace/approvals");
-    expect(visibleNavItems(true).map((i) => i.href)).toContain("/workspace/agents/builder");
   });
 });

@@ -25,6 +25,7 @@ import {
 import { useUiLang } from "@/hooks/useUiLang";
 
 const Frame3dViewer = dynamic(() => import("@/components/chat/Frame3dViewer"), { ssr: false });
+const FoundationView = dynamic(() => import("@/components/frame3d/FoundationView"), { ssr: false });
 
 type Mode = "model" | "analysis" | "results" | "design";
 
@@ -169,6 +170,9 @@ export function Frame3dWorkspacePanel({ mode }: { mode: Mode }) {
       {error ? <p className="alert error">{error}</p> : null}
       {results?.viewer ? (
         <Frame3dViewer data={results.viewer} results={results} t={makeT(results.lang)} embedded />
+      ) : null}
+      {results?.viewer?.footings.length && (mode === "design" || mode === "results") ? (
+        <FoundationView data={results.viewer} qa={results.foundation?.qaKpa ?? 150} t={makeT(results.lang)} />
       ) : null}
       {results ? (
         <Frame3dResultCard results={results} />

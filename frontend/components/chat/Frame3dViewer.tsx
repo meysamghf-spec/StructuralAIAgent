@@ -1,5 +1,6 @@
 "use client";
 
+import { OrientationBadge } from "@/components/frame3d/OrientationBadge";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { Frame3dResults } from "@/lib/chat-types";
@@ -12,11 +13,16 @@ import {
   explorerTree,
   gridLabelX,
   gridLabelY,
+  GRID_LEGEND,
   loadOptions,
   maxAbs,
   memberForces,
   memberLength,
+  modeOffset,
   nodeDisplacement,
+  orthoCamera,
+  planStorey,
+  viewMembers,
   type DiagramKind,
   type ViewerData,
   type ViewerMember,
@@ -28,17 +34,32 @@ type Display = "NONE" | DiagramKind | "DC";
 
 const BG = 0x1f2a38;
 
-export default function Frame3dViewer({ data, results, t, onClose, embedded = false }: { data: ViewerData; results: Frame3dResults; t: T; onClose?: () => void; embedded?: boolean }) {
+export default function Frame3dViewer({ data, results, t, onClose, embedded = false, initialMode = null }: { data: ViewerData; results: Frame3dResults; t: T; onClose?: () => void; embedded?: boolean; initialMode?: number | null }) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const apiRef = useRef<{ setView: (v: ViewPreset) => void } | null>(null);
-  const camRef = useRef<{ pos: number[]; target: number[]; rotate: boolean } | null>(null);
-  const [view, setView] = useState<ViewPreset>("3D");
+  const camRef = useRef<{ key: string; pos: number[]; target: number[]; zoom: number } | null>(null);
+  const [view, setViewState] = useState<ViewPreset>("3D");
   const [storey, setStorey] = useState<number | null>(null);
+  const [gridLine, setGridLine] = useState<number | null>(null);
+  const setView = (v: ViewPreset) => {
+    if (v !== view) setGridLine(v === "ELEV_X" || v === "ELEV_Y" ? 0 : null);
+    camRef.current = null; // a view button always applies its preset camera
+    setViewState(v);
+  };
   const [jointLabels, setJointLabels] = useState(false);
   const [frameLabels, setFrameLabels] = useState(false);
   const [extruded, setExtruded] = useState(false);
   const [showDeformed, setShowDeformed] = useState(false);
   const [animate, setAnimate] = useState(false);
+  const modes = data.modes ?? [];
+  const [modeNo, setModeNo] = useState<number | null>(initialMode && modes.some((m) => m.mode === initialMode) ? initialMode : null);
+  const [playing, setPlaying] = useState(true);
+  const [modeScale, setModeScale] = useState(1);
+  const [modeSpeed, setModeSpeed] = useState(0.5);
+  const modeCtl = useRef({ scale: 1, speed: 0.5, playing: true, phaseT: 0 });
+  modeCtl.current.scale = modeScale;
+  modeCtl.current.speed = modeSpeed;
+  modeCtl.current.playing = playing;
+  const activeMode = modes.find((m) => m.mode === modeNo) ?? null;
   const [display, setDisplay] = useState<Display>(data.members.some((m) => m.dc !== null) ? "DC" : "NONE");
   const loads = useMemo(() => loadOptions(data), [data]);
   const [load, setLoad] = useState<string>(loads.find((l) => l.startsWith("1.2D+1.6L")) ?? loads[0] ?? "D");
@@ -80,33 +101,37 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
       const xs = data.xs, ys = data.ys, zs = data.zs;
       const cx = (xs[0] + xs[xs.length - 1]) / 2, cy = (ys[0] + ys[ys.length - 1]) / 2, cz = (zs[0] + zs[zs.length - 1]) / 2;
       const size = Math.max(xs[xs.length - 1] - xs[0], ys[ys.length - 1] - ys[0], zs[zs.length - 1] - zs[0], 1);
-      const camera = new THREE.PerspectiveCamera(40, w / h, 0.05, size * 50);
-      camera.up.set(0, 0, 1);
+      const viewKey = `${view}|${storey}|${gridLine}`;
+      let camera: import("three").PerspectiveCamera | import("three").OrthographicCamera;
+      let ortho: ReturnType<typeof orthoCamera> | null = null;
+      if (view === "3D") {
+        camera = new THREE.PerspectiveCamera(40, w / h, 0.05, size * 50);
+        camera.up.set(0, 0, 1);
+      } else {
+        ortho = orthoCamera(data, view, storey, gridLine, w / h);
+        camera = new THREE.OrthographicCamera(-ortho.halfW, ortho.halfW, ortho.halfH, -ortho.halfH, 0.05, 1000);
+        camera.up.set(...ortho.up);
+      }
       const controls = new OrbitControls(camera, renderer.domElement);
-      controls.target.set(cx, cy, cz);
       controls.enableDamping = true;
       controls.screenSpacePanning = true;
-
-      const setPreset = (v: ViewPreset) => {
+      controls.enableRotate = view === "3D";
+      if (ortho) {
+        camera.position.set(...ortho.pos);
+        controls.target.set(...ortho.target);
+      } else {
         const d = size * 2.2;
-        const tz = v === "PLAN" && storey !== null ? zs[storey] ?? cz : cz;
-        controls.target.set(cx, cy, tz);
-        if (v === "3D") camera.position.set(cx + d * 0.8, cy - d * 1.0, cz + d * 0.7);
-        if (v === "PLAN") camera.position.set(cx, cy - 0.001, tz + d * 1.2);
-        if (v === "ELEV_X") camera.position.set(cx, cy - d * 1.3, cz);
-        if (v === "ELEV_Y") camera.position.set(cx + d * 1.3, cy, cz);
-        controls.enableRotate = v === "3D";
-        controls.update();
-      };
-      apiRef.current = { setView: setPreset };
-      if (camRef.current) {
+        controls.target.set(cx, cy, cz);
+        camera.position.set(cx + d * 0.8, cy - d * 1.0, cz + d * 0.7);
+      }
+      if (camRef.current && camRef.current.key === viewKey) {
         camera.position.fromArray(camRef.current.pos);
         controls.target.fromArray(camRef.current.target);
-        controls.enableRotate = camRef.current.rotate;
-        controls.update();
-      } else {
-        setPreset(view);
+        camera.zoom = camRef.current.zoom;
       }
+      camera.updateProjectionMatrix();
+      controls.update();
+      (window as unknown as { __v3dCamera?: unknown }).__v3dCamera = { view, ortho: !!ortho, kind: camera.type };
 
       const nodeById = new Map(data.nodes.map((n) => [n.id, n]));
       const label = (text: string, cls: string, pos: [number, number, number]) => {
@@ -122,7 +147,7 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
       // grids with bubbles at the base level
       const gridMat = new THREE.LineDashedMaterial({ color: 0x8fa3bf, dashSize: 0.3, gapSize: 0.2 });
       const ext = 1.5;
-      const gz = storey !== null && view === "PLAN" ? zs[storey] ?? 0 : 0;
+      const gz = view === "PLAN" ? zs[planStorey(data, storey)] ?? 0 : 0;
       xs.forEach((x, i) => {
         const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x, ys[0] - ext, gz), new THREE.Vector3(x, ys[ys.length - 1] + ext, gz)]);
         const l = new THREE.Line(g, gridMat);
@@ -172,7 +197,7 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
         scene.add(new THREE.LineSegments(new THREE.EdgesGeometry(box.geometry), new THREE.LineBasicMaterial({ color: 0x3b2a12 })).translateX(f.x).translateY(f.y).translateZ(-0.3 - f.h / 2));
       }
 
-      const visible = data.members.filter((m) => storey === null || (view === "PLAN" ? m.storey === storey && m.type === "beam" || (m.storey === storey && m.type === "column") : true));
+      const visible = viewMembers(data, view, storey, gridLine);
       const memberColor = (m: ViewerMember) =>
         display === "DC" ? new THREE.Color(dcColor(m.dc)) : new THREE.Color(m.type === "column" ? 0xe0e6ef : 0x7fc4ff);
 
@@ -186,7 +211,7 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
         if (extruded) {
           const len = A.distanceTo(B);
           const geo = new THREE.BoxGeometry(m.b, m.h, len);
-          const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: memberColor(m), transparent: showDeformed, opacity: showDeformed ? 0.35 : 1 }));
+          const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: memberColor(m), transparent: showDeformed || !!activeMode, opacity: activeMode ? 0.18 : showDeformed ? 0.35 : 1 }));
           mesh.position.copy(A.clone().add(B).multiplyScalar(0.5));
           const dir = B.clone().sub(A).normalize();
           mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
@@ -194,7 +219,7 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
           obj = mesh;
         } else {
           const geo = new THREE.BufferGeometry().setFromPoints([A, B]);
-          obj = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: memberColor(m), transparent: showDeformed, opacity: showDeformed ? 0.35 : 1 }));
+          obj = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: memberColor(m), transparent: showDeformed || !!activeMode, opacity: activeMode ? 0.18 : showDeformed ? 0.35 : 1 }));
         }
         obj.userData = { id: m.id };
         scene.add(obj);
@@ -207,7 +232,7 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
       }
       if (jointLabels) {
         for (const n of data.nodes) {
-          if (storey !== null && view === "PLAN" && Math.abs(n.z - (zs[storey] ?? 0)) > 1e-6) continue;
+          if (view === "PLAN" && Math.abs(n.z - (zs[planStorey(data, storey)] ?? 0)) > 1e-6) continue;
           label(n.id, "v3d-joint-label", [n.x, n.y, n.z]);
         }
       }
@@ -275,6 +300,32 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
       };
       placeDeformed(1);
 
+      // mode shape animation (generic: nodal φ vectors; members drawn as straight lines between displaced nodes)
+      const modeLines: Array<{ line: import("three").Line; m: ViewerMember }> = [];
+      if (activeMode) {
+        for (const m of visible) {
+          const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineBasicMaterial({ color: 0x4fc3f7 }));
+          scene.add(line);
+          modeLines.push({ line, m });
+        }
+      }
+      const span = Math.max(...data.xs, 1) - Math.min(...data.xs, 0) + Math.max(...data.zs, 1);
+      const placeMode = (tS: number) => {
+        if (!activeMode) return;
+        const amp = 0.06 * span * modeCtl.current.scale;
+        for (const { line, m } of modeLines) {
+          const arr: number[] = [];
+          for (const nid of [m.i, m.j]) {
+            const n = nodeById.get(nid)!;
+            const u = modeOffset(activeMode, nid, amp, tS, modeCtl.current.speed);
+            arr.push(n.x + u[0], n.y + u[1], n.z + u[2]);
+          }
+          line.geometry.setAttribute("position", new THREE.Float32BufferAttribute(arr, 3));
+          line.geometry.attributes.position.needsUpdate = true;
+        }
+      };
+      placeMode(0.25 / Math.max(modeCtl.current.speed, 0.01));
+
       // selection highlight
       for (const { m, obj } of objs) {
         if (m.id === selected) {
@@ -318,7 +369,11 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
 
       const onResize = () => {
         const W = host.clientWidth, H = host.clientHeight;
-        camera.aspect = W / H;
+        if (camera instanceof THREE.PerspectiveCamera) camera.aspect = W / H;
+        else if (ortho) {
+          const o = orthoCamera(data, view as Exclude<ViewPreset, "3D">, storey, gridLine, W / H);
+          Object.assign(camera, { left: -o.halfW, right: o.halfW, top: o.halfH, bottom: -o.halfH });
+        }
         camera.updateProjectionMatrix();
         renderer.setSize(W, H);
         labelRenderer.setSize(W, H);
@@ -327,9 +382,16 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
 
       let raf = 0;
       const t0 = performance.now();
+      let lastFrame = t0;
       const loop = () => {
         raf = requestAnimationFrame(loop);
         if (showDeformed && animate) placeDeformed(Math.sin(((performance.now() - t0) / 1000) * Math.PI));
+        if (activeMode) {
+          const now = performance.now();
+          if (modeCtl.current.playing) modeCtl.current.phaseT += (now - lastFrame) / 1000;
+          lastFrame = now;
+          placeMode(modeCtl.current.phaseT + 0.25 / Math.max(modeCtl.current.speed, 0.01));
+        }
         controls.update();
         renderer.render(scene, camera);
         labelRenderer.render(scene, camera);
@@ -338,7 +400,7 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
       (window as unknown as { __v3dReady?: boolean }).__v3dReady = true;
 
       cleanup = () => {
-        camRef.current = { pos: camera.position.toArray(), target: controls.target.toArray(), rotate: controls.enableRotate };
+        camRef.current = { key: viewKey, pos: camera.position.toArray(), target: controls.target.toArray(), zoom: camera.zoom };
         cancelAnimationFrame(raf);
         window.removeEventListener("resize", onResize);
         renderer.domElement.removeEventListener("pointermove", onMove);
@@ -354,11 +416,7 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
     };
     // camera preset is applied separately; everything else rebuilds the scene
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, storey, jointLabels, frameLabels, extruded, showDeformed, animate, display, load, scaleMul, baseScale, selected, view === "PLAN"]);
-
-  useEffect(() => {
-    apiRef.current?.setView(view);
-  }, [view]);
+  }, [data, storey, jointLabels, frameLabels, extruded, showDeformed, animate, display, load, scaleMul, baseScale, selected, view, gridLine, modeNo]);
 
   const sel = data.members.find((m) => m.id === selected) ?? null;
   const selFooting = data.footings.find((f) => `F-${f.column}` === selected) ?? null;
@@ -391,6 +449,19 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
         <button type="button" className="v3d-btn" disabled={storey === null} onClick={() => setView("PLAN")}>
           {t("Plan at story")}
         </button>
+        {view === "ELEV_X" || view === "ELEV_Y" ? (
+          <label>
+            {t("Grid line")}{" "}
+            <select aria-label={t("Grid line")} value={gridLine ?? ""} onChange={(e) => setGridLine(e.target.value === "" ? null : Number(e.target.value))}>
+              <option value="">{t("All")}</option>
+              {(view === "ELEV_X" ? data.ys : data.xs).map((_, i) => (
+                <option key={i} value={i}>
+                  {view === "ELEV_X" ? gridLabelY(i) : gridLabelX(i)}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <label><input type="checkbox" checked={jointLabels} onChange={(e) => setJointLabels(e.target.checked)} /> {t("Joint labels")}</label>
         <label><input type="checkbox" checked={frameLabels} onChange={(e) => setFrameLabels(e.target.checked)} /> {t("Frame labels")}</label>
         <label><input type="checkbox" checked={extruded} onChange={(e) => setExtruded(e.target.checked)} /> {t("Extruded")}</label>
@@ -418,6 +489,28 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
         <label><input type="checkbox" checked={showDeformed} onChange={(e) => setShowDeformed(e.target.checked)} /> {t("Deformed")}</label>
         <input type="range" min={0.2} max={5} step={0.1} value={scaleMul} onChange={(e) => setScaleMul(Number(e.target.value))} aria-label={t("Scale")} />
         <label><input type="checkbox" checked={animate} onChange={(e) => setAnimate(e.target.checked)} /> {t("Animate")}</label>
+        {modes.length ? (
+          <span className="v3d-modes">
+            <label>
+              {t("Mode shape")}{" "}
+              <select aria-label={t("Mode shape")} value={modeNo ?? ""} onChange={(e) => setModeNo(e.target.value ? Number(e.target.value) : null)}>
+                <option value="">{t("Off")}</option>
+                {modes.map((m) => (
+                  <option key={m.mode} value={m.mode}>
+                    {`${t("Mode")} ${m.mode}: T=${m.T.toFixed(3)} s, f=${m.freq.toFixed(2)} Hz, UX ${m.mass.ux.toFixed(1)}% UY ${m.mass.uy.toFixed(1)}% RZ ${m.mass.rz.toFixed(1)}%`}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {activeMode ? (
+              <>
+                <button type="button" className="v3d-btn" onClick={() => setPlaying((p) => !p)}>{playing ? t("Pause") : t("Play")}</button>
+                <label>{t("Scale")} <input type="range" min={0.2} max={4} step={0.1} value={modeScale} onChange={(e) => setModeScale(Number(e.target.value))} aria-label={t("Mode scale")} /></label>
+                <label>{t("Speed")} <input type="range" min={0.1} max={2} step={0.05} value={modeSpeed} onChange={(e) => setModeSpeed(Number(e.target.value))} aria-label={t("Mode speed")} /></label>
+              </>
+            ) : null}
+          </span>
+        ) : null}
         {onClose ? (
           <button type="button" className="v3d-btn v3d-close" onClick={onClose}>
             {t("Close")}
@@ -445,6 +538,9 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
           ))}
         </aside>
         <div className="v3d-canvas" ref={hostRef}>
+          {view === "PLAN" ? <OrientationBadge h="X" v="Y" north /> : null}
+          {view === "ELEV_X" ? <OrientationBadge h="X" v="Z" north={false} note={`Elevation on grid ${gridLabelY(gridLine ?? 0)}, viewed along +Y · ${GRID_LEGEND}`} /> : null}
+          {view === "ELEV_Y" ? <OrientationBadge h="Y" v="Z" north={false} note={`Elevation on grid ${gridLabelX(gridLine ?? 0)}, viewed along +X · ${GRID_LEGEND}`} /> : null}
           {hover ? (
             <div className="v3d-tip" style={{ left: hover.x, top: hover.y }} dir="ltr">
               {hover.text}
@@ -461,6 +557,7 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
             </div>
           ) : null}
           <div className="v3d-status" dir="ltr">
+            {activeMode ? `${t("Mode")} ${activeMode.mode} · T=${activeMode.T.toFixed(3)} s · f=${activeMode.freq.toFixed(2)} Hz · UX ${activeMode.mass.ux.toFixed(1)}% UY ${activeMode.mass.uy.toFixed(1)}% RZ ${activeMode.mass.rz.toFixed(1)}% · ` : ""}
             {load}
             {showDeformed ? ` · ×${(baseScale * scaleMul).toFixed(0)}` : ""}
           </div>

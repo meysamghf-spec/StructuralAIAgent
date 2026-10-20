@@ -150,7 +150,29 @@ def design_footing(reactions: dict[str, dict[str, list[float]]], nid: str, combo
             "DC_oneway": vu1 / vc1, "DC_punching": vu2 / vc2, **best, "notes": notes, "net_pressure_allow_kpa": qnet0}
 
 
+_LOCK = __import__("threading").RLock()
+
+
 def design_foundation(inp, raw: dict[str, Any]) -> dict[str, Any]:
+    """Design with the project's foundation assumptions (cover, Df, min h, bar list) from the generic registry."""
+    from app.application import detailing_assumptions as da
+
+    A = da.effective(getattr(inp, "assumptions", None))
+    g = globals()
+    with _LOCK:
+        saved = {k: g[k] for k in ("COVER_M", "DF_M", "H_MIN_M", "BAR_DIAMETERS")}
+        g.update(COVER_M=float(A["footing_cover_mm"]) / 1000, DF_M=float(A["footing_depth_m"]),
+                 H_MIN_M=float(A["footing_min_h_m"]), BAR_DIAMETERS=tuple(sorted(int(d) for d in A["footing_bar_db"])) or saved["BAR_DIAMETERS"])
+        try:
+            out = _design_foundation(inp, raw)
+        finally:
+            g.update(saved)
+    out["cover_mm"] = float(A["footing_cover_mm"])
+    out["lean_concrete_mm"] = float(A["lean_concrete_mm"])
+    return out
+
+
+def _design_foundation(inp, raw: dict[str, Any]) -> dict[str, Any]:
     ex = raw["export"]
     reactions, combo_factors = ex["reactions"], ex["combo_factors"]
     nx, ny = inp.bays_x, inp.bays_y
@@ -186,18 +208,26 @@ def design_foundation(inp, raw: dict[str, Any]) -> dict[str, Any]:
             "Mu_kn_m": round(max(r["Mu_kn_m"] for r in second), 1),
             "DC_oneway": round(max(r["DC_oneway"] for r in second), 3), "DC_punching": round(max(r["DC_punching"] for r in second), 3),
             "As_req_mm2": round(max(r["As_req_mm2"] for r in second)), "As_prov_mm2": round(worst["As_prov_mm2"]),
-            "bars": f"Φ{worst['db']}@{int(worst['s_mm'])} each way", "DC_flexure": round(max(r["DC_flexure"] for r in second), 3),
+            "bars": f"Φ{worst['db']}@{int(worst['s_mm'])} each way", "db": worst['db'], "s_mm": int(worst['s_mm']), "DC_flexure": round(max(r["DC_flexure"] for r in second), 3),
             "notes": sorted({n for r in second for n in r["notes"]}),
         })
     rows.sort(key=lambda r: r["group"])
     footings = [{"column": f"C{m['i']}_{m['j']}", "node": m["nid"], "x": raw["geometry"]["XS"][m["i"]], "y": raw["geometry"]["YS"][m["j"]],
                  "position": m["pos"], "B_m": size[m["pos"]][0], "h_m": size[m["pos"]][1]} for m in members if m["pos"] in size]
+    dl = service_combos().get("D+L", {}).get("f", {})
+    byrow = {r["position"]: r for r in rows}
+    for f in footings:  # per-footing service load (D+L) + group checks, for the SAFE-like plan view
+        r6 = _load(reactions, f["node"], dl) if all(k in reactions for k in dl) else [0.0] * 6
+        g = byrow.get(f["position"], {})
+        f.update({"P_kn": round(r6[2], 1), "Mx_kn_m": round(r6[3], 1), "My_kn_m": round(r6[4], 1),
+                  "c1_m": inp.column_b_m, "c2_m": inp.column_h_m,
+                  **{k: g.get(k) for k in ("DC_punching", "DC_oneway", "DC_flexure", "bearing_dc", "bars", "q_max_kpa", "status", "group")}})
     overlap = _overlap(inp, raw, footings) if len(footings) == len(members) else None
     all_pass = all(r["status"] == "PASS" for r in rows)
     status = "PASS" if all_pass and overlap and not overlap["overlaps"] else ("OVERLAP" if all_pass and overlap else "FAIL")
     max_dc = max([max(r["bearing_dc"], r["DC_oneway"], r["DC_punching"], r["DC_flexure"]) for r in rows if r["status"] == "PASS"] or [0.0])
     return {"code": "ACI/MABHAS9-equivalent isolated footings", "status": status, "qa_kpa": qa, "qa_assumed": assumed,
-            "qa_net_kpa": round(qa - GAMMA_AVG * DF_M, 1), "Df_m": DF_M, "phi_c": m9.PHI_C, "phi_s": m9.PHI_S,
+            "qa_net_kpa": round(qa - GAMMA_AVG * DF_M, 1), "Df_m": DF_M, "h_min_m": H_MIN_M, "phi_c": m9.PHI_C, "phi_s": m9.PHI_S,
             "rows": rows, "overlap": overlap, "footings": footings,
             "summary": {"max_DC": round(max_dc, 3), "groups": len(rows), "footings": len(footings)},
             "clauses_implemented": CLAUSES_IMPLEMENTED, "clauses_simplified": CLAUSES_SIMPLIFIED}

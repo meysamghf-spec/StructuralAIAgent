@@ -597,7 +597,23 @@ class AgentBuilderService:
 
     def get_builder_detail(self, agent_id: UUID, version: int) -> AgentBuilderVersionDetail:
         definition = self._registry.get_agent(agent_id)
-        detail = self._versions.get_version(agent_id, version)
+        try:
+            detail = self._versions.get_version(agent_id, version)
+        except AgentVersionNotFoundError:
+            # Assistants auto-provisioned by chat runs have a definition but no version yet; opening
+            # them in the Builder used to fail with "Agent version not found". Bootstrap draft v1.
+            if self._versions.list_versions(agent_id):
+                raise
+            detail = self._versions.create_version(
+                agent_id,
+                instructions=definition.description or f"{definition.name}: engineering assistant",
+                configuration_metadata={"allowed_tools": [], "model_configuration": {}, "task_types": [],
+                                        "element_types": [], "supported_codes": [], "input_contract": {},
+                                        "output_contract": {}, "change_summary": "Initial draft (auto-created)"},
+                capability_keys=list(DEFAULT_CAPABILITIES_BY_TYPE.get(
+                    definition.agent_type.value if definition.agent_type else "", ("request.planning",))),
+                created_by="system",
+            )
         validation = self.validate_version(agent_id, version)
         return self._build_detail(definition, detail, validation)
 
@@ -665,6 +681,17 @@ class AgentBuilderService:
     def _ensure_project_scope(definition: AgentDefinition, project_id: UUID) -> None:
         if definition.project_id is not None and definition.project_id != project_id:
             raise ProjectAgentScopeError(definition.id, project_id)
+
+
+DEFAULT_CAPABILITIES_BY_TYPE: dict[str, tuple[str, ...]] = {
+    "SEISMIC_AGENT": ("request.planning", "seismic.iran2800"),
+    "STEEL_DESIGN_AGENT": ("request.planning", "design.aisc360"),
+    "VALIDATION_AGENT": ("request.planning", "validation.run"),
+    "ANALYSIS_AGENT": ("request.planning", "project.context.read", "frame3d.analysis", "seismic.iran2800"),
+    "CONCRETE_DESIGN_AGENT": ("request.planning", "project.context.read", "design.mabhas9", "design.aci318"),
+    "CAD_AGENT": ("request.planning", "rebar.detailing"),
+    "REPORTING_AGENT": ("request.planning", "report.generate"),
+}
 
 
 def _string_list(value: object) -> list[str]:

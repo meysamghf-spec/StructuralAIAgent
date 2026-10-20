@@ -10,6 +10,7 @@ import dynamic from "next/dynamic";
 import { isRtl, makeT } from "@/lib/frame3d-i18n";
 
 const Frame3dViewer = dynamic(() => import("./Frame3dViewer"), { ssr: false });
+const FoundationView = dynamic(() => import("@/components/frame3d/FoundationView"), { ssr: false });
 
 type T = (key: string) => string;
 
@@ -23,7 +24,7 @@ export function Frame3dResultCard({ results }: Frame3dResultCardProps) {
   const t = makeT(results.lang);
   const rtl = isRtl(results.lang);
   const is2800 = results.seismicCode === "IRAN_2800";
-  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(results.animateMode != null);
   useEffect(() => {
     if (results.status === "completed" && results.inputs) saveFrame3dInputs(getCurrentProjectId(), results.inputs);
   }, [results.status, results.inputs]);
@@ -72,8 +73,11 @@ export function Frame3dResultCard({ results }: Frame3dResultCardProps) {
               </button>
             </p>
           ) : null}
+          {results.showFoundation && results.viewer?.footings.length ? (
+            <FoundationView data={results.viewer} qa={results.foundation?.qaKpa ?? 150} t={t} />
+          ) : null}
           {viewerOpen && results.viewer ? (
-            <Frame3dViewer data={results.viewer} results={results} t={t} onClose={() => setViewerOpen(false)} />
+            <Frame3dViewer data={results.viewer} results={results} t={t} onClose={() => setViewerOpen(false)} initialMode={results.animateMode ?? null} />
           ) : null}
           <PlanView xs={results.gridX} ys={results.gridY} label={t("Frame plan")} />
         </div>

@@ -25,6 +25,7 @@ from dataclasses import fields as dc_fields
 from typing import Any, Callable
 
 from app.application import csi_text_export as cte
+from app.application import detailing_assumptions as da
 from app.application import foundation_design as fnd
 from app.application import frame3d_i18n as i18n
 from app.application import iran2800
@@ -109,11 +110,28 @@ class Frame3dInputs:
     allowable_bearing_kpa: float = 150.0
     foundation: bool = False
     lang: str = "en"
+    # per-project design / rebar-detailing assumptions changed from chat (see detailing_assumptions.py)
+    assumptions: dict | None = None
     parsed: list[str] = field(default_factory=list)
 
 
 def _norm(text: str) -> str:
     return (text or "").translate(_PERSIAN_DIGITS).replace("×", "x").replace("*", "x")
+
+
+def requested_foundation_view(user_request: str) -> bool:
+    """'show foundation' / «فونداسیون را نشان بده» / «نمایش پی» -> SAFE-like footing view."""
+    t = _norm(user_request).lower()
+    return bool(re.search(r"(?:show|display|view)\s+(?:the\s+)?(?:foundation|footings?)|(?:فونداسیون|پی ?ها?)\s*(?:را\s*)?نشان|نمایش\s*(?:فونداسیون|پی)", t))
+
+
+def requested_mode_shape(user_request: str) -> int | None:
+    """'animate mode 2' / 'show mode shape 3' / «مود ۲ را نشان بده» / «شکل مود ۲» -> mode number."""
+    t = _norm(user_request).lower()
+    m = re.search(r"(?:animate|show|display|نمایش|انیمیشن|شکل)?\s*(?:mode|مود)\s*(?:shape\s*)?(?:no\.?\s*|شماره\s*)?(\d{1,2})", t)
+    if not m or not re.search(r"animate|show|display|view|نشان|نمایش|انیمیشن|شکل|ببینم", t):
+        return None
+    return int(m.group(1))
 
 
 def is_frame3d_request(user_request: str) -> bool:
@@ -131,28 +149,32 @@ _EXPORT_TARGETS = {
     "dxf_plans": r"autocad|auto ?cad|\bdxf\b|\bcad\b|اتوکد|اتو ?کد|نقشه|پلان",
     "dxf_3d": r"autocad|auto ?cad|\bdxf\b|\bcad\b|اتوکد|اتو ?کد|3d|سه ?بعدی",
     "dxf_rebar": _REBAR_WORDS,
+    "dxf_foundation": r"نقشه (?:ی )?(?:فونداسیون|پی)|دیتیل (?:فونداسیون|پی)|foundation (?:drawing|detail|sheet|plan)|footing (?:detail|drawing)",
 }
+_FOUNDATION_DRAWING = _EXPORT_TARGETS["dxf_foundation"]
 
 
 def requested_export_formats(user_request: str) -> list[str]:
     """Formats asked for in an export prompt ("خروجی ایتبس بده", "export to ETABS/SAFE/AutoCAD")."""
     t = _norm(user_request).lower()
+    if re.search(_FOUNDATION_DRAWING, t):  # «نقشه فونداسیون» is itself a drawing request
+        return ["dxf_foundation"] + (["dxf_rebar"] if re.search(_REBAR_WORDS, t) else [])
     if re.search(_REBAR_WORDS, t):  # "نقشه آرماتوربندی" is itself a drawing request (no export word needed)
         return ["dxf_rebar"] + [f for f in ("e2k", "f2k") if re.search(_EXPORT_TARGETS[f], t)]
     if not re.search(_EXPORT_WORD, t):
         return []
-    found = [f for f, pat in _EXPORT_TARGETS.items() if f != "dxf_rebar" and re.search(pat, t)]
+    found = [f for f, pat in _EXPORT_TARGETS.items() if f not in ("dxf_rebar", "dxf_foundation") and re.search(pat, t)]
     if "dxf_3d" in found and "dxf_plans" not in found and not re.search(r"autocad|auto ?cad|dxf|cad|اتوکد|اتو ?کد", t):
         found.remove("dxf_3d")  # "3D" alone (e.g. in a frame description) is not a CAD request
     if re.search(r"\ball\b|همه", t) and found:
-        found = [f for f in _EXPORT_TARGETS if f != "dxf_rebar"]
+        found = [f for f in _EXPORT_TARGETS if f not in ("dxf_rebar", "dxf_foundation")]
     return found
 
 
 def is_export_request(user_request: str) -> bool:
     """ETABS/SAFE exports always; CAD-only exports when the frame/model is mentioned (other CAD exports keep their agents)."""
     found = requested_export_formats(user_request)
-    if {"e2k", "f2k", "dxf_rebar"} & set(found):
+    if {"e2k", "f2k", "dxf_rebar", "dxf_foundation"} & set(found):
         return True
     if wants_foundation(user_request) and re.search(r"frame|model|structure|قاب|مدل|سازه", _norm(user_request).lower()):
         return True
@@ -542,6 +564,22 @@ def design_mabhas9(inp: "Frame3dInputs", raw: dict[str, Any]) -> dict[str, Any]:
     if ductility is None:
         return {"code": "MABHAS9", "status": "NOT_APPLICABLE",
                 "message": "Mabhas 9 RC design applies to RC systems only (steel / Mabhas 10 not implemented)."}
+    with da.design_overrides(m9, inp.assumptions):
+        return _apply_scwb_rule(_design_mabhas9(inp, raw, ductility), da.effective(inp.assumptions)["scwb"])
+
+
+def _apply_scwb_rule(design: dict[str, Any], rule: str) -> dict[str, Any]:
+    """Assumption 'scwb': auto (code default) | check (always governs) | skip (not applicable, reported only)."""
+    if rule == "skip":
+        design["scwb_status"] = "NOT_APPLIED"
+        design["status"] = design["member_status"]
+        design["scwb_note"] += " — not applied (project assumption)"
+    elif rule == "check" and design.get("scwb_status") == "FAIL":
+        design["status"] = "FAIL"
+    return design
+
+
+def _design_mabhas9(inp: "Frame3dInputs", raw: dict[str, Any], ductility: str) -> dict[str, Any]:
     fc, fy = inp.fc_mpa, inp.fy_mpa
     bb, bh = inp.beam_b_m * 1000, inp.beam_h_m * 1000
     cb, ch = inp.column_b_m * 1000, inp.column_h_m * 1000
@@ -726,7 +764,18 @@ def _modal_response_spectrum(inp, lateral_prep, nodes, XS, YS, Z, W, centre, V_s
         rs[dname] = {"V_dynamic_kn": v_dyn, "V_static_kn": V_static, "ratio": v_dyn / V_static,
                      "scale_factor": scale, "V_dynamic_scaled_kn": v_dyn * scale, "drift": drift_rows}
     modes_90 = {key: next((m["mode"] for m in mode_table if m[f"cum_{key.lower()}_pct"] >= 90.0), None) for key in ("X", "Y")}
-    return {"method": "Modal (condensed diaphragm DOFs) + Standard 2800 design spectrum A·B·I/R, CQC (5% damping)",
+    # nodal mode shapes for the viewer animation: static response to the modal inertia forces ω²·M·φ, normalised to 1
+    shapes = []
+    for i, (r, w) in enumerate(zip(rows[:MAX_MODE_SHAPES], omegas)):
+        res = solve([mass[q] * r["phi"][q] * w * w for q in range(n)])
+        disp = {nid: list(u[:3]) for nid, u in res.displacements.items()}
+        peak = max((max(abs(c) for c in u) for u in disp.values()), default=0.0) or 1.0
+        t_row = mode_table[i]
+        shapes.append({"mode": i + 1, "T_s": round(r["T"], 4), "freq_hz": round(1.0 / r["T"], 4),
+                       "mass_x_pct": round(t_row["mass_x_pct"], 2), "mass_y_pct": round(t_row["mass_y_pct"], 2),
+                       "mass_rz_pct": round(t_row["mass_rz_pct"], 2),
+                       "disp": {nid: [round(c / peak, 4) for c in u] for nid, u in disp.items()}})
+    return {"shapes": shapes, "method": "Modal (condensed diaphragm DOFs) + Standard 2800 design spectrum A·B·I/R, CQC (5% damping)",
             "modes": mode_table, "modes_for_90pct": modes_90, "response_spectrum": rs,
             "T_fundamental_s": mode_table[0]["T_s"] if mode_table else None}
 
@@ -748,6 +797,9 @@ def _r(v: float, n: int = 2) -> float:
 def _loc(payload: dict[str, Any]) -> dict[str, Any]:
     """Persian prompt -> Persian free text (status codes / ids / numbers stay as they are)."""
     return i18n.translate_payload(payload) if payload.get("lang") == "fa" else payload
+
+
+MAX_MODE_SHAPES = 6
 
 
 def _viewer_raw(nodes, beams, cols, base, cases, combos, supports) -> dict[str, Any]:
@@ -821,7 +873,8 @@ def _viewer_payload(raw: dict[str, Any], inp: "Frame3dInputs", design: dict[str,
     return {**{k: v[k] for k in ("nodes", "supports", "cases", "combos", "forces", "displacements_mm", "reactions")},
             "members": members,
             "footings": (fdn or {}).get("footings") or [],
-            "diaphragm_levels": list(range(1, inp.storeys + 1))}
+            "diaphragm_levels": list(range(1, inp.storeys + 1)),
+            "modes": (raw.get("modal") or {}).get("shapes") or []}
 
 
 def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None = None, *,
@@ -831,6 +884,12 @@ def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None =
     `manual_inputs` (from the manual Model page form) bypasses prompt parsing; every given key counts as user input."""
     export_formats = requested_export_formats(user_request) if (is_export_request(user_request) or is_frame3d_request(user_request)) else []
     from_memory = False
+    a_upd, inp_upd = da.parse_assumptions(user_request) if manual_inputs is None else ({}, {})
+    show_assumptions = manual_inputs is None and da.is_show_assumptions(user_request)
+    # input-only values (fy, fc, ...) count as an assumption command only on an existing project frame
+    animate_mode = requested_mode_shape(user_request) if manual_inputs is None else None
+    show_foundation = manual_inputs is None and requested_foundation_view(user_request)
+    assumption_cmd = bool(a_upd or show_assumptions or (inp_upd and prior_spec) or animate_mode or show_foundation)
     if manual_inputs is not None:
         inp = inputs_from_dict(manual_inputs)
         inp.parsed = [k for k, v in manual_inputs.items() if v is not None and not k.startswith("_")]
@@ -839,17 +898,23 @@ def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None =
         export_formats = []
     elif is_frame3d_request(user_request):
         inp = parse_frame3d_request(user_request)
-    elif (export_formats or wants_foundation(user_request)) and prior_spec:
+    elif (export_formats or wants_foundation(user_request) or assumption_cmd) and prior_spec:
         inp = inputs_from_dict(prior_spec); from_memory = True
         follow = parse_frame3d_request(user_request)
         if wants_foundation(user_request):
             inp.foundation = True
-        if "dxf_rebar" in export_formats:
-            inp.design_code = "MABHAS9"  # detailing is built from the Mabhas 9 design groups
+        if "dxf_rebar" in export_formats or "dxf_foundation" in export_formats or a_upd:
+            inp.design_code = "MABHAS9"
+        if "dxf_foundation" in export_formats:
+            inp.foundation = True
+        if show_foundation:
+            inp.foundation = True
+        if animate_mode:
+            inp.seismic_code = "IRAN_2800"  # mode shapes come from the 2800 modal analysis  # detailing is built from the Mabhas 9 design groups
         if "allowable_bearing_kpa" in follow.parsed:
             inp.allowable_bearing_kpa = follow.allowable_bearing_kpa
             inp.parsed = [*inp.parsed, "allowable_bearing_kpa"]
-    elif export_formats or (wants_foundation(user_request) and is_export_request(user_request)):
+    elif export_formats or assumption_cmd or (wants_foundation(user_request) and is_export_request(user_request)):
         msg = ("No 3D frame analysis was found in this project (needed for the export / foundation design). Describe the frame first, e.g. "
                "`3-storey RC frame, 2x2 bays of 5 m, storey height 3.2 m, zone high, soil II`, then ask for the foundation design or the ETABS/SAFE/AutoCAD export.")
         blank = {"kind": KIND, "label": "3D FRAME ANALYSIS", "status": "MISSING_REQUIRED_INPUT", "missing_inputs": ["frame_model"],
@@ -859,6 +924,12 @@ def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None =
     else:
         return None
     inp.lang = i18n.detect_lang(user_request)
+    if a_upd:
+        inp.assumptions = {**(inp.assumptions or {}), **a_upd}
+    for k, v in inp_upd.items():
+        setattr(inp, k, v)
+        inp.parsed = [*inp.parsed, k]
+    changed = set(a_upd) | set(inp_upd)
     inputs = {k: v for k, v in asdict(inp).items() if k != "parsed"}
     defaulted = [k for k in inputs if k not in inp.parsed and k not in ("seismic_code", "design_code", "accidental_ecc")]
     common = {
@@ -870,6 +941,8 @@ def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None =
         "inputs": inputs, "parsed_from_request": list(inp.parsed), "defaulted_inputs": defaulted,
         "export_requested": export_formats, "model_from_project_memory": from_memory,
         "spec": frame3d_spec(inp), "lang": inp.lang,
+        "detailing_assumptions": da.describe(inp.assumptions, inp, inp.lang, changed),
+        "assumptions_changed": sorted(changed), "animate_mode": animate_mode, "show_foundation": bool(show_foundation), "assumptions_command": "show" if show_assumptions and not changed else ("update" if changed else None),
     }
     missing = missing_inputs(inp)
     if missing:
@@ -1051,7 +1124,16 @@ def _modal_payload(modal: dict[str, Any], si: dict[str, Any]) -> dict[str, Any]:
 
 def frame3d_markdown(payload: dict[str, Any]) -> str:
     text = _frame3d_markdown_en(payload)
-    return i18n.fa_markdown(text) if payload.get("lang") == "fa" else text
+    text = i18n.fa_markdown(text) if payload.get("lang") == "fa" else text
+    rows = payload.get("detailing_assumptions") or []
+    if rows:
+        fa = payload.get("lang") == "fa"
+        head = ("### فرض‌های طراحی و آرماتوربندی پروژه" if fa else "### Project design & detailing assumptions")
+        hint = ("(* = تغییر در همین پیام؛ برای تغییر بنویسید مثلاً «پوشش ۵۰ میلی‌متر، شاخه ۱۲ متری، قطع آرماتور در ln/4»)" if fa
+                else "(* = changed in this message; change with e.g. \"cover 50 mm, 12 m stock bars, cut-off at ln/4\")")
+        block = "\n".join([head, *[f"- {r}" for r in rows], hint])
+        text = block + "\n\n" + text if payload.get("assumptions_command") else text + "\n\n" + block
+    return text
 
 
 def _frame3d_markdown_en(payload: dict[str, Any]) -> str:

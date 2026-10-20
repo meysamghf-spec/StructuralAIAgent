@@ -23,5 +23,5 @@ RUN useradd --create-home --uid 10001 app && mkdir -p /data/files && chown -R ap
 USER app
 
 EXPOSE 8000
-# Migrations: RUN_MIGRATIONS_ON_STARTUP=true applies database/migrations/*.sql once each (tracked in schema_migrations).
+# Migrations: RUN_MIGRATIONS_ON_STARTUP=true applies database/migrations/*.sql once each (tracked in applied_migration_files).
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers ${WEB_CONCURRENCY:-2}"]

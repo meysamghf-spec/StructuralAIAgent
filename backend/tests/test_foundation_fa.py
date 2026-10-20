@@ -88,9 +88,14 @@ def test_footing_in_dxf_and_f2k():
     from app.application import csi_text_export as cte
     p = f3.build_frame3d_payload(BASE + ", allowable bearing 200 kPa")
     inp, raw, design = f3.run_frame3d_for_export({**p["inputs"], "_p": p["parsed_from_request"]})
-    ents = cte.parse_dxf_entities(cte.build_dxf_plans(inp, raw, design))
-    assert sum(1 for e in ents if e["type"] == "POLYLINE" and e["8"] == "FOUNDATION") == 9
-    assert any(e["type"] == "TEXT" and e["8"] == "FOUNDATION_TEXT" and e["1"].startswith("F") for e in ents)
+    import io
+
+    import ezdxf
+
+    doc = ezdxf.read(io.StringIO(cte.build_export("dxf_plans", inp, raw, design)))
+    msp = doc.modelspace()
+    assert len(msp.query('LWPOLYLINE[layer=="S-FOOT"]')) == 9
+    assert {t.dxf.text for t in msp.query('TEXT[layer=="S-TAG"]')} >= {"F1", "F2", "F3"}
     t = cte.parse_f2k(cte.build_f2k(inp, raw))
     areas = t["OBJECT GEOMETRY - AREAS 01 - GENERAL"]
     assert len(areas) == 9 and areas[0]["Area"].startswith("FTG")

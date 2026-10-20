@@ -73,9 +73,27 @@ def test_dxf_audits_clean_and_has_three_sheets(model):
     assert len(doc.audit().errors) == 0
     msp = doc.modelspace()
     titles = [e.dxf.text for e in msp.query("TEXT[layer=='TITLE']")]
-    assert len(titles) == 3 and any("BENDING SCHEDULE" in t for t in titles)
+    assert {t.split()[0] for t in titles if t.startswith("R-0")} >= {"R-01", "R-02", "R-03"} and any("BENDING SCHEDULE" in t for t in titles)
+    assert any(t.startswith("BEAM ON GRID A (1–4), along X") for t in titles)  # orientation in member titles
+    assert any(t.startswith("COLUMN A-1, STORY 1") for t in titles)
+    assert msp.query("LWPOLYLINE[layer=='KEYPLAN_HI']") or msp.query("LWPOLYLINE[layer=='KEYPLAN_HI']") is not None
     assert len(msp.query("LINE[layer=='REBAR_STIRRUP']")) > 100
-    assert any("وزن کل" in e.dxf.text for e in msp.query("TEXT"))
+    from bidi.algorithm import get_display  # shaped + visual-order Persian (AutoCAD-ready)
+    assert any(any("\ufb50" <= c <= "\ufeff" for c in e.dxf.text) for e in msp.query("TEXT"))
+    # office drawing standard: paper-space sheets, bar callouts with leaders, A-A / B-B cut marks, notes, hatches
+    for name in ("R-01", "R-02", "R-03"):
+        assert doc.layouts.get(name).query("VIEWPORT")
+    callouts = [e.dxf.text for e in msp.query("TEXT[layer=='REBAR_TEXT']") if " L=" in e.dxf.text]
+    assert msp.query("LEADER") and any("Φ" in c for c in callouts)
+    cuts = {e.dxf.text for e in msp.query("TEXT[layer=='SECTION']")}
+    assert {"A", "B", "C"} <= cuts
+    titles = {e.dxf.text for e in msp.query("TEXT[layer=='S-TITLE']")}
+    assert any(t.startswith("SECTION A-A") for t in titles) and any(t.startswith("SECTION C-C") for t in titles)
+    assert doc.layouts.get("R-04") is not None  # 1:20 section sheet
+    assert msp.query("HATCH[layer=='S-REBAR-MAIN']")  # bars as filled circles
+    assert any("GENERAL NOTES" in e.dxf.text for e in msp.query("TEXT[layer=='NOTES']"))
+    assert msp.query("HATCH")
+    _ = get_display
 
 
 def test_schedule_rows_and_total(model):
@@ -102,3 +120,90 @@ def test_chat_phrase_routes_to_rebar_export():
     prior = {k: v for k, v in INPUTS.items() if k != "design_code"}
     payload = build_frame3d_payload("نقشه آرماتوربندی", prior_spec=prior)
     assert any(e["format"] == "dxf_rebar" and e["requested"] for e in payload["exports"])
+
+
+# ---------------------------------------------------------------- chat-changeable assumptions
+from app.application import detailing_assumptions as da  # noqa: E402
+from app.application.frame3d_chat_analysis import frame3d_markdown  # noqa: E402
+from app.application.rebar_detailing import cutoff_length  # noqa: E402
+
+
+def test_parse_persian_example():
+    a, inp = da.parse_assumptions("پوشش ۵۰ میلی‌متر، شاخه ۱۲ متری، قطع آرماتور در ln/4")
+    assert a == {"cover_mm": 50.0, "stock_length_m": 12.0, "cutoff": "ln/4"} and inp == {}
+
+
+def test_parse_english_full_set():
+    a, inp = da.parse_assumptions(
+        "cover 5 cm, 9 m stock bars, cut-off from the moment diagram, lap splice class A, ld factor 1.2, hook factor 1.1, "
+        "psi_t=1.0, cross-ties alternate, stirrup hooks 12 db, stirrups Φ12, fy=420 fc=28, beam bars 16, 20, 25, "
+        "column bars Φ18/Φ22, special ductility, SCWB skip")
+    assert a["cover_mm"] == 50 and a["stock_length_m"] == 9 and a["cutoff"] == "moment" and a["splice_class"] == "A"
+    assert a["ld_factor"] == 1.2 and a["hook_factor"] == 1.1 and a["psi_t"] == 1.0 and a["cross_ties"] == "alternate"
+    assert a["stirrup_hook_db"] == 12 and a["stirrup_db"] == 12 and a["beam_bars"] == [16, 20, 25] and a["column_bars"] == [18, 22]
+    assert a["ductility"] == "special" and a["scwb"] == "skip"
+    assert inp == {"system": "RC_SMF", "fy_mpa": 420.0, "fc_mpa": 28.0}
+
+
+def test_parse_persian_set_and_no_false_positive():
+    a, inp = da.parse_assumptions("وصله کلاس الف، سنجاقی یکی در میان، قلاب خاموت ۶ برابر، شکل پذیری متوسط، ستون قوی تیر ضعیف اعمال نشود، میلگردهای تیر ۱۴ و ۱۸، مقاومت بتن ۳۰")
+    assert a == {"splice_class": "A", "cross_ties": "alternate", "stirrup_hook_db": 6, "beam_bars": [14, 18],
+                 "ductility": "intermediate", "scwb": "skip"}
+    assert inp == {"system": "RC_IMF", "fc_mpa": 30.0}
+    assert da.parse_assumptions("design the beams of the frame") == ({}, {})
+    assert da.is_show_assumptions("فرض‌ها را نشان بده") and da.is_show_assumptions("show assumptions")
+
+
+def test_cutoff_rules():
+    assert cutoff_length("ln/3", 4600, 60, 30, 3, 2, 390, 16) == 1540
+    assert cutoff_length("ln/4", 4600, 60, 30, 3, 2, 390, 16) == 1150
+    x = cutoff_length("moment", 4600, 60, 30, 3, 2, 390, 16)
+    assert 4600 / 16 <= x < 4600 / 2
+
+
+def test_assumptions_persist_and_apply_on_next_run():
+    prior = {k: v for k, v in INPUTS.items()}
+    p1 = build_frame3d_payload("پوشش ۵۰ میلی‌متر، شاخه ۱۰ متری، قطع آرماتور در ln/4، خاموت Φ12", prior_spec=prior)
+    assert p1["status"] == "completed" and p1["model_from_project_memory"]
+    assert p1["inputs"]["assumptions"] == {"cover_mm": 50.0, "stock_length_m": 10.0, "cutoff": "ln/4", "stirrup_db": 12}
+    assert "Φ12@" in p1["design"]["beams"][0]["stirrups"]  # stirrup Φ applied in the Mabhas 9 design
+    md = frame3d_markdown(p1)
+    assert "پوشش بتن: 50 mm *" in md and "قطع آرماتور فوقانی: ln/4 *" in md
+    # next run: spec from memory keeps the assumptions; rebar DXF uses them
+    import json
+    spec = json.loads(p1["spec"].split("]", 1)[1])
+    p2 = build_frame3d_payload("فرض‌ها را نشان بده", prior_spec=spec)
+    assert p2["assumptions_command"] == "show" and "پوشش بتن: 50 mm" in "\n".join(p2["detailing_assumptions"])
+    inp, raw, design = run_frame3d_for_export(p2["inputs"])
+    doc, rows, _ = build_rebar_doc(inp, design)
+    assert all(r.length_mm <= 10000 for r in rows)
+    notes = " ".join(e.dxf.text for e in doc.modelspace().query("TEXT[layer=='NOTES']"))
+    assert "Clear cover: 50 mm" in notes and "Top-bar cut-off: ln/4" in notes
+
+
+def test_scwb_skip_and_ductility_override():
+    p = build_frame3d_payload("special ductility, SCWB not applicable", prior_spec=dict(INPUTS))
+    assert p["inputs"]["system"] == "RC_SMF" and p["design"]["ductility"] == "special"
+    assert p["design"]["scwb_status"] == "NOT_APPLIED"
+
+
+def test_assumption_prompt_routes_to_frame_agent():
+    from app.application.agent_intent_routing import score_agent_intents
+    top = max(score_agent_intents("پوشش ۵۰ میلی‌متر، قطع آرماتور در ln/4"), key=lambda m: m.score)
+    assert top.agent_type.value == "ANALYSIS_AGENT"
+
+
+def test_mode_shapes_in_viewer_and_chat_command():
+    from app.application.frame3d_chat_analysis import requested_mode_shape
+
+    assert requested_mode_shape("مود ۲ را نشان بده") == 2 and requested_mode_shape("animate mode 3") == 3
+    assert requested_mode_shape("3 storey frame, 2 modes") is None
+    p = build_frame3d_payload("مود ۲ را نشان بده", prior_spec=dict(INPUTS))
+    assert p["status"] == "completed" and p["animate_mode"] == 2
+    modes = p["viewer"]["modes"]
+    assert len(modes) == 6 and modes[1]["mode"] == 2 and modes[1]["T_s"] > 0
+    assert abs(modes[0]["freq_hz"] - 1 / modes[0]["T_s"]) < 1e-3
+    assert {"mass_x_pct", "mass_y_pct", "mass_rz_pct"} <= set(modes[0])
+    disp = modes[0]["disp"]
+    assert set(disp) == {n["id"] for n in p["viewer"]["nodes"]}
+    assert max(max(abs(c) for c in u) for u in disp.values()) == 1.0

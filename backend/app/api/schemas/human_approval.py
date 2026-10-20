@@ -61,6 +61,10 @@ class HumanApprovalResponse(BaseModel):
     resolved_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+    # set on reject of an engineering-run approval: "revised" (next_approval_id = revision N+1) | "clarify"
+    revision_outcome: str | None = None
+    next_approval_id: UUID | None = None
+    revision_message: str | None = None
 
     @classmethod
     def from_domain(cls, request: HumanApprovalRequest) -> HumanApprovalResponse:
