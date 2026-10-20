@@ -902,3 +902,21 @@ export async function fetchProjectFileBlob(projectId: string, fileId: string): P
   if (!response.ok) throw new Error(`Preview failed (${response.status})`);
   return response.blob();
 }
+
+/** Submit a chat/workspace engineering result (e.g. 3D frame + Mabhas 9 design) for human approval. */
+export async function createApprovalRequest(
+  projectId: string,
+  request: { targetAction: string; summary: string; targetType?: "DESIGN_DECISION" | "MODEL_CHANGE"; metadata?: Record<string, unknown> },
+): Promise<ApprovalSummary> {
+  return apiFetch<ApprovalSummary>("/api/v1/approvals", {
+    method: "POST",
+    body: JSON.stringify({
+      project_id: projectId,
+      requester: "authenticated-user",
+      target_type: request.targetType ?? "DESIGN_DECISION",
+      target_action: request.targetAction,
+      summary: request.summary,
+      metadata: request.metadata ?? {},
+    }),
+  });
+}
