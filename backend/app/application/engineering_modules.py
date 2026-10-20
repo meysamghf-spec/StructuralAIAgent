@@ -71,6 +71,10 @@ def diff(old: dict[str, Any], new: dict[str, Any]) -> list[dict[str, Any]]:
         if k == "assumptions":
             oa, na = old.get(k) or {}, new.get(k) or {}
             rows += [{"key": f"assumptions.{kk}", "old": oa.get(kk), "new": na.get(kk)} for kk in sorted(set(oa) | set(na)) if oa.get(kk) != na.get(kk)]
+        elif isinstance(old.get(k), dict) and isinstance(new.get(k), dict):
+            o, n = old[k], new[k]
+            rows += [{"key": f"{k}.{kk}", "old": o.get(kk), "new": n.get(kk)} for kk in sorted(set(o) | set(n))
+                     if o.get(kk) != n.get(kk) and kk not in ("confidence", "notes")]
         elif k not in ("parsed_from_request", "_p", "lang") and old.get(k) != new.get(k):
             rows.append({"key": k, "old": old.get(k), "new": new.get(k)})
     return rows
@@ -175,3 +179,6 @@ def _ensure_builtin() -> None:
                                    completed=lambda p: p.get("status") == "completed"))
     register_adapter(ModuleAdapter("aisc_steel_beam", "AISC 360 steel beam", ["aisc360"], _aisc_run, _aisc_summary, _aisc_intents,
                                    completed=lambda p: p.get("status") in ("PASS", "FAIL")))
+    from app.application import plan_import
+
+    plan_import.register()

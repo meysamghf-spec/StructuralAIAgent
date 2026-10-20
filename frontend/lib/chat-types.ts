@@ -197,7 +197,29 @@ export type EngineeringResult = {
   demoResults: DemoEngineeringResults | null;
   aciBeamResults: AciRcBeamResults | null;
   frame3dResults: Frame3dResults | null;
+  planImport?: PlanImportResult | null;
   agentRun: AgentRun | null;
+};
+
+/** DRAFT model imported from a plan drawing (backend plan_import). */
+export type PlanImportResult = {
+  kind: "plan_import";
+  revision: number;
+  filename: string;
+  method: string;
+  spansXM: number[];
+  spansYM: number[];
+  labelsX: string[];
+  labelsY: string[];
+  columns: number;
+  intersections: number;
+  storeys: number | null;
+  storeyHeightM: number | null;
+  confidence: { grid: number; spacing: number; columns: number; overall: number };
+  notes: string[];
+  edits: string[];
+  previewPng: string | null;
+  approvalId: string | null;
 };
 
 export type Frame3dDriftRow = {

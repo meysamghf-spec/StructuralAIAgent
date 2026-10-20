@@ -23,6 +23,7 @@ import { AciRcBeamResultCard } from "./AciRcBeamResultCard";
 import { EngineeringResultCard } from "./EngineeringResultCard";
 import { Frame3dResultCard } from "./Frame3dResultCard";
 import { MessageContent } from "./MessageContent";
+import { PlanImportCard } from "./PlanImportCard";
 import { ToolExecutionCard } from "./ToolExecutionCard";
 
 type ChatThreadProps = {
@@ -159,6 +160,9 @@ export function ChatThread({
                   ) : null}
                   {message.engineeringResult.frame3dResults ? (
                     <Frame3dResultCard results={message.engineeringResult.frame3dResults} />
+                  ) : null}
+                  {message.engineeringResult.planImport ? (
+                    <PlanImportCard result={message.engineeringResult.planImport} projectId={projectId} />
                   ) : null}
                   {message.engineeringResult.aciBeamResults ? (
                     <AciRcBeamResultCard results={message.engineeringResult.aciBeamResults} />
