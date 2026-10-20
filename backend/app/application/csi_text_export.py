@@ -36,6 +36,7 @@ FORMATS = {
     "f2k": {"filename": "foundation.f2k", "label": "SAFE foundation loads (.f2k)", "mime": "text/plain"},
     "dxf_plans": {"filename": "plans.dxf", "label": "AutoCAD plans per storey (.dxf)", "mime": "application/dxf"},
     "dxf_3d": {"filename": "frame3d.dxf", "label": "AutoCAD 3D wireframe (.dxf)", "mime": "application/dxf"},
+    "dxf_rebar": {"filename": "rebar-details.dxf", "label": "Rebar detailing sheets + bar bending schedule (.dxf)", "mime": "application/dxf"},
 }
 
 
@@ -593,6 +594,12 @@ def build_export(fmt: str, inp, raw: dict[str, Any], design: dict[str, Any] | No
         return build_dxf_plans(inp, raw, design)
     if fmt == "dxf_3d":
         return build_dxf_3d(inp, raw)
+    if fmt == "dxf_rebar":
+        from app.application.rebar_detailing import build_dxf_rebar
+
+        if not design:
+            raise ValueError("rebar detailing needs the Mabhas 9 design (design code MABHAS9)")
+        return build_dxf_rebar(inp, raw, design)
     raise ValueError(f"unknown export format {fmt!r}")
 
 
@@ -600,5 +607,7 @@ def export_descriptors(requested: list[str] | None = None) -> list[dict[str, Any
     req = set(requested or [])
     notes = {"e2k": E2K_UNVERIFIED, "f2k": F2K_UNVERIFIED,
              "dxf_plans": ["DXF R12 ASCII; layers GRID, COLUMNS, BEAMS, SECTION_TEXT, DESIGN_TEXT; one plan per storey side by side."],
-             "dxf_3d": ["DXF R12 ASCII; LINE entities with Z plus one 3D POLYLINE per column stack (use 3D Orbit)."]}
+             "dxf_3d": ["DXF R12 ASCII; LINE entities with Z plus one 3D POLYLINE per column stack (use 3D Orbit)."],
+             "dxf_rebar": ["DXF R2010 (ezdxf, audited); sheets R-01 beams, R-02 columns, R-03 bar bending schedule; units mm.",
+                           "Detailing rules marked [code] / [assumed] on sheet R-03; engineer review required before construction."]}
     return [{"format": f, **{k: v for k, v in meta.items()}, "requested": f in req, "notes": notes[f]} for f, meta in FORMATS.items()]

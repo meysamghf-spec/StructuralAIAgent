@@ -10,10 +10,12 @@ import { useUiLang } from "@/hooks/useUiLang";
 const DRAWINGS = [
   { format: "dxf_plans", filename: "plans.dxf", label: "Story plans + foundation plan" },
   { format: "dxf_3d", filename: "frame3d.dxf", label: "3D wireframe" },
+  { format: "dxf_rebar", filename: "rebar-details.dxf", label: "Rebar detailing + bar schedule" },
 ];
 const DOWNLOADS = [
   { format: "dxf_plans", filename: "plans.dxf" },
   { format: "dxf_3d", filename: "frame3d.dxf" },
+  { format: "dxf_rebar", filename: "rebar-details.dxf" },
   { format: "e2k", filename: "model.e2k" },
   { format: "f2k", filename: "foundation.f2k" },
 ];

@@ -124,31 +124,35 @@ def is_frame3d_request(user_request: str) -> bool:
 
 
 _EXPORT_WORD = r"export|download|خروجی|اکسپورت|دانلود|فایل"
+_REBAR_WORDS = r"آرماتور ?بندی|دیتیل آرماتور|جزئیات آرماتور|جدول (?:وزن )?میلگرد|rebar|reinforcement detail|bar bending|\bbbs\b"
 _EXPORT_TARGETS = {
     "e2k": r"etabs|\be2k\b|ایتبس|ای ?تبس",
     "f2k": r"\bsafe\b|\bf2k\b|سیف|سیفی|فونداسیون|پی\b",
     "dxf_plans": r"autocad|auto ?cad|\bdxf\b|\bcad\b|اتوکد|اتو ?کد|نقشه|پلان",
     "dxf_3d": r"autocad|auto ?cad|\bdxf\b|\bcad\b|اتوکد|اتو ?کد|3d|سه ?بعدی",
+    "dxf_rebar": _REBAR_WORDS,
 }
 
 
 def requested_export_formats(user_request: str) -> list[str]:
     """Formats asked for in an export prompt ("خروجی ایتبس بده", "export to ETABS/SAFE/AutoCAD")."""
     t = _norm(user_request).lower()
+    if re.search(_REBAR_WORDS, t):  # "نقشه آرماتوربندی" is itself a drawing request (no export word needed)
+        return ["dxf_rebar"] + [f for f in ("e2k", "f2k") if re.search(_EXPORT_TARGETS[f], t)]
     if not re.search(_EXPORT_WORD, t):
         return []
-    found = [f for f, pat in _EXPORT_TARGETS.items() if re.search(pat, t)]
+    found = [f for f, pat in _EXPORT_TARGETS.items() if f != "dxf_rebar" and re.search(pat, t)]
     if "dxf_3d" in found and "dxf_plans" not in found and not re.search(r"autocad|auto ?cad|dxf|cad|اتوکد|اتو ?کد", t):
         found.remove("dxf_3d")  # "3D" alone (e.g. in a frame description) is not a CAD request
     if re.search(r"\ball\b|همه", t) and found:
-        found = list(_EXPORT_TARGETS)
+        found = [f for f in _EXPORT_TARGETS if f != "dxf_rebar"]
     return found
 
 
 def is_export_request(user_request: str) -> bool:
     """ETABS/SAFE exports always; CAD-only exports when the frame/model is mentioned (other CAD exports keep their agents)."""
     found = requested_export_formats(user_request)
-    if {"e2k", "f2k"} & set(found):
+    if {"e2k", "f2k", "dxf_rebar"} & set(found):
         return True
     if wants_foundation(user_request) and re.search(r"frame|model|structure|قاب|مدل|سازه", _norm(user_request).lower()):
         return True
@@ -840,6 +844,8 @@ def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None =
         follow = parse_frame3d_request(user_request)
         if wants_foundation(user_request):
             inp.foundation = True
+        if "dxf_rebar" in export_formats:
+            inp.design_code = "MABHAS9"  # detailing is built from the Mabhas 9 design groups
         if "allowable_bearing_kpa" in follow.parsed:
             inp.allowable_bearing_kpa = follow.allowable_bearing_kpa
             inp.parsed = [*inp.parsed, "allowable_bearing_kpa"]
