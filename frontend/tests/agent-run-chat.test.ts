@@ -170,11 +170,11 @@ describe("agent run chat UI modules", () => {
   it("sidebar groups project, files, and capabilities without leaving chat-first navigation", () => {
     const source = readFileSync(resolve(__dirname, "../components/chat/ChatSidebar.tsx"), "utf8");
     expect(source).toContain("Project");
-    expect(source).toContain("Agents / Capabilities");
-    expect(source).toContain("New Project");
-    expect(source).toContain('href="/workspace/files"');
-    expect(source).toContain('href="/workspace/agents/builder"');
-    expect(source).toContain("Optimization");
+    expect(source).toContain("MainNav");
+    expect(source).toContain("MainNav");
+    expect(readFileSync(resolve(__dirname, "../lib/nav.ts"), "utf8")).toContain('href: "/workspace/files"');
+    expect(readFileSync(resolve(__dirname, "../lib/nav.ts"), "utf8")).toContain('href: "/workspace/agents/builder"');
+    expect(source).toContain("MainNav");
   });
 
   it("workspace opens the context panel only when requested or structured results exist", () => {

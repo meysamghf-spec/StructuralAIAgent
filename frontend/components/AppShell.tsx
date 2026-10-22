@@ -2,11 +2,11 @@
 
 import { useAuth } from "@/hooks/useAuth";
 import Link from "next/link";
+import { MainNav } from "@/components/MainNav";
 import { usePathname, useRouter } from "next/navigation";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ChatDock } from "@/components/chat/ChatDock";
 import { useUiLang } from "@/hooks/useUiLang";
-import { visibleNavItems } from "@/lib/nav";
 
 
 const AUTH_PATHS = new Set(["/login", "/register"]);
@@ -18,6 +18,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { lang, t, setLang } = useUiLang();
   const isAuthPage = AUTH_PATHS.has(pathname);
   const isChatHome = pathname === "/" && isAuthenticated;
+  const [navOpen, setNavOpen] = useState(false);
+  useEffect(() => setNavOpen(false), [pathname]);
 
   function handleLogout() {
     logout();
@@ -37,29 +39,33 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="shell">
-      <aside className="sidebar">
+    <div className="shell" data-nav-open={navOpen ? "true" : "false"}>
+      <header className="mobile-topbar">
+        <button
+          type="button"
+          className="button secondary mobile-nav-toggle"
+          aria-label={navOpen ? "Close menu" : "Open menu"}
+          aria-expanded={navOpen}
+          onClick={() => setNavOpen((v) => !v)}
+        >
+          {navOpen ? "✕" : "☰"}
+        </button>
+        <span className="mobile-topbar-title">StructuralAIAgent</span>
+      </header>
+      <button
+        type="button"
+        className="mobile-nav-backdrop"
+        aria-hidden={!navOpen}
+        tabIndex={-1}
+        data-open={navOpen ? "true" : "false"}
+        onClick={() => setNavOpen(false)}
+      />
+      <aside className="sidebar" data-open={navOpen ? "true" : "false"}>
         <div className="brand">
           <p className="brand-eyebrow">StructuralAIAgent</p>
           <h1>Engineering Workspace</h1>
         </div>
-        <nav className="nav">
-          {visibleNavItems().map((item) => {
-            const active =
-              item.href === "/"
-                ? pathname === "/"
-                : pathname === item.href || pathname.startsWith(`${item.href}/`);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={active ? "nav-link active" : "nav-link"}
-              >
-                {t(item.label)}
-              </Link>
-            );
-          })}
-        </nav>
+        <MainNav onNavigate={() => setNavOpen(false)} />
         <div className="sidebar-lang">
           <span>{t("Language")}:</span>
           <button type="button" className={lang === "en" ? "lang-btn active" : "lang-btn"} onClick={() => setLang("en")}>EN</button>

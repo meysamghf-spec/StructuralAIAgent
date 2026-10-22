@@ -1,4 +1,5 @@
 "use client";
+import { randomId } from "@/lib/uuid";
 
 import { agentRunToMetadata, applyAgentRunEvent } from "@/lib/agent-run-sse";
 import {
@@ -346,7 +347,7 @@ export function useChat({
     setExecutionPhase("uploading");
     const conversationId = await ensureConversation();
     const queued = list.map((file) => ({
-      localId: crypto.randomUUID(),
+      localId: randomId(),
       file,
       uploading: true,
     }));

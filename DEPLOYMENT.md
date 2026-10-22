@@ -150,3 +150,17 @@ Volumes:
 - [ ] Persistent volumes for DB and file storage
 - [ ] First user registered (or registration endpoint restricted)
 - [ ] `/ready` returns `200` before sending traffic
+
+## Sign in with Google (optional)
+Disabled unless all three are set in `.env.production` (backend):
+```
+GOOGLE_CLIENT_ID=<OAuth client id>.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=<OAuth client secret>
+GOOGLE_REDIRECT_URI=https://<your-domain>/api/v1/auth/google/callback
+# optional: GOOGLE_POST_LOGIN_URL=https://<your-domain>/login
+```
+Google Cloud Console → APIs & Services → Credentials → OAuth client ID (Web application):
+- Authorized JavaScript origins: `https://<your-domain>`
+- Authorized redirect URIs: `https://<your-domain>/api/v1/auth/google/callback`
+- OAuth consent screen scopes: `openid`, `email`, `profile`.
+Google accounts are linked to existing users by verified email; unknown emails get a new user.

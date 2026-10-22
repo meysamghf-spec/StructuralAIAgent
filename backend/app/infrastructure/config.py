@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     postgres_password: SecretStr | None = None
     test_database_url: str | None = None
     file_storage_root: str = ""
-    max_upload_bytes: int = 10 * 1024 * 1024
+    max_upload_bytes: int = 100 * 1024 * 1024
     auto_index_files: bool = False
 
     crypto_payment_gateway: str = "mock"
@@ -54,6 +54,12 @@ class Settings(BaseSettings):
     auth_allow_legacy_actor: bool = True
     auth_jwt_secret: SecretStr | None = None
     auth_token_expiry_hours: int = 24
+    # Sign in with Google (OAuth 2.0 / OIDC). Disabled unless all three are set.
+    google_client_id: str | None = None
+    google_client_secret: SecretStr | None = None
+    google_redirect_uri: str | None = None
+    # Where the browser lands after Google sign-in; defaults to the redirect URI's origin + /login
+    google_post_login_url: str | None = None
     project_access_enforced: bool = False
     entitlement_enforcement_enabled: bool = False
     # Free-launch mode (e.g. Iran hosting, where the crypto payment gateway and CoinGecko are not usable):

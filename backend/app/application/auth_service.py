@@ -64,6 +64,26 @@ class AuthService:
             raise InvalidCredentialsError()
         return user, self._issue_token(user)
 
+    def login_with_google(self, *, email: str, display_name: str | None) -> tuple[User, str]:
+        """Link a verified Google email to an existing user, or create a new one."""
+        import secrets
+
+        normalized_email = email.strip().lower()
+        self._validate_email(normalized_email)
+        user = self._users.get_by_email(normalized_email)
+        if user is None:
+            user_id = uuid4()
+            # Random unusable password; the user can still sign in with Google.
+            user = self._users.create(
+                email=normalized_email,
+                password_hash=hash_password(secrets.token_urlsafe(32)),
+                account_id=str(user_id),
+                display_name=display_name,
+            )
+        elif not user.is_active:
+            raise InvalidCredentialsError()
+        return user, self._issue_token(user)
+
     def authenticate_bearer(self, token: str) -> AuthenticatedAccount:
         secret = self._jwt_secret()
         try:

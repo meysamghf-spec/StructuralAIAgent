@@ -72,7 +72,8 @@ export default function ChatWorkspace() {
   );
 
   useEffect(() => {
-    if (hasStructuredContext) {
+    // On phones/tablets the context panel is an overlay; don't auto-open it over the chat.
+    if (hasStructuredContext && (typeof window === "undefined" || window.innerWidth > 1200)) {
       setContextOpen(true);
     }
   }, [

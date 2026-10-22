@@ -23,7 +23,7 @@ export function setUiLang(lang: Frame3dLang): void {
 }
 
 export const UI_FA: Record<string, string> = {
-  Chat: "گفتگو", Projects: "پروژه‌ها", Model: "مدل", Files: "فایل‌ها", Memory: "حافظه", Learning: "یادگیری",
+  Chat: "گفتگو", Projects: "پروژه‌ها", "New Project": "پروژهٔ جدید", Model: "مدل", Files: "فایل‌ها", Memory: "حافظه", Learning: "یادگیری",
   Assistants: "دستیارها", "Assistant Builder": "سازندهٔ دستیار", Approvals: "تأییدها", Analysis: "تحلیل",
   Results: "نتایج", Design: "طراحی", Optimization: "بهینه‌سازی", Integrations: "اتصال نرم‌افزارها", CAD: "نقشه (CAD)",
   Validation: "اعتبارسنجی", Reports: "گزارش‌ها", Traceability: "ردیابی", Upgrades: "ارتقا", "AI Assistant": "دستیار هوشمند",

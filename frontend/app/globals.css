@@ -1561,7 +1561,7 @@ a {
   grid-template-columns: 1fr;
 }
 
-@media max-width: 1100px: 640px) {
+@media (min-width: 640px) {
   .chat-prompt-examples {
     grid-template-columns: 1fr 1fr;
   }
@@ -2372,3 +2372,221 @@ body {
   min-width: 0;
   max-width: 100%;
 }
+
+/* ===== Mobile layout (<=960px / <=900px chat) =====
+   Fixes: stacked sidebar ate the viewport and the 1200px chat rule (280px + 1fr) overrode the 900px
+   single-column rule, squeezing the chat into ~130px; context overlay covered the composer. */
+.mobile-topbar,
+.mobile-nav-backdrop {
+  display: none;
+}
+
+@media (max-width: 960px) {
+  .shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .mobile-topbar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0.85rem;
+    background: #111827;
+    border-bottom: 1px solid #334155;
+    position: relative;
+    z-index: 25;
+  }
+  .mobile-nav-toggle {
+    min-width: 2.5rem;
+    min-height: 2.5rem;
+    font-size: 1.2rem;
+    padding: 0.25rem 0.6rem;
+  }
+  .mobile-topbar-title {
+    font-weight: 600;
+    color: #e2e8f0;
+  }
+  .shell > .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(85vw, 300px);
+    height: 100dvh;
+    max-height: none;
+    z-index: 40;
+    transform: translateX(-105%);
+    transition: transform 0.2s ease;
+    border-right: 1px solid #334155;
+    border-bottom: none;
+  }
+  .shell > .sidebar[data-open="true"] {
+    transform: translateX(0);
+  }
+  .mobile-nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    border: none;
+    background: rgba(15, 23, 42, 0.6);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    z-index: 35;
+  }
+  .mobile-nav-backdrop[data-open="true"] {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .shell > .content {
+    height: 100%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media (max-width: 900px) {
+  .chat-shell,
+  .chat-shell[data-context-open="true"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .chat-main {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+  }
+  .chat-main-header {
+    flex: 0 0 auto;
+    gap: 0.5rem;
+    padding: 0.6rem 0.85rem;
+  }
+  .chat-main-header-left {
+    min-width: 0;
+  }
+  .chat-main-header h2 {
+    font-size: 1rem;
+    line-height: 1.3;
+    margin: 0.1rem 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 70vw;
+  }
+  .chat-main-header .eyebrow {
+    display: none;
+  }
+  .chat-main-body {
+    -webkit-overflow-scrolling: touch;
+  }
+  .chat-composer {
+    position: sticky;
+    bottom: 0;
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+  }
+}
+
+.google-signin-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  width: 100%;
+  min-height: 2.75rem;
+  text-decoration: none;
+}
+.google-signin-g {
+  font-weight: 700;
+  color: #4285f4;
+  background: #fff;
+  border-radius: 50%;
+  width: 1.4rem;
+  height: 1.4rem;
+  display: inline-grid;
+  place-items: center;
+}
+
+/* Mobile: let the document scroll (real mobile toolbars change the viewport; nested fixed-height
+   scroll panes didn't scroll on some Android browsers). Chat keeps its own fixed-height layout. */
+@media (max-width: 960px) {
+  html,
+  body {
+    height: auto;
+    min-height: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  .shell {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+  .shell > .content,
+  .auth-shell,
+  .auth-shell > .content {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+  .auth-shell {
+    min-height: 100dvh;
+  }
+  .mobile-topbar {
+    position: sticky;
+    top: 0;
+  }
+  .chat-guest,
+  .chat-loading {
+    min-height: 0;
+    padding: 1.25rem 1rem 2.5rem;
+  }
+}
+
+/* Mobile: never overflow horizontally */
+.panel-stack { grid-template-columns: minmax(0, 1fr); }
+.panel-stack > *, .card, .grid > *, [class*="-grid"] > * { min-width: 0; }
+@media (max-width: 960px) {
+  html, body { overflow-x: hidden; max-width: 100%; }
+  .content, .content * { overflow-wrap: anywhere; }
+  .content select, .content input, .content textarea, .content img, .content canvas, .content svg, .content video { max-width: 100%; }
+  .content table { display: block; max-width: 100%; overflow-x: auto; }
+  .content pre, .content code { white-space: pre-wrap; word-break: break-word; }
+  .status-pill { white-space: normal; max-width: 100%; }
+  .chat-context-panel { max-width: 100vw; overflow-x: hidden; }
+  .chat-context-panel * { min-width: 0; overflow-wrap: anywhere; }
+}
+
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); border: 0; }
+.upload-dropzone { border: 2px dashed rgba(148,163,184,.4); border-radius: 12px; padding: 1.25rem; display: grid; gap: .6rem; justify-items: center; text-align: center; }
+.upload-dropzone.drag-over { border-color: #0ea5e9; background: rgba(14,165,233,.08); }
+.upload-button { cursor: pointer; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 1.25rem; }
+.upload-button[aria-disabled="true"] { opacity: .5; pointer-events: none; }
+.upload-hint { margin: 0; }
+.upload-progress { width: 100%; display: grid; gap: .3rem; font-size: .9rem; }
+.upload-progress progress { width: 100%; height: 8px; }
+@media (max-width: 960px) {
+  .upload-dropzone { padding: 1rem; }
+  .upload-button { width: 100%; }
+  .brief-field-controls { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Agent Workspace redesign */
+.first-project-cta { display: grid; gap: .75rem; justify-items: start; }
+.cta-button { font-size: 1.05rem; padding: .9rem 1.4rem; min-height: 52px; display: inline-flex; align-items: center; }
+.workflow-progress { border: 1px solid rgba(148,163,184,.25); border-radius: 10px; padding: .6rem .8rem; }
+.workflow-progress > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: .75rem; }
+.workflow-progress > summary::-webkit-details-marker { display: none; }
+.workflow-steps { flex: 1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; padding: 0; list-style: none; }
+.workflow-steps .step { position: relative; display: grid; justify-items: center; gap: .3rem; font-size: .85rem; color: #94a3b8; }
+.workflow-steps .step + .step::before { content: ""; position: absolute; top: 6px; right: 50%; width: 100%; height: 2px; background: #334155; z-index: 0; }
+.workflow-steps .step.done + .step.done::before { background: #0ea5e9; }
+.step-dot { width: 14px; height: 14px; border-radius: 50%; background: #334155; border: 2px solid #475569; position: relative; z-index: 1; }
+.step.done .step-dot { background: #0ea5e9; border-color: #38bdf8; }
+.step.done { color: #e2e8f0; }
+.workflow-progress-hint { font-size: .8rem; color: #94a3b8; }
+.workflow-progress[open] .workflow-progress-hint { color: #e2e8f0; }
+.workflow-details { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: .4rem .8rem; margin: .7rem 0 0; }
+.workflow-details dt { font-size: .75rem; color: #94a3b8; }
+.workflow-details dd { margin: 0; overflow-wrap: anywhere; }
+/* keep floating Chat button clear of page content */
+.shell .content { padding-bottom: 96px; }
+@media (max-width: 960px) { .chat-dock-toggle { bottom: max(14px, env(safe-area-inset-bottom)); right: 14px; } }

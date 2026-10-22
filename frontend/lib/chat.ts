@@ -1,3 +1,4 @@
+import { randomId } from "@/lib/uuid";
 /** Chat UI helpers and formatting. */
 
 import type { ChatAction, ChatAttachment, ChatMessage } from "./chat-api";
@@ -145,7 +146,7 @@ export type PendingSendRequest = {
 };
 
 export function createOptimisticMessageId(): string {
-  return `optimistic-${crypto.randomUUID()}`;
+  return `optimistic-${randomId()}`;
 }
 
 export function buildOptimisticUserMessage(

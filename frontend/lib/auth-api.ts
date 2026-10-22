@@ -1,4 +1,4 @@
-import { apiFetch } from "./api";
+import { apiFetch, getApiBaseUrl } from "./api";
 import { storeAuthSession } from "./auth-session";
 
 export type UserResponse = {
@@ -58,4 +58,25 @@ export async function fetchCurrentUser(): Promise<UserResponse> {
 
 export async function fetchFeatureAccess(): Promise<FeatureAccessSummary> {
   return apiFetch<FeatureAccessSummary>("/api/v1/auth/me/features");
+}
+
+export async function fetchGoogleSignInEnabled(): Promise<boolean> {
+  try {
+    const res = await apiFetch<{ enabled: boolean }>("/api/v1/auth/google/config");
+    return Boolean(res.enabled);
+  } catch {
+    return false;
+  }
+}
+
+export function googleSignInStartUrl(nextPath: string): string {
+  return `${getApiBaseUrl()}/api/v1/auth/google/start?next=${encodeURIComponent(nextPath)}`;
+}
+
+/** Finish a Google sign-in redirect: store the token from the URL fragment and resolve the account. */
+export async function completeGoogleSignIn(token: string): Promise<UserResponse> {
+  storeAuthSession(token, "");
+  const me = await fetchCurrentUser();
+  storeAuthSession(token, me.account_id);
+  return me;
 }
