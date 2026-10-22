@@ -39,7 +39,7 @@ export default function MemoryWorkspaceClient() {
     <section className="panel-stack">
       <header className="page-header">
         <p className="eyebrow">Knowledge</p>
-        <h2>Project Memory</h2>
+        <h2>Memory</h2>
         <p className="subtitle">What the platform remembers about this project.</p>
       </header>
 

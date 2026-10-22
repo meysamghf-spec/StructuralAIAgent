@@ -256,7 +256,7 @@ export default function AgentsWorkspaceClient() {
     <section className="panel-stack">
       <header className="page-header">
         <p className="eyebrow">Engineering Assistants</p>
-        <h2>Agent Workspace</h2>
+        <h2>Assistants</h2>
         <p className="subtitle">Run structural workflows on a project with traceable assistants.</p>
       </header>
 

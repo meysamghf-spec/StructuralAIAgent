@@ -146,7 +146,7 @@ export default function ModelWorkspaceClient() {
     <section className="panel-stack">
       <header className="page-header">
         <p className="eyebrow">Model</p>
-        <h2>Engineering Model</h2>
+        <h2>Model</h2>
         <p className="subtitle">Review geometry, members, loads, and revisions.</p>
       </header>
 

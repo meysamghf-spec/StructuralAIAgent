@@ -96,7 +96,7 @@ export default function LearningWorkspaceClient() {
     <section className="panel-stack">
       <header className="page-header">
         <p className="eyebrow">Experience</p>
-        <h2>Engineering Learning</h2>
+        <h2>Learning</h2>
         <p className="subtitle">Approved experience that informs later recommendations.</p>
       </header>
 

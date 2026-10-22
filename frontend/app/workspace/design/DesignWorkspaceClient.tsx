@@ -112,7 +112,7 @@ export default function DesignWorkspaceClient() {
     <section className="panel-stack">
       <header className="page-header">
         <p className="eyebrow">Design</p>
-        <h2>Structural Design</h2>
+        <h2>Design</h2>
         <p className="subtitle">Run code-based design checks from your model.</p>
       </header>
 

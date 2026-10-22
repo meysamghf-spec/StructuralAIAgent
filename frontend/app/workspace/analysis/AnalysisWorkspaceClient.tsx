@@ -102,7 +102,7 @@ export default function AnalysisWorkspaceClient() {
     <section className="panel-stack">
       <header className="page-header">
         <p className="eyebrow">Analysis</p>
-        <h2>Structural Analysis</h2>
+        <h2>Analysis</h2>
         <p className="subtitle">Prepare analysis inputs and track analysis runs.</p>
       </header>
 
