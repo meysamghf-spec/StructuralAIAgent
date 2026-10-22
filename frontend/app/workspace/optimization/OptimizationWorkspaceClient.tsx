@@ -2,6 +2,7 @@
 
 import { ProjectScopePanel } from "@/components/workspace/ProjectScopePanel";
 import { useProjectScope } from "@/hooks/useProjectScope";
+import { FrameOptimizerPanel } from "@/components/optimization/FrameOptimizerPanel";
 import {
   formatMemberOptimizationResults,
   formatOptimizationInventory,
@@ -156,6 +157,8 @@ export default function OptimizationWorkspaceClient() {
         <h2>Optimization</h2>
         <p className="subtitle">Set optimization goals from your model and recorded runs.</p>
       </header>
+
+      <FrameOptimizerPanel />
 
       <ProjectScopePanel
         projects={projects}

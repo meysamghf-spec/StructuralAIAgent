@@ -112,6 +112,8 @@ class Frame3dInputs:
     lang: str = "en"
     # per-project design / rebar-detailing assumptions changed from chat (see detailing_assumptions.py)
     assumptions: dict | None = None
+    # optional per-storey sections from the optimizer: {"C1": [b, h], "B1": [b, h], ...} (metres)
+    group_sections: dict | None = None
     parsed: list[str] = field(default_factory=list)
 
 
@@ -332,7 +334,17 @@ def _matvec(a, v):
     return [sum(x * y for x, y in zip(row, v)) for row in a]
 
 
-def run_frame3d(inp: Frame3dInputs) -> dict[str, Any]:
+def column_dims(inp: Frame3dInputs, storey: int) -> tuple[float, float]:
+    s = (inp.group_sections or {}).get(f"C{storey}")
+    return (float(s[0]), float(s[1])) if s else (inp.column_b_m, inp.column_h_m)
+
+
+def beam_dims(inp: Frame3dInputs, storey: int) -> tuple[float, float]:
+    s = (inp.group_sections or {}).get(f"B{storey}")
+    return (float(s[0]), float(s[1])) if s else (inp.beam_b_m, inp.beam_h_m)
+
+
+def run_frame3d(inp: Frame3dInputs, *, with_modal: bool = True, with_foundation: bool = True) -> dict[str, Any]:
     nx, ny, ns = inp.bays_x, inp.bays_y, inp.storeys
     XS = [i * inp.bay_x_m for i in range(nx + 1)]
     YS = [j * inp.bay_y_m for j in range(ny + 1)]
@@ -340,12 +352,15 @@ def run_frame3d(inp: Frame3dInputs) -> dict[str, Any]:
     fc, h = inp.fc_mpa, inp.storey_height_m
     Ec = 4700 * math.sqrt(fc) * 1000  # kN/m2
     cb, ch, bb, bh = inp.column_b_m, inp.column_h_m, inp.beam_b_m, inp.beam_h_m
-    Ac = cb * ch; Icy = cb * ch**3 / 12 * 0.70; Icz = ch * cb**3 / 12 * 0.70
-    Jc = torsion_constant_rectangle(cb, ch) * 0.15
-    Ab = bb * bh; Iby = bb * bh**3 / 12 * 0.35; Ibz = bh * bb**3 / 12 * 0.35
-    Jb = torsion_constant_rectangle(bb, bh) * 0.15
-    sw_beam = bb * max(bh - inp.slab_t_m, 0.0) * 25.0
-    sw_col = Ac * h * 25.0
+
+    def _props(b: float, d: float, fac: float) -> tuple[float, float, float, float]:
+        return b * d, b * d**3 / 12 * fac, d * b**3 / 12 * fac, torsion_constant_rectangle(b, d) * 0.15
+
+    cprop = {k: _props(*column_dims(inp, k), 0.70) for k in range(1, ns + 1)}
+    bprop = {k: _props(*beam_dims(inp, k), 0.35) for k in range(1, ns + 1)}
+    sw_beam_k = {k: beam_dims(inp, k)[0] * max(beam_dims(inp, k)[1] - inp.slab_t_m, 0.0) * 25.0 for k in range(1, ns + 1)}
+    sw_col_k = {k: cprop[k][0] * h * 25.0 for k in range(1, ns + 1)}
+    sw_col = sw_col_k[1]
     live = {k: (inp.roof_live_kn_m2 if k == ns else inp.live_kn_m2) for k in range(1, ns + 1)}
     wall = {k: (inp.parapet_kn_m if k == ns else inp.wall_kn_m) for k in range(1, ns + 1)}
 
@@ -376,7 +391,7 @@ def run_frame3d(inp: Frame3dInputs) -> dict[str, Any]:
     def beam_w(case: str, k: int, L: float, other: float, edge: bool) -> float:
         panels = 1 if edge else 2
         if case == "D":
-            return panels * inp.dead_kn_m2 * tributary(L, other) + sw_beam + (wall[k] if edge else 0.0)
+            return panels * inp.dead_kn_m2 * tributary(L, other) + sw_beam_k[k] + (wall[k] if edge else 0.0)
         if case == "L":
             return panels * live[k] * tributary(L, other)
         return 0.0
@@ -388,7 +403,7 @@ def run_frame3d(inp: Frame3dInputs) -> dict[str, Any]:
     ncol_lvl = (nx + 1) * (ny + 1)
     W: dict[int, float] = {}
     for k in range(1, ns + 1):
-        wD = sum(beam_w("D", k, L, o, e) * L for _, _, _, kk, L, o, e in beams if kk == k) + ncol_lvl * sw_col * (0.5 if k == ns else 1.0)
+        wD = sum(beam_w("D", k, L, o, e) * L for _, _, _, kk, L, o, e in beams if kk == k) + ncol_lvl * (0.5 * sw_col_k[k] + (0.5 * sw_col_k[k + 1] if k < ns else 0.0))
         wL = sum(beam_w("L", k, L, o, e) * L for _, _, _, kk, L, o, e in beams if kk == k)
         W[k] = wD + 0.2 * wL
 
@@ -407,12 +422,12 @@ def run_frame3d(inp: Frame3dInputs) -> dict[str, Any]:
     dxc, dyc = XS[ci] - cx, YS[cj] - cy
 
     def model(case: str) -> SpaceFrameModel:
-        els = [SpaceElement(cid, a, b, Ec, Ac, Icy, Icz, Jc, metadata={"type": "column"}) for cid, a, b, _ in cols]
-        els += [SpaceElement(bid, a, b, Ec, Ab, Iby, Ibz, Jb, udl_gz=-beam_w(case, k, L, o, e), metadata={"type": "beam"})
+        els = [SpaceElement(cid, a, b, Ec, *cprop[k], metadata={"type": "column"}) for cid, a, b, k in cols]
+        els += [SpaceElement(bid, a, b, Ec, *bprop[k], udl_gz=-beam_w(case, k, L, o, e), metadata={"type": "beam"})
                 for bid, a, b, k, L, o, e in beams]
         nl: list[SpaceNodalLoad] = []
         if case == "D":
-            nl = [SpaceNodalLoad(b, fz=-sw_col) for _, _, b, _ in cols]
+            nl = [SpaceNodalLoad(b, fz=-sw_col_k[k]) for _, _, b, k in cols]
         elif case == "Ex":
             nl = [SpaceNodalLoad(_nid(ci, cj, k), fx=F[k], mz=F[k] * (ecc_x + dyc)) for k in F]  # load at mass centre + e
         elif case == "Ey":
@@ -533,7 +548,7 @@ def run_frame3d(inp: Frame3dInputs) -> dict[str, Any]:
         }
         base_shear["error_pct"] = 100 * max(abs(base_shear["V_reaction_x_kn"] - V), abs(base_shear["V_reaction_y_kn"] - V)) / V
     modal = None
-    if V > 0 and inp.seismic_code == "IRAN_2800":
+    if with_modal and V > 0 and inp.seismic_code == "IRAN_2800":
         modal = _modal_response_spectrum(inp, lateral_prep, nodes, XS, YS, Z, W, (ci, cj, dxc, dyc), V, seismic_info)
     total_gravity = abs(base["D"]["reac"][2]) + abs(base["L"]["reac"][2])
     result = {
@@ -550,7 +565,7 @@ def run_frame3d(inp: Frame3dInputs) -> dict[str, Any]:
                    "beam_udl": {bid: {"D": beam_w("D", k, L, o, e), "L": beam_w("L", k, L, o, e)} for bid, a, b, k, L, o, e in beams},
                    "Ec_kn_m2": Ec, "eccentricity": inp.accidental_ecc},
     }
-    result["foundation_design"] = fnd.design_foundation(inp, result)
+    result["foundation_design"] = fnd.design_foundation(inp, result) if with_foundation else None
     return result
 
 
@@ -581,14 +596,13 @@ def _apply_scwb_rule(design: dict[str, Any], rule: str) -> dict[str, Any]:
 
 def _design_mabhas9(inp: "Frame3dInputs", raw: dict[str, Any], ductility: str) -> dict[str, Any]:
     fc, fy = inp.fc_mpa, inp.fy_mpa
-    bb, bh = inp.beam_b_m * 1000, inp.beam_h_m * 1000
-    cb, ch = inp.column_b_m * 1000, inp.column_h_m * 1000
     groups: dict[tuple, list[dict]] = {}
     for b in raw["beams"]:
         groups.setdefault((b["storey"], b["direction"], b["position"]), []).append(b)
     beam_rows, beam_by_id = [], {}
     for (k, dirn, pos), members in sorted(groups.items()):
         env = {key: max(m[key] for m in members) for key in ("M_neg_end_kn_m", "M_pos_end_kn_m", "M_pos_mid_kn_m", "V_kn")}
+        bb, bh = (x * 1000 for x in beam_dims(inp, k))
         d = m9.design_beam(m_neg_end=env["M_neg_end_kn_m"], m_pos_end=env["M_pos_end_kn_m"], m_pos_mid=env["M_pos_mid_kn_m"],
                            vu=env["V_kn"], b=bb, h=bh, fc=fc, fy=fy, ductility=ductility)
         row = {"group": f"B-{dirn}-S{k}-{pos}", "storey": k, "direction": dirn, "position": pos, "members": len(members),
@@ -603,9 +617,10 @@ def _design_mabhas9(inp: "Frame3dInputs", raw: dict[str, Any], ductility: str) -
     cgroups: dict[tuple, list[dict]] = {}
     for c in raw["columns"]:
         cgroups.setdefault((c["storey"], c["position"]), []).append(c)
-    clear = inp.storey_height_m * 1000 - bh
     col_rows, col_by_id = [], {}
     for (k, pos), members in sorted(cgroups.items()):
+        cb, ch = (x * 1000 for x in column_dims(inp, k))
+        clear = inp.storey_height_m * 1000 - beam_dims(inp, k)[1] * 1000
         d = m9.design_column_group({m["id"]: m["records"] for m in members}, cb, ch, fc, fy, clear)
         gov = d.get("governing") or {}
         col_rows.append({"group": f"C-S{k}-{pos}", "storey": k, "position": pos, "members": len(members),
@@ -623,8 +638,9 @@ def _design_mabhas9(inp: "Frame3dInputs", raw: dict[str, Any], ductility: str) -
         for i in range(nx + 1):
             for j in range(ny + 1):
                 mnc = 0.0
-                for cid in (f"C{i}_{j}_{k}", f"C{i}_{j}_{k+1}"):
+                for kk, cid in ((k, f"C{i}_{j}_{k}"), (k + 1, f"C{i}_{j}_{k+1}")):
                     d, m = col_by_id[cid]
+                    cb, ch = (x * 1000 for x in column_dims(inp, kk))
                     if "nface" not in d:
                         continue
                     ps = [r["P"] for r in m["records"] if r["seismic"]] or [r["P"] for r in m["records"]]

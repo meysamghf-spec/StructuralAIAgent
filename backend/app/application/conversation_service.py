@@ -428,6 +428,18 @@ class ConversationService:
             attachment_context,
         )
 
+        from app.application import frame_optimizer as _fopt
+
+        if _fopt.is_optimize_request(user_content):
+            from app.application.billing import service as _billing
+
+            try:
+                _billing.require_feature(account.account_id, "optimization")
+            except _billing.QuotaExceededError as exc:
+                fa = any("\u0600" <= ch <= "\u06ff" for ch in user_content)
+                msg = ("بهینه‌سازی قاب در پلن فعلی شما فعال نیست. برای استفاده، از صفحه Upgrades به پلن Pro یا بالاتر ارتقا دهید."
+                       if fa else exc.message)
+                return msg, {"mode": "rule_based", "intent": "frame_optimization", "quota_exceeded": exc.details}
         if conversation.project_id is not None:
             return self._run_project_orchestration(
                 conversation=conversation,
@@ -561,6 +573,21 @@ class ConversationService:
 
         from app.application import general_beam_engine as gbe
         from app.application.frame3d_chat_analysis import build_frame3d_payload, frame3d_markdown, is_frame3d_request
+
+        from app.application import frame_optimizer as fopt
+
+        if fopt.is_optimize_request(user_content):
+            try:
+                prior = fopt.prior_spec_from_texts(
+                    [m.content for m in reversed(history) if m.role == MessageRole.USER]
+                )
+                res = fopt.build_optimization_from_chat(user_content, prior, {"time_budget_s": 35})
+                if res is not None:
+                    lang = "fa" if any("\u0600" <= ch <= "\u06ff" for ch in user_content) else "en"
+                    return fopt.optimization_markdown(res, lang), {"mode": "rule_based", "intent": "frame_optimization", "engineering_results": res}
+                return fopt.missing_frame_message(user_content), {"mode": "rule_based", "intent": "frame_optimization"}
+            except Exception:  # noqa: BLE001
+                logger.exception("frame optimizer failed")
 
         try:
             if is_frame3d_request(user_content):
