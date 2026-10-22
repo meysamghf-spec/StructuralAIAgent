@@ -1,15 +1,12 @@
 "use client";
 
-import { apiFetch, type CreateProjectResponse, type ProjectListResponse } from "@/lib/api";
+import { apiFetch, type ProjectListResponse } from "@/lib/api";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { projectChatHref, setCurrentProjectId } from "@/lib/current-project";
-import { FormEvent, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function ProjectsPage() {
-  const router = useRouter();
   const [projects, setProjects] = useState<ProjectListResponse["projects"]>([]);
-  const [name, setName] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,45 +27,15 @@ export default function ProjectsPage() {
     void refreshProjects();
   }, []);
 
-  async function handleCreate(event: FormEvent) {
-    event.preventDefault();
-    if (!name.trim()) {
-      return;
-    }
-    setError(null);
-    try {
-      const created = await apiFetch<CreateProjectResponse>("/api/v1/projects", {
-        method: "POST",
-        body: JSON.stringify({ name: name.trim() }),
-      });
-      setName("");
-      // go straight to the new project's chat, with the project selected
-      setCurrentProjectId(created.project.id);
-      router.push(projectChatHref(created.project.id));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create project");
-    }
-  }
-
   return (
     <section className="panel-stack">
       <header className="page-header">
         <p className="eyebrow">Projects</p>
-        <h2>Project Management</h2>
-        <p className="subtitle">Create and open structural engineering projects.</p>
+        <h2>Projects</h2>
+        <p className="subtitle">Open a project or start a new one.</p>
+        <Link className="button" href="/projects/new" data-testid="new-project-button">New project</Link>
       </header>
 
-      <form className="card form-row" onSubmit={handleCreate}>
-        <input
-          className="input"
-          placeholder="New project name"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-        />
-        <button className="button" type="submit">
-          Create Project
-        </button>
-      </form>
 
       {error ? <div className="alert error">{error}</div> : null}
 
@@ -76,7 +43,10 @@ export default function ProjectsPage() {
         <h3>Project List</h3>
         {loading ? <p className="muted">Loading projects…</p> : null}
         {!loading && projects.length === 0 ? (
-          <p className="muted">Create your first structural project to start chatting and analyzing.</p>
+          <div className="first-project-cta" data-testid="projects-empty">
+            <p>No projects yet. Create one to start chatting and analyzing.</p>
+            <Link className="cta-button" href="/projects/new">Create project</Link>
+          </div>
         ) : null}
         <ul className="project-list">
           {projects.map((project) => (

@@ -102,11 +102,8 @@ export default function AnalysisWorkspaceClient() {
     <section className="panel-stack">
       <header className="page-header">
         <p className="eyebrow">Analysis</p>
-        <h2>Structural Analysis</h2>
-        <p className="subtitle">
-          Prepare analysis inputs from the project engineering model, review readiness, and track
-          analysis runs. Engineering results require an external structural solver.
-        </p>
+        <h2>Analysis</h2>
+        <p className="subtitle">Prepare analysis inputs and track analysis runs.</p>
       </header>
 
       <ProjectScopePanel
@@ -148,6 +145,8 @@ export default function AnalysisWorkspaceClient() {
                 {getAnalysisStatusLabel(readiness.readiness_status)}
               </p>
               <p className="muted">{readiness.summary}</p>
+              <details className="meta-summary">
+                <summary>Details</summary>
               <ul className="feature-list">
                 {formatAnalysisInventory(readiness.model_summary).map((item) => (
                   <li key={item}>{item}</li>
@@ -163,6 +162,7 @@ export default function AnalysisWorkspaceClient() {
               <p className="muted">
                 Validation: {getValidationStatusLabel(readiness.validation_status)}
               </p>
+              </details>
             </>
           ) : (
             <p className="muted">Select a project to review model readiness.</p>
@@ -249,7 +249,7 @@ export default function AnalysisWorkspaceClient() {
       <section className="card">
         <h3>Run history</h3>
         {runs.length === 0 ? (
-          <p className="muted">No analysis runs recorded yet.</p>
+          <p className="muted">No analysis runs yet. Check readiness above, then start a run.</p>
         ) : (
           <ul className="timeline-list">
             {runs.map((run) => (

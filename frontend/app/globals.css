@@ -2591,6 +2591,23 @@ body {
 .shell .content { padding-bottom: 96px; }
 @media (max-width: 960px) { .chat-dock-toggle { bottom: max(14px, env(safe-area-inset-bottom)); right: 14px; } }
 
+/* UX cleanup */
+.page-header .subtitle { max-width: 60ch; }
+.field-hint { font-size: 0.85rem; color: var(--warning, #b7791f); margin: 0.35rem 0 0; }
+button:disabled { cursor: not-allowed; opacity: 0.55; }
+details.meta-summary > summary { cursor: pointer; font-size: 0.9rem; color: var(--muted, #667); }
+details.meta-summary[open] > summary { margin-bottom: 0.5rem; }
+.page-header > .button { display: inline-block; margin-top: 0.75rem; position: static; width: auto; }
+.project-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
+.project-actions .button { white-space: nowrap; }
+
+.autocad-panel textarea, .autocad-panel input[type="text"], .autocad-panel input[type="number"] { width: 100%; box-sizing: border-box; margin: 0.4rem 0; }
+.autocad-panel input[type="file"] { max-width: 100%; }
+.autocad-box { display: flex; flex-direction: column; gap: 0.4rem; min-width: 0; }
+.autocad-result { margin-top: 1rem; display: flex; flex-direction: column; gap: 0.6rem; }
+.autocad-preview { border: 1px solid var(--border, #ddd); border-radius: 8px; overflow: hidden; background: #fff; }
+.autocad-preview svg { width: 100%; height: auto; max-height: 70vh; display: block; }
+.autocad-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
 /* ---- Plans & billing ---- */
 .billing-mock-note { background: #fff7e0; border: 1px solid #f0d78c; color: #6b5200; padding: 8px 12px; border-radius: 8px; font-size: 0.9rem; }
 .billing-banner { padding: 10px 14px; border-radius: 8px; font-weight: 600; }
@@ -2628,6 +2645,16 @@ body {
 .billing-mock-actions { display: flex; gap: 12px; }
 .quota-prompt { background: #eef3ff; border: 1px solid #b9c9f5; padding: 10px 12px; border-radius: 8px; }
 
+/* AutoCAD result cards (chat + CAD page) */
+.autocad-card { border: 1px solid var(--border, #d9dee7); border-radius: 12px; padding: 12px; margin-top: 10px; background: var(--surface, #fff); max-width: 100%; }
+.autocad-card-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; flex-wrap: wrap; }
+.autocad-card-preview { margin: 10px 0; background: #fafbfc; border-radius: 8px; overflow: hidden; max-height: 360px; display: flex; justify-content: center; }
+.autocad-card-preview svg { width: 100%; height: auto; max-height: 360px; }
+.autocad-card-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.autocad-card-actions .button { min-width: 0; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.autocad-note { flex: 1 1 140px; min-width: 0; padding: 6px 8px; border: 1px solid var(--border, #d9dee7); border-radius: 8px; }
+.autocad-card-meta { margin: 6px 0 0; font-size: 12px; }
+.autocad-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 12px; }
 /* crypto checkout */
 .billing-ref { display: block; font-size: 12px; opacity: 0.75; }
 .billing-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 14px; }
@@ -2645,3 +2672,24 @@ body {
 .billing-timer { margin: 12px 0; }
 .billing-st.expired, .billing-st.cancelled { color: #f87171; }
 @media (max-width: 600px) { .billing-pay-grid { grid-template-columns: 1fr; } .billing-qr { margin: 0 auto; } }
+
+/* Drawer close button (mobile only) */
+.drawer-close { display: none; }
+@media (max-width: 960px) {
+  .shell > .sidebar .drawer-close { display: inline-flex; }
+  .shell > .sidebar { touch-action: pan-y; }
+  .mobile-nav-backdrop { touch-action: none; }
+}
+@media (max-width: 900px) {
+  .chat-sidebar .drawer-close { display: inline-flex; }
+  .chat-sidebar { touch-action: pan-y; }
+  .chat-sidebar-backdrop { touch-action: none; }
+}
+.drawer-close {
+  position: absolute; top: 0.5rem; right: 0.5rem; z-index: 2;
+  align-items: center; justify-content: center;
+  width: 2.5rem; height: 2.5rem; border-radius: 999px;
+  border: 1px solid #334155; background: #1e293b; color: #e2e8f0;
+  font-size: 1.1rem; cursor: pointer;
+}
+.chat-sidebar-header { position: relative; padding-right: 3rem; }

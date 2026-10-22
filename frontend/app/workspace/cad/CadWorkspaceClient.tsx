@@ -140,6 +140,11 @@ export default function CadWorkspaceClient() {
 
   return (
     <div className="workspace-page">
+      <header className="page-header">
+        <p className="eyebrow">CAD</p>
+        <h2>CAD</h2>
+        <p className="subtitle">Check AutoCAD capability and drawing sets.</p>
+      </header>
       <ProjectScopePanel
         projects={projects}
         selectedProjectId={selectedProjectId}

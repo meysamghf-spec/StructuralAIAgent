@@ -417,6 +417,10 @@ class ConversationService:
         mode: str = "auto",
         progress_sink: AgentRunProgressSink | None = None,
     ) -> tuple[str, dict]:
+        cad = self._maybe_run_autocad(conversation, account, user_content, attachments)
+        if cad is not None:
+            cad[1]["selected_mode"] = mode or "auto"
+            return cad
         history = self._repo.list_messages(conversation.id, limit=_MAX_HISTORY_MESSAGES)
         enriched_request = enrich_user_request_with_attachments(
             user_content,
@@ -439,6 +443,30 @@ class ConversationService:
         content, metadata = self._run_general_chat(enriched_request, history)
         metadata["selected_mode"] = mode or "auto"
         return content, metadata
+
+    def _maybe_run_autocad(self, conversation, account: AuthenticatedAccount, user_content: str,
+                           attachments: list[MessageAttachment]) -> tuple[str, dict] | None:
+        """PDF/photo -> DXF and prompt -> drawing run right here in the chat (AutoCAD v1)."""
+        from app.application.autocad.chat_intent import run_chat_autocad
+
+        pid = conversation.project_id
+
+        def _reader(file_id):
+            return lambda: self._file_ingestion.get_file_content(pid, file_id)[1]
+
+        def _save(filename: str, content: bytes) -> str | None:
+            record = self._file_ingestion.ingest_upload(pid, filename=filename, content=content,
+                                                        content_type="application/dxf", created_by=account.account_id)
+            return str(record.id)
+
+        try:
+            return run_chat_autocad(
+                user_content, [(a.filename, _reader(a.file_id)) for a in attachments],
+                owner=str(account.account_id), project_id=str(pid) if pid else None,
+                save_project_file=_save if pid else None)
+        except Exception:  # noqa: BLE001
+            logger.exception("autocad chat failed")
+            return None
 
     def _run_project_orchestration(
         self,
@@ -531,9 +559,29 @@ class ConversationService:
                 messages.append(AIMessage(role=AIMessageRole.ASSISTANT, content=message.content))
         messages.append(AIMessage(role=AIMessageRole.USER, content=user_content))
 
-        response = self._ai_gateway.complete(
-            AICompletionRequest(model=_CHAT_MODEL, messages=messages)
-        )
+        from app.application import general_beam_engine as gbe
+        from app.application.frame3d_chat_analysis import build_frame3d_payload, frame3d_markdown, is_frame3d_request
+
+        try:
+            if is_frame3d_request(user_content):
+                payload = build_frame3d_payload(user_content, None)
+                return frame3d_markdown(payload), {"mode": "rule_based", "engineering_results": payload}
+            beam = gbe.analyze_beam_prompt(user_content)
+            if beam is not None:
+                return beam["markdown"], {"mode": "rule_based", "engineering_results": beam["payload"]}
+        except Exception:  # noqa: BLE001 - fall back to the chat model / help text
+            logger.exception("rule-based chat engine failed")
+
+        try:
+            response = self._ai_gateway.complete(
+                AICompletionRequest(model=_CHAT_MODEL, messages=messages)
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("chat model failed")
+            return gbe.CAPABILITIES_MESSAGE, {"mode": "capabilities", "provider": "none"}
+        content = (response.content or "").strip()
+        if "stub" in str(response.provider).lower() or content.startswith("{") or "task_acknowledged" in content:
+            return gbe.CAPABILITIES_MESSAGE, {"mode": "capabilities", "provider": str(response.provider)}
         return response.content, {"mode": "general_chat", "provider": response.provider}
 
     def _persist_conversation_memory(

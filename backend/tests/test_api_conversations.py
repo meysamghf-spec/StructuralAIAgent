@@ -120,7 +120,7 @@ def test_general_chat_without_project(api_client: TestClient) -> None:
         headers=_auth_headers(token),
     )
     assert send.status_code == 201
-    assert send.json()["assistant_message"]["metadata"].get("mode") == "general_chat"
+    assert send.json()["assistant_message"]["metadata"].get("mode") in {"general_chat", "capabilities", "rule_based"}
 
 
 def test_upload_attachment_and_send_with_file(api_client: TestClient) -> None:

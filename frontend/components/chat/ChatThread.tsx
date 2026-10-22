@@ -22,6 +22,7 @@ import { AttachmentChip } from "./AttachmentChip";
 import { AciRcBeamResultCard } from "./AciRcBeamResultCard";
 import { EngineeringResultCard } from "./EngineeringResultCard";
 import { Frame3dResultCard } from "./Frame3dResultCard";
+import { AutocadDrawingCard } from "@/components/autocad/AutocadDrawingCard";
 import { MessageContent } from "./MessageContent";
 import { ToolExecutionCard } from "./ToolExecutionCard";
 
@@ -120,6 +121,17 @@ export function ChatThread({
                 </div>
               ) : null}
               <MessageContent content={message.content} />
+              {message.role === "assistant" && message.autocadResult ? (
+                <AutocadDrawingCard
+                  jobId={message.autocadResult.jobId}
+                  title={message.autocadResult.title}
+                  filename={message.autocadResult.filename}
+                  kind={message.autocadResult.kind}
+                  layers={message.autocadResult.layers}
+                  review={message.autocadResult.review}
+                  savedToProject={!!message.autocadResult.projectFileId}
+                />
+              ) : null}
               {message.role === "assistant" && message.engineeringResult ? (
                 <div className="chat-message-meta">
                   {message.engineeringResult.selectedCapability ? (

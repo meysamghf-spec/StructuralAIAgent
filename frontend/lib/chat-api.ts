@@ -143,6 +143,22 @@ function asChatMessage(raw: unknown): ChatMessage | null {
   };
 }
 
+const STREAM_IDLE_MS = 90_000;
+
+function readWithTimeout(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  ms: number,
+): Promise<ReadableStreamReadResult<Uint8Array>> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      void reader.cancel().catch(() => undefined);
+      reject(new Error("The agent stream stopped responding."));
+    }, ms);
+  });
+  return Promise.race([reader.read(), timeout]).finally(() => clearTimeout(timer));
+}
+
 export async function streamChatMessage(
   input: {
     message: string;
@@ -188,7 +204,9 @@ export async function streamChatMessage(
 
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      // Watchdog: a dropped mobile connection can leave read() pending forever, which kept the
+      // composer disabled (busy) after the first message. Give up after STREAM_IDLE_MS of silence.
+      const { done, value } = await readWithTimeout(reader, STREAM_IDLE_MS);
       if (done) {
         break;
       }
@@ -213,7 +231,7 @@ export async function streamChatMessage(
           assistantMessage = nextAssistant;
         }
         if (isTerminalAgentRunEvent(event.type, event.data) && userMessage && assistantMessage) {
-          await reader.cancel();
+          void reader.cancel().catch(() => undefined);
           return {
             conversation_id: conversationId || assistantMessage.conversation_id,
             user_message: userMessage,
@@ -227,7 +245,11 @@ export async function streamChatMessage(
       }
     }
   } finally {
-    reader.releaseLock();
+    try {
+      reader.releaseLock();
+    } catch {
+      // lock already released by cancel()
+    }
   }
 
   if (!userMessage || !assistantMessage) {

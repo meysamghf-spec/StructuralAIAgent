@@ -256,7 +256,7 @@ export default function AgentsWorkspaceClient() {
     <section className="panel-stack">
       <header className="page-header">
         <p className="eyebrow">Engineering Assistants</p>
-        <h2>Agent Workspace</h2>
+        <h2>Assistants</h2>
         <p className="subtitle">Run structural workflows on a project with traceable assistants.</p>
       </header>
 
@@ -264,7 +264,7 @@ export default function AgentsWorkspaceClient() {
         <section className="card first-project-cta">
           <p>You have no projects yet. Create one to start running workflows.</p>
           <Link href="/projects/new" className="button cta-button">
-            Create your first project / ساخت پروژه‌ی اول
+            Create your first project
           </Link>
         </section>
       ) : null}
