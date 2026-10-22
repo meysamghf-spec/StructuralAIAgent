@@ -1,0 +1,31 @@
+{
+  "_comment": "Single editable source of truth for plans, prices, durations and limits. Prices: toman (IRT) and USDT per MONTH before duration discount. null limit = unlimited.",
+  "currency_note": "Prices are charged in USDT (crypto only). Toman is shown for reference only.",
+  "durations": [
+    {"id": "1m", "months": 1, "label": "Monthly", "label_fa": "ماهانه", "discount_pct": 0},
+    {"id": "3m", "months": 3, "label": "3 months", "label_fa": "سه‌ماهه", "discount_pct": 10},
+    {"id": "12m", "months": 12, "label": "Yearly", "label_fa": "سالانه", "discount_pct": 25}
+  ],
+  "plans": [
+    {"id": "free", "name": "Free", "name_fa": "رایگان", "tagline": "Try the engines on small models.",
+     "price_toman": 0, "price_usdt": 0, "purchasable": false,
+     "limits": {"projects": 2, "analyses_per_month": 15, "frame_max_storeys": 4, "frame_max_bays": 3,
+                "design_sheets": ["mabhas9_check"], "exports": [], "autocad_imports_per_month": 2,
+                "optimization": false, "seats": 1, "storage_mb": 200, "support": "Community / email (best effort)"}},
+    {"id": "pro", "name": "Pro", "name_fa": "حرفه‌ای", "tagline": "For a practising structural engineer.", "highlight": true,
+     "price_toman": 1490000, "price_usdt": 15, "purchasable": true,
+     "limits": {"projects": 30, "analyses_per_month": 400, "frame_max_storeys": 12, "frame_max_bays": 8,
+                "design_sheets": ["mabhas9_check", "seismic_2800", "rebar_sheets"], "exports": ["e2k", "f2k", "dxf"],
+                "autocad_imports_per_month": 40, "optimization": true, "seats": 1, "storage_mb": 5000, "support": "Email, 2 business days"}},
+    {"id": "office", "name": "Office", "name_fa": "دفتر فنی", "tagline": "Design offices and small teams.",
+     "price_toman": 4900000, "price_usdt": 49, "purchasable": true,
+     "limits": {"projects": 200, "analyses_per_month": 3000, "frame_max_storeys": 25, "frame_max_bays": 15,
+                "design_sheets": ["mabhas9_check", "seismic_2800", "rebar_sheets"], "exports": ["e2k", "f2k", "dxf"],
+                "autocad_imports_per_month": 300, "optimization": true, "seats": 5, "storage_mb": 50000, "support": "Priority email + chat, 1 business day"}},
+    {"id": "enterprise", "name": "Enterprise", "name_fa": "سازمانی", "tagline": "Consultants, contractors, on-prem option.",
+     "price_toman": 14900000, "price_usdt": 149, "purchasable": true,
+     "limits": {"projects": null, "analyses_per_month": null, "frame_max_storeys": null, "frame_max_bays": null,
+                "design_sheets": ["mabhas9_check", "seismic_2800", "rebar_sheets"], "exports": ["e2k", "f2k", "dxf"],
+                "autocad_imports_per_month": null, "optimization": true, "seats": 20, "storage_mb": 500000, "support": "Dedicated contact, SLA, onboarding"}}
+  ]
+}

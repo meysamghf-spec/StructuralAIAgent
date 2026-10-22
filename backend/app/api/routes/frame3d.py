@@ -9,6 +9,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from app.api.deps import get_current_account
+from app.application.billing import service as billing
 from app.application import csi_text_export as cte
 from app.application.analysis.frame3d_solver import SpaceFrameSolverError
 from app.application.frame3d_chat_analysis import build_frame3d_payload, run_frame3d_for_export
@@ -25,11 +26,15 @@ class Frame3dExportRequest(BaseModel):
 @router.post("/export")
 def export_frame3d(
     body: Frame3dExportRequest,
-    _: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    acc: Annotated[AuthenticatedAccount, Depends(get_current_account)],
 ) -> Response:
     meta = cte.FORMATS.get(body.format)
     if meta is None:
         raise HTTPException(status_code=422, detail=f"Unknown format {body.format!r}; use one of {sorted(cte.FORMATS)}")
+    billing.require_feature(getattr(acc, "account_id", None), "exports", "dxf" if body.format.startswith("dxf") else body.format)
+    if body.format == "dxf_rebar":
+        billing.require_feature(getattr(acc, "account_id", None), "design_sheets", "rebar_sheets")
+    billing.check_frame_size(getattr(acc, "account_id", None), body.inputs)
     try:
         inputs = body.inputs
         if body.format in ("dxf_rebar", "dxf_foundation"):
@@ -52,9 +57,11 @@ class Frame3dRunRequest(BaseModel):
 @router.post("/run")
 def run_frame3d_manual(
     body: Frame3dRunRequest,
-    _: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    acc: Annotated[AuthenticatedAccount, Depends(get_current_account)],
 ) -> dict[str, Any]:
     """Run the in-house 3D frame solver (+ 2800, Mabhas 9 design, footings) on manual-form inputs; same payload as chat."""
+    billing.check_frame_size(getattr(acc, "account_id", None), body.inputs)
+    billing.consume(getattr(acc, "account_id", None), "analyses_per_month")
     try:
         payload = build_frame3d_payload("", manual_inputs=body.inputs)
     except (TypeError, ValueError, SpaceFrameSolverError) as exc:
