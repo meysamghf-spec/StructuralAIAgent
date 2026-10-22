@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useDrawerDismiss } from "@/hooks/useDrawerDismiss";
 import { useMemo, useState } from "react";
 
 import { MainNav } from "@/components/MainNav";
@@ -58,6 +59,8 @@ export function ChatSidebar({
     [conversations, searchQuery],
   );
 
+  const swipe = useDrawerDismiss(open, onClose);
+
   return (
     <>
       <button
@@ -66,9 +69,12 @@ export function ChatSidebar({
         aria-label="Close menu"
         data-open={open}
         onClick={onClose}
+        {...swipe}
+        data-testid="chat-backdrop"
       />
-      <aside className="chat-sidebar" data-open={open}>
+      <aside className="chat-sidebar" data-open={open} data-testid="chat-drawer" {...swipe}>
         <div className="chat-sidebar-header">
+          <button type="button" className="drawer-close" aria-label="Close menu" data-testid="drawer-close" onClick={onClose}>✕</button>
           <p className="brand-eyebrow">StructuralAIAgent</p>
           <h1>Engineering Chat</h1>
           <button className="button chat-new-button" type="button" onClick={onNewChat}>

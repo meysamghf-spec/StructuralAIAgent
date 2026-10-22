@@ -1,3 +1,4 @@
+import { mapAutocadResult } from "./autocad";
 import { mapViewerData, storeyShears } from "./frame3d-viewer";
 /** Map backend chat payloads to frontend chat domain types. */
 
@@ -566,6 +567,7 @@ export function mapBackendMessage(message: BackendMessage): ChatMessage {
     attachments: message.attachments.map(mapBackendAttachment),
     status: mapExecutionStatus(message.metadata.progress ?? message.metadata.execution_status),
     engineeringResult: mapEngineeringResult(message.metadata),
+    autocadResult: mapAutocadResult(message.metadata.autocad_result),
   };
 }
 

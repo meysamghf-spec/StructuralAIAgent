@@ -76,9 +76,7 @@ export default function ReportsWorkspaceClient() {
       <header className="page-header">
         <p className="eyebrow">Deliverables</p>
         <h2>Reports</h2>
-        <p className="subtitle">
-          Generate readable engineering reports from project context, decisions, and validation.
-        </p>
+        <p className="subtitle">Generate engineering reports from project context.</p>
       </header>
 
       <ProjectScopePanel
@@ -126,7 +124,7 @@ export default function ReportsWorkspaceClient() {
 
       <section className="card">
         <h3>Project reports</h3>
-        {reports.length === 0 ? <p className="muted">No reports yet for this project.</p> : null}
+        {reports.length === 0 ? <p className="muted">No reports yet. Use Generate report above to create one.</p> : null}
         <ul className="workspace-list">
           {reports.map((report) => (
             <li key={report.id} className="workspace-list-item compact">

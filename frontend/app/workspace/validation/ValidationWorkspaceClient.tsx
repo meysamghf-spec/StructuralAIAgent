@@ -32,9 +32,7 @@ export default function ValidationWorkspaceClient() {
       <header className="page-header">
         <p className="eyebrow">Quality</p>
         <h2>Validation</h2>
-        <p className="subtitle">
-          Check the project configuration, assumptions, and code setup before analysis and design work.
-        </p>
+        <p className="subtitle">Check configuration and code setup before analysis.</p>
       </header>
 
       <ProjectScopePanel

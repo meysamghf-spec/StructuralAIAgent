@@ -33,11 +33,8 @@ export default function AiWorkspaceClient() {
     <section className="panel-stack">
       <header className="page-header">
         <p className="eyebrow">Assistant</p>
-        <h2>Engineering Assistant</h2>
-        <p className="subtitle">
-          Ask engineering questions in plain language. For project work, use the assistants workspace
-          to run auditable workflows.
-        </p>
+        <h2>AI Assistant</h2>
+        <p className="subtitle">Ask engineering questions in plain language.</p>
       </header>
 
       <ProjectScopePanel

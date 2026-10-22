@@ -112,7 +112,8 @@ export default function UpgradesWorkspaceClient() {
   return (
     <div className="workspace-page">
       <section className="workspace-card">
-        <h1>Upgrade with Digital Currency</h1>
+        <h1>Upgrades</h1>
+        <p className="subtitle">Upgrade with digital currency.</p>
         <p className="workspace-help">
           Purchase product upgrades using supported cryptocurrencies. Payments are verified server-side
           before your upgrade is activated. Never share private keys or seed phrases.
