@@ -315,6 +315,7 @@ export type ChatMessage = {
   attachments: ChatAttachment[];
   status: AgentExecutionStatus | null;
   engineeringResult: EngineeringResult | null;
+  autocadResult?: import("./autocad").AutocadChatResult | null;
 };
 
 export type Conversation = {

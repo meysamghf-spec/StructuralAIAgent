@@ -1,6 +1,7 @@
 "use client";
 
-import { AutocadPanel } from "@/components/autocad/AutocadPanel";
+import { listAutocadJobs } from "@/lib/autocad";
+import Link from "next/link";
 import { ProjectScopePanel } from "@/components/workspace/ProjectScopePanel";
 import { useProjectScope } from "@/hooks/useProjectScope";
 import {
@@ -30,6 +31,11 @@ export default function IntegrationsWorkspaceClient() {
   const [busySoftware, setBusySoftware] = useState<string | null>(null);
   const [analysisSoftware, setAnalysisSoftware] = useState("ETABS");
   const [analysisMessage, setAnalysisMessage] = useState<string | null>(null);
+  const [cadCount, setCadCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    listAutocadJobs(selectedProjectId).then((j) => setCadCount(j.length)).catch(() => setCadCount(null));
+  }, [selectedProjectId]);
 
   const loadIntegrationContext = useCallback(async () => {
     const capabilityData = await listSolverCapabilities();
@@ -121,8 +127,6 @@ export default function IntegrationsWorkspaceClient() {
         <p className="subtitle">Connect local ETABS, SAP2000, or SAFE to export and analyze.</p>
       </header>
 
-      <AutocadPanel />
-
       <ProjectScopePanel
         projects={projects}
         selectedProjectId={selectedProjectId}
@@ -187,6 +191,26 @@ export default function IntegrationsWorkspaceClient() {
             )}
           </article>
         ))}
+        <article className="card" id="autocad" data-testid="autocad-integration-card">
+          <h3>AutoCAD (DXF R2018)</h3>
+          <p className={`status-pill ${getAvailabilityClass("AVAILABLE")}`}>{getAvailabilityLabel("AVAILABLE")}</p>
+          <p className="muted">
+            Built in, no local install needed. In the chat, attach a PDF or photo of a plan and ask to convert it to DXF, or
+            describe a floor plan to draw it. Output: layered DXF (NCS layers, title block) that opens in AutoCAD.
+          </p>
+          <p className="muted">داخلی؛ در چت فایل PDF یا عکس نقشه را پیوست کنید یا نقشه را توصیف کنید.</p>
+          <p className="muted">
+            Exports: .dxf{cadCount !== null ? ` · ${cadCount} drawing${cadCount === 1 ? "" : "s"}${selectedProjectId ? " in this project" : ""}` : ""}
+          </p>
+          <div className="form-row">
+            <Link className="button secondary" href="/">
+              Use in chat
+            </Link>
+            <Link className="button" href="/workspace/cad">
+              Open drawings
+            </Link>
+          </div>
+        </article>
       </section>
 
       {selectedProjectId ? (

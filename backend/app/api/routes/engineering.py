@@ -42,6 +42,7 @@ from app.application.entitlement_authorization_service import EntitlementAuthori
 from app.application.feature_requirements import optimization_requires_paid_entitlement
 from app.domain.models.platform_features import PlatformFeature
 from app.domain.models.project import Project
+from app.application.billing import service as billing
 from app.domain.models.user import AuthenticatedAccount
 
 router = APIRouter(prefix="/engineering", tags=["engineering"])
@@ -56,6 +57,7 @@ def run_analysis(
     access: Annotated[ProjectAccessService, Depends(get_project_access_service)],
 ) -> AnalysisResultResponse:
     access.require_project(body.project_id, account)
+    billing.consume(account.account_id, "analyses_per_month")
     result = analysis_service.run_analysis(body.to_domain(), created_by=actor_id)
     return AnalysisResultResponse.from_domain(result)
 
@@ -178,6 +180,7 @@ def run_optimization(
     ],
 ) -> OptimizationResultResponse:
     access.require_project(body.project_id, account)
+    billing.require_feature(account.account_id, "optimization")
     if optimization_requires_paid_entitlement(body.parameters):
         entitlements.require_feature(account.account_id, PlatformFeature.MULTI_MEMBER_OPTIMIZATION)
     result = optimization_service.run_optimization(body.to_domain(), created_by=actor_id)

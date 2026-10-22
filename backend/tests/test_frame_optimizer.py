@@ -68,3 +68,17 @@ def test_chat_with_frame_text_fa():
     )
     assert res is not None and res["kind"] == "frame_optimization"
     assert res["frame"]
+
+
+def test_optimize_endpoint_requires_pro(monkeypatch):
+    from app.application.billing import service as billing
+
+    calls = []
+    monkeypatch.setattr(billing, "require_feature", lambda acc, metric, item=None: calls.append(metric))
+    monkeypatch.setattr(billing, "check_frame_size", lambda acc, inputs: None)
+    monkeypatch.setattr(billing, "consume", lambda acc, metric, n=1: None)
+    from app.api.routes import frame3d as route
+
+    body = route.Frame3dOptimizeRequest(inputs={"storeys": 1, "bays_x": 1, "bays_y": 1}, options={"max_evaluations": 6})
+    out = route.optimize_frame3d(body, type("A", (), {"account_id": "x"})())
+    assert "optimization" in calls and out["frame_optimization"]["kind"] == "frame_optimization"
