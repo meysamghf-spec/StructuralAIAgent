@@ -13,17 +13,15 @@ export function useDrawerDismiss(open: boolean, close: () => void) {
 
   useEffect(() => {
     if (!open) {
-      if (pushed.current) {
-        pushed.current = false;
-        // Drawer closed by UI: drop our history entry without leaving the page.
-        if (typeof window !== "undefined" && window.history.state?.__drawer) window.history.back();
-      }
+      pushed.current = false;
       return;
     }
-    if (!pushed.current) {
+    // Push one history entry so the phone Back button closes the drawer. If the drawer was closed
+    // from the UI, its entry is left in place (calling history.back() races with reopening) and reused.
+    if (!pushed.current && !window.history.state?.__drawer) {
       window.history.pushState({ ...(window.history.state ?? {}), __drawer: true }, "");
-      pushed.current = true;
     }
+    pushed.current = true;
     const onPop = () => {
       pushed.current = false;
       closeRef.current();
