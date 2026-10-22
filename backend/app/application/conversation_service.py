@@ -534,6 +534,12 @@ class ConversationService:
         from app.application import general_beam_engine as gbe
         from app.application.frame3d_chat_analysis import build_frame3d_payload, frame3d_markdown, is_frame3d_request
 
+        from app.application.autocad.chat_intent import autocad_chat_reply
+
+        cad_reply = autocad_chat_reply(user_content)
+        if cad_reply is not None:
+            return cad_reply, {"mode": "rule_based", "intent": "autocad"}
+
         try:
             if is_frame3d_request(user_content):
                 payload = build_frame3d_payload(user_content, None)

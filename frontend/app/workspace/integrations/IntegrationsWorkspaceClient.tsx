@@ -1,5 +1,6 @@
 "use client";
 
+import { AutocadPanel } from "@/components/autocad/AutocadPanel";
 import { ProjectScopePanel } from "@/components/workspace/ProjectScopePanel";
 import { useProjectScope } from "@/hooks/useProjectScope";
 import {
@@ -119,6 +120,8 @@ export default function IntegrationsWorkspaceClient() {
         <h2>Integrations</h2>
         <p className="subtitle">Connect local ETABS, SAP2000, or SAFE to export and analyze.</p>
       </header>
+
+      <AutocadPanel />
 
       <ProjectScopePanel
         projects={projects}
