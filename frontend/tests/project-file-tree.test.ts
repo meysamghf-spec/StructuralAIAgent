@@ -99,8 +99,8 @@ describe("project file tree UI", () => {
     const sidebar = readFileSync(resolve(__dirname, "../components/chat/ChatSidebar.tsx"), "utf8");
     expect(sidebar).toContain("ProjectFileTree");
     expect(sidebar).toContain("projectId");
-    expect(sidebar).toContain('href="/workspace/files"');
-    expect(sidebar).toContain("New Project");
+    expect(readFileSync(resolve(__dirname, "../lib/nav.ts"), "utf8")).toContain('href: "/workspace/files"');
+    expect(sidebar).toContain("MainNav");
   });
 
   it("workspace selects files, reuses existing ids, and refreshes after upload", () => {

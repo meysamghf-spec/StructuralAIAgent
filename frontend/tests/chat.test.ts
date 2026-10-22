@@ -582,14 +582,14 @@ describe("responsive sidebar behavior", () => {
       resolve(__dirname, "../components/chat/ChatSidebar.tsx"),
       "utf8",
     );
-    expect(source).toContain('href="/workspace/approvals"');
-    expect(source).toContain('href="/workspace/reports"');
-    expect(source).toContain('href="/workspace/memory"');
-    expect(source).toContain('href="/workspace/learning"');
-    expect(source).toContain('href="/workspace/traceability"');
-    expect(source).toContain('href="/workspace/agents"');
-    expect(source).toContain('href="/workspace/agents/builder"');
-    expect(source).toContain("New Project");
+    expect(readFileSync(resolve(__dirname, "../lib/nav.ts"), "utf8")).toContain('href: "/workspace/approvals"');
+    expect(readFileSync(resolve(__dirname, "../lib/nav.ts"), "utf8")).toContain('href: "/workspace/reports"');
+    expect(readFileSync(resolve(__dirname, "../lib/nav.ts"), "utf8")).toContain('href: "/workspace/memory"');
+    expect(readFileSync(resolve(__dirname, "../lib/nav.ts"), "utf8")).toContain('href: "/workspace/learning"');
+    expect(readFileSync(resolve(__dirname, "../lib/nav.ts"), "utf8")).toContain('href: "/workspace/traceability"');
+    expect(readFileSync(resolve(__dirname, "../lib/nav.ts"), "utf8")).toContain('href: "/workspace/agents"');
+    expect(readFileSync(resolve(__dirname, "../lib/nav.ts"), "utf8")).toContain('href: "/workspace/agents/builder"');
+    expect(source).toContain("MainNav");
   });
 });
 
@@ -1011,3 +1011,13 @@ describe("first request UX", () => {
   });
 });
 
+
+describe("shared navigation", () => {
+  it("Chat sidebar and AppShell render the same MainNav", () => {
+    for (const f of ["../components/chat/ChatSidebar.tsx", "../components/AppShell.tsx"]) {
+      const src = readFileSync(resolve(__dirname, f), "utf8");
+      expect(src).toContain("<MainNav");
+      expect(src).not.toContain("nav-link");
+    }
+  });
+});

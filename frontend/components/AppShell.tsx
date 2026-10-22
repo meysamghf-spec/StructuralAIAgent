@@ -2,11 +2,11 @@
 
 import { useAuth } from "@/hooks/useAuth";
 import Link from "next/link";
+import { MainNav } from "@/components/MainNav";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { ChatDock } from "@/components/chat/ChatDock";
 import { useUiLang } from "@/hooks/useUiLang";
-import { visibleNavItems } from "@/lib/nav";
 
 
 const AUTH_PATHS = new Set(["/login", "/register"]);
@@ -65,23 +65,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <p className="brand-eyebrow">StructuralAIAgent</p>
           <h1>Engineering Workspace</h1>
         </div>
-        <nav className="nav">
-          {visibleNavItems().map((item) => {
-            const active =
-              item.href === "/"
-                ? pathname === "/"
-                : pathname === item.href || pathname.startsWith(`${item.href}/`);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={active ? "nav-link active" : "nav-link"}
-              >
-                {t(item.label)}
-              </Link>
-            );
-          })}
-        </nav>
+        <MainNav onNavigate={() => setNavOpen(false)} />
         <div className="sidebar-lang">
           <span>{t("Language")}:</span>
           <button type="button" className={lang === "en" ? "lang-btn active" : "lang-btn"} onClick={() => setLang("en")}>EN</button>

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
+import { MainNav } from "@/components/MainNav";
 import { ProjectFileTree } from "@/components/chat/ProjectFileTree";
 import type { ProjectFileSummary } from "@/lib/api";
 import type { ChatConversation } from "@/lib/chat-api";
@@ -75,18 +76,11 @@ export function ChatSidebar({
           </button>
         </div>
 
-        <nav className="chat-sidebar-section" aria-label="Project">
+        <MainNav onNavigate={onClose} />
+
+        <section className="chat-sidebar-section" aria-label="Project">
           <p className="chat-sidebar-label">Project</p>
           <p className="chat-sidebar-project-name">{projectName ?? "No project selected"}</p>
-          <Link href="/projects" className="chat-sidebar-link" onClick={onClose}>
-            New Project
-          </Link>
-          <Link href="/projects" className="chat-sidebar-link" onClick={onClose}>
-            Projects
-          </Link>
-          <Link href="/projects" className="chat-sidebar-link" onClick={onClose}>
-            Overview
-          </Link>
           <ProjectFileTree
             projectId={projectId}
             files={files}
@@ -100,22 +94,7 @@ export function ChatSidebar({
             onRetry={() => onRetryFiles?.()}
             onUpload={onUploadFiles}
           />
-          <Link href="/workspace/files" className="chat-sidebar-link" onClick={onClose}>
-            Open files workspace
-          </Link>
-          <Link href="/workspace/analysis" className="chat-sidebar-link" onClick={onClose}>
-            Analysis
-          </Link>
-          <Link href="/workspace/design" className="chat-sidebar-link" onClick={onClose}>
-            Design
-          </Link>
-          <Link href="/workspace/cad" className="chat-sidebar-link" onClick={onClose}>
-            CAD
-          </Link>
-          <Link href="/workspace/reports" className="chat-sidebar-link" onClick={onClose}>
-            Reports
-          </Link>
-        </nav>
+        </section>
 
         <nav className="chat-sidebar-section">
           <label className="chat-sidebar-search">
@@ -162,75 +141,6 @@ export function ChatSidebar({
           </ul>
         </nav>
 
-        <nav className="chat-sidebar-section" aria-label="Agents and capabilities">
-          <p className="chat-sidebar-label">Agents / Capabilities</p>
-          <Link href="/workspace/analysis" className="chat-sidebar-link" onClick={onClose}>
-            Analysis
-          </Link>
-          <Link href="/workspace/design" className="chat-sidebar-link" onClick={onClose}>
-            Design
-          </Link>
-          <Link href="/workspace/cad" className="chat-sidebar-link" onClick={onClose}>
-            CAD
-          </Link>
-          <Link href="/workspace/files" className="chat-sidebar-link" onClick={onClose}>
-            Documents
-          </Link>
-          <Link href="/workspace/optimization" className="chat-sidebar-link" onClick={onClose}>
-            Optimization
-          </Link>
-          <Link href="/workspace/agents" className="chat-sidebar-link" onClick={onClose}>
-            Agents
-          </Link>
-          <Link href="/workspace/agents/builder" className="chat-sidebar-link" onClick={onClose}>
-            Agent Builder
-          </Link>
-        </nav>
-
-        <nav className="chat-sidebar-section" aria-label="Workspace">
-          <p className="chat-sidebar-label">Workspace</p>
-          <Link href="/workspace/approvals" className="chat-sidebar-link" onClick={onClose}>
-            Approvals
-          </Link>
-          <Link href="/workspace/reports" className="chat-sidebar-link" onClick={onClose}>
-            Reports
-          </Link>
-          <Link href="/workspace/memory" className="chat-sidebar-link" onClick={onClose}>
-            Memory
-          </Link>
-          <Link href="/workspace/learning" className="chat-sidebar-link" onClick={onClose}>
-            Learning
-          </Link>
-          <Link href="/workspace/traceability" className="chat-sidebar-link" onClick={onClose}>
-            Traceability
-          </Link>
-          <Link href="/workspace/upgrades" className="chat-sidebar-link" onClick={onClose}>
-            Settings
-          </Link>
-          <details className="chat-tools-details">
-            <summary>Engineering Tools</summary>
-            <div className="chat-tools-links">
-              <Link href="/workspace/analysis" onClick={onClose}>
-                Analysis
-              </Link>
-              <Link href="/workspace/design" onClick={onClose}>
-                Design
-              </Link>
-              <Link href="/workspace/cad" onClick={onClose}>
-                CAD
-              </Link>
-              <Link href="/workspace/validation" onClick={onClose}>
-                Validation
-              </Link>
-              <Link href="/workspace/reports" onClick={onClose}>
-                Reports
-              </Link>
-              <Link href="/workspace/agents" onClick={onClose}>
-                Assistants
-              </Link>
-            </div>
-          </details>
-        </nav>
 
         <div className="chat-sidebar-footer">
           <p className="sidebar-auth-label">Account</p>
