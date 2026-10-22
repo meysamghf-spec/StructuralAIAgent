@@ -4,6 +4,7 @@ export type NavItem = { href: string; label: string };
 export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Chat" },
   { href: "/projects", label: "Projects" },
+  { href: "/projects/new", label: "New Project" },
   { href: "/workspace/model", label: "Model" },
   { href: "/workspace/analysis", label: "Analysis" },
   { href: "/workspace/results", label: "Results" },
