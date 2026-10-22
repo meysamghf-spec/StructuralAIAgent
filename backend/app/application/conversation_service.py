@@ -531,9 +531,29 @@ class ConversationService:
                 messages.append(AIMessage(role=AIMessageRole.ASSISTANT, content=message.content))
         messages.append(AIMessage(role=AIMessageRole.USER, content=user_content))
 
-        response = self._ai_gateway.complete(
-            AICompletionRequest(model=_CHAT_MODEL, messages=messages)
-        )
+        from app.application import general_beam_engine as gbe
+        from app.application.frame3d_chat_analysis import build_frame3d_payload, frame3d_markdown, is_frame3d_request
+
+        try:
+            if is_frame3d_request(user_content):
+                payload = build_frame3d_payload(user_content, None)
+                return frame3d_markdown(payload), {"mode": "rule_based", "engineering_results": payload}
+            beam = gbe.analyze_beam_prompt(user_content)
+            if beam is not None:
+                return beam["markdown"], {"mode": "rule_based", "engineering_results": beam["payload"]}
+        except Exception:  # noqa: BLE001 - fall back to the chat model / help text
+            logger.exception("rule-based chat engine failed")
+
+        try:
+            response = self._ai_gateway.complete(
+                AICompletionRequest(model=_CHAT_MODEL, messages=messages)
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("chat model failed")
+            return gbe.CAPABILITIES_MESSAGE, {"mode": "capabilities", "provider": "none"}
+        content = (response.content or "").strip()
+        if "stub" in str(response.provider).lower() or content.startswith("{") or "task_acknowledged" in content:
+            return gbe.CAPABILITIES_MESSAGE, {"mode": "capabilities", "provider": str(response.provider)}
         return response.content, {"mode": "general_chat", "provider": response.provider}
 
     def _persist_conversation_memory(

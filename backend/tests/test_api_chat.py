@@ -58,7 +58,7 @@ def test_chat_creates_conversation_and_delegates_to_orchestration(api_client: Te
     assert body["conversation_id"]
     assert body["assistant_message"]["role"] == "assistant"
     assert body["assistant_message"]["content"]
-    assert body["execution_status"] is not None or body["assistant_message"]["metadata"].get("mode") == "general_chat"
+    assert body["execution_status"] is not None or body["assistant_message"]["metadata"].get("mode") in {"general_chat", "capabilities", "rule_based"}
 
 
 def test_chat_with_existing_conversation_and_attachment(api_client: TestClient) -> None:
