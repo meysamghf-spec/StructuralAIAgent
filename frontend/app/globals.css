@@ -2504,3 +2504,39 @@ body {
   display: inline-grid;
   place-items: center;
 }
+
+/* Mobile: let the document scroll (real mobile toolbars change the viewport; nested fixed-height
+   scroll panes didn't scroll on some Android browsers). Chat keeps its own fixed-height layout. */
+@media (max-width: 960px) {
+  html,
+  body {
+    height: auto;
+    min-height: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  .shell {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+  .shell > .content,
+  .auth-shell,
+  .auth-shell > .content {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+  .auth-shell {
+    min-height: 100dvh;
+  }
+  .mobile-topbar {
+    position: sticky;
+    top: 0;
+  }
+  .chat-guest,
+  .chat-loading {
+    min-height: 0;
+    padding: 1.25rem 1rem 2.5rem;
+  }
+}
