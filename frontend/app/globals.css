@@ -2608,3 +2608,14 @@ details.meta-summary[open] > summary { margin-bottom: 0.5rem; }
 .autocad-preview { border: 1px solid var(--border, #ddd); border-radius: 8px; overflow: hidden; background: #fff; }
 .autocad-preview svg { width: 100%; height: auto; max-height: 70vh; display: block; }
 .autocad-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+
+/* AutoCAD result cards (chat + CAD page) */
+.autocad-card { border: 1px solid var(--border, #d9dee7); border-radius: 12px; padding: 12px; margin-top: 10px; background: var(--surface, #fff); max-width: 100%; }
+.autocad-card-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; flex-wrap: wrap; }
+.autocad-card-preview { margin: 10px 0; background: #fafbfc; border-radius: 8px; overflow: hidden; max-height: 360px; display: flex; justify-content: center; }
+.autocad-card-preview svg { width: 100%; height: auto; max-height: 360px; }
+.autocad-card-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.autocad-card-actions .button { min-width: 0; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.autocad-note { flex: 1 1 140px; min-width: 0; padding: 6px 8px; border: 1px solid var(--border, #d9dee7); border-radius: 8px; }
+.autocad-card-meta { margin: 6px 0 0; font-size: 12px; }
+.autocad-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 12px; }

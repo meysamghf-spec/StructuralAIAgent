@@ -27,7 +27,8 @@ def sheet_index() -> list[dict[str, Any]]:
     return [{"sheet_no": s.type.value, "title": s.title, "available": s.implemented} for s in SHEET_REGISTRY]
 
 
-def save_job(doc, summary: dict[str, Any], *, kind: str, owner: str, source: str) -> dict[str, Any]:
+def save_job(doc, summary: dict[str, Any], *, kind: str, owner: str, source: str,
+             project_id: str | None = None) -> dict[str, Any]:
     jid = uuid.uuid4().hex
     d = _root() / jid
     d.mkdir()
@@ -35,7 +36,7 @@ def save_job(doc, summary: dict[str, Any], *, kind: str, owner: str, source: str
     (d / "drawing.dxf").write_text(buf.getvalue(), encoding="utf-8")
     svg = dxf_to_svg(doc)
     (d / "preview.svg").write_text(svg, encoding="utf-8")
-    meta = {"id": jid, "kind": kind, "owner": owner, "source": source[:300], "summary": summary,
+    meta = {"id": jid, "kind": kind, "owner": owner, "project_id": project_id, "project_file_id": None, "source": source[:300], "summary": summary,
             "layers": sorted({e.dxf.layer for e in doc.modelspace()}),
             "review": {"status": "pending" if kind == "vectorize" else "not_required", "note": "", "at": None},
             "created_at": datetime.now(timezone.utc).isoformat()}
@@ -60,3 +61,24 @@ def review(jid: str, owner: str, decision: str, note: str) -> dict[str, Any]:
                       "at": datetime.now(timezone.utc).isoformat()}
     (d / "meta.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
     return meta
+
+
+def set_project_file(jid: str, file_id: str) -> None:
+    f = _root() / jid / "meta.json"
+    meta = json.loads(f.read_text(encoding="utf-8"))
+    meta["project_file_id"] = file_id
+    f.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+
+
+def list_jobs(owner: str, project_id: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
+    out = []
+    for f in _root().glob("*/meta.json"):
+        try:
+            meta = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if meta.get("owner") != owner or (project_id and meta.get("project_id") != project_id):
+            continue
+        out.append(meta)
+    out.sort(key=lambda m: m.get("created_at", ""), reverse=True)
+    return out[:limit]

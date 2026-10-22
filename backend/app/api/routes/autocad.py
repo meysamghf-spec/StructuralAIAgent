@@ -65,6 +65,11 @@ def _dir(jid: str, account):
         raise HTTPException(404, "Drawing not found")
 
 
+@router.get("/jobs")
+def jobs(account: Annotated[AuthenticatedAccount, Depends(get_current_account)], project_id: str | None = None):
+    return {"jobs": service.list_jobs(_owner(account), project_id)}
+
+
 @router.get("/jobs/{jid}")
 def get_job(jid: str, account: Annotated[AuthenticatedAccount, Depends(get_current_account)]):
     d = _dir(jid, account)
