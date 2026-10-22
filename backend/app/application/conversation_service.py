@@ -540,6 +540,21 @@ class ConversationService:
         if cad_reply is not None:
             return cad_reply, {"mode": "rule_based", "intent": "autocad"}
 
+        from app.application import frame_optimizer as fopt
+
+        if fopt.is_optimize_request(user_content):
+            try:
+                prior = fopt.prior_spec_from_texts(
+                    [m.content for m in reversed(history) if m.role == MessageRole.USER]
+                )
+                res = fopt.build_optimization_from_chat(user_content, prior, {"time_budget_s": 35})
+                if res is not None:
+                    lang = "fa" if any("\u0600" <= ch <= "\u06ff" for ch in user_content) else "en"
+                    return fopt.optimization_markdown(res, lang), {"mode": "rule_based", "intent": "frame_optimization", "engineering_results": res}
+                return fopt.missing_frame_message(user_content), {"mode": "rule_based", "intent": "frame_optimization"}
+            except Exception:  # noqa: BLE001
+                logger.exception("frame optimizer failed")
+
         try:
             if is_frame3d_request(user_content):
                 payload = build_frame3d_payload(user_content, None)

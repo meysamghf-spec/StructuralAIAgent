@@ -123,6 +123,9 @@ def _frame3d_result(
     parameters: dict[str, Any],
     context: dict[str, Any],
 ) -> AgentResult | None:
+    frame_opt = _frame_optimization_result(agent_type=agent_type, user_request=user_request, parameters=parameters, context=context)
+    if frame_opt is not None:
+        return frame_opt
     payload = build_frame3d_payload(user_request, prior_frame3d_spec(context))
     if payload is None:
         return None
@@ -163,6 +166,44 @@ def _frame3d_result(
             "requires_approval": False,
             "warnings": list(payload.get("warnings") or []),
         },
+    )
+
+
+def _frame_optimization_result(
+    *,
+    agent_type: EngineeringAgentType,
+    user_request: str,
+    parameters: dict[str, Any],
+    context: dict[str, Any],
+) -> AgentResult | None:
+    """Rule-based frame optimization (FSD re-analysis loop + GA) on the described / last project frame."""
+    from app.application import frame_optimizer as fopt
+
+    if not fopt.is_optimize_request(user_request):
+        return None
+    res = fopt.build_optimization_from_chat(user_request, prior_frame3d_spec(context), {"time_budget_s": 35})
+    if res is None:
+        return None
+    lang = "fa" if any("\u0600" <= ch <= "\u06ff" for ch in user_request) else "en"
+    summary = fopt.optimization_markdown(res, lang)
+    ok = res.get("status") == "completed"
+    return AgentResult(
+        structured_output=_base_output(
+            agent_type=agent_type,
+            action="frame_optimization",
+            user_request=user_request,
+            parameters=parameters,
+            context=context,
+            capability_status="SUCCESS" if ok else str(res.get("status")),
+            status_message=summary,
+            payload={"frame_optimization": res, "user_summary": summary},
+        ),
+        confidence=1.0 if ok else 0.5,
+        generated_artifacts=[{"type": "frame_optimization", "name": "Frame section optimization",
+                              "description": "FSD re-analysis loop + discrete GA on the 3D frame"}] if ok else [],
+        recommendations=["Re-run the full analysis (with modal check) on the optimal sections before issuing drawings."],
+        validation_information={"capability_status": "SUCCESS" if ok else str(res.get("status")), "demo": False,
+                                "requires_approval": False, "warnings": []},
     )
 
 
@@ -874,6 +915,11 @@ class OptimizationAgentHandler:
         parameters: dict[str, Any],
         context: dict[str, Any],
     ) -> AgentResult:
+        frame_opt = _frame_optimization_result(
+            agent_type=self.agent_type, user_request=user_request, parameters=parameters, context=context
+        )
+        if frame_opt is not None:
+            return frame_opt
         optimization_type = str(parameters.get("optimization_type", "WEIGHT"))
         objective = str(parameters.get("objective", "Minimize structural weight"))
         result = self._services.optimization_engine.run_optimization(

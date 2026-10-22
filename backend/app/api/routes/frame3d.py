@@ -60,3 +60,35 @@ def run_frame3d_manual(
     except (TypeError, ValueError, SpaceFrameSolverError) as exc:
         raise HTTPException(status_code=422, detail=f"Cannot analyse this model: {exc}") from exc
     return {"frame3d_analysis": payload}
+
+
+class Frame3dOptimizeRequest(BaseModel):
+    inputs: dict[str, Any] = Field(description="Frame3dInputs fields (storeys, bays_x, bays_y, bay_x_m, ...)")
+    options: dict[str, Any] = Field(default_factory=dict, description="objective cost|weight, prices{concrete_m3,rebar_kg,formwork_m2}, seed, time_budget_s, max_evaluations, group_storeys")
+
+
+@router.post("/optimize")
+def optimize_frame3d(
+    body: Frame3dOptimizeRequest,
+    _: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+) -> dict[str, Any]:
+    """FSD analysis-design-reanalysis loop + discrete GA on the 3D frame (Mabhas 9 + 2800 drift + deflection)."""
+    from app.application import frame3d_chat_analysis as f3
+    from app.application import frame_optimizer as fopt
+
+    try:
+        data = {"seismic_code": "IRAN_2800", **body.inputs}
+        inp = f3.inputs_from_dict(data)
+        missing = f3.missing_inputs(inp)
+        if missing:
+            raise ValueError("missing " + ", ".join(missing))
+        if inp.storeys > f3.MAX_STOREYS or max(inp.bays_x, inp.bays_y) > f3.MAX_BAYS or min(inp.storeys, inp.bays_x, inp.bays_y) < 1:
+            raise ValueError(f"supports 1-{f3.MAX_STOREYS} storeys and 1-{f3.MAX_BAYS} bays per direction")
+        opts = {**body.options}
+        opts["time_budget_s"] = min(float(opts.get("time_budget_s", 45)), 90.0)
+        opts["max_evaluations"] = min(int(opts.get("max_evaluations", 300)), 600)
+        res = fopt.optimize_frame(inp, opts)
+    except (TypeError, ValueError, SpaceFrameSolverError) as exc:
+        raise HTTPException(status_code=422, detail=f"Cannot optimize this model: {exc}") from exc
+    res["report_markdown"] = fopt.optimization_markdown(res, str(body.inputs.get("lang") or "en"))
+    return {"frame_optimization": res}
