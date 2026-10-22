@@ -7,6 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { ChatDock } from "@/components/chat/ChatDock";
 import { useUiLang } from "@/hooks/useUiLang";
+import { useDrawerDismiss } from "@/hooks/useDrawerDismiss";
 
 
 const AUTH_PATHS = new Set(["/login", "/register"]);
@@ -20,6 +21,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isChatHome = pathname === "/" && isAuthenticated;
   const [navOpen, setNavOpen] = useState(false);
   useEffect(() => setNavOpen(false), [pathname]);
+  const swipe = useDrawerDismiss(navOpen, () => setNavOpen(false));
 
   function handleLogout() {
     logout();
@@ -59,8 +61,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         tabIndex={-1}
         data-open={navOpen ? "true" : "false"}
         onClick={() => setNavOpen(false)}
+        {...swipe}
+        data-testid="nav-backdrop"
       />
-      <aside className="sidebar" data-open={navOpen ? "true" : "false"}>
+      <aside className="sidebar" data-open={navOpen ? "true" : "false"} data-testid="nav-drawer" {...swipe}>
+        <button type="button" className="drawer-close" aria-label="Close menu" data-testid="drawer-close" onClick={() => setNavOpen(false)}>✕</button>
         <div className="brand">
           <p className="brand-eyebrow">StructuralAIAgent</p>
           <h1>Engineering Workspace</h1>
