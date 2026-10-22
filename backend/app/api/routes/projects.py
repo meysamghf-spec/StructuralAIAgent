@@ -26,6 +26,7 @@ from app.application.project_access_service import ProjectAccessService
 from app.application.project_context_assembly_service import ProjectContextAssemblyService
 from app.application.project_service import ProjectService
 from app.domain.models.project import Project
+from app.application.billing import service as billing
 from app.domain.models.user import AuthenticatedAccount
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -37,6 +38,8 @@ def create_project(
     project_service: Annotated[ProjectService, Depends(get_project_service)],
     account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
 ) -> CreateProjectResponse:
+    owned = sum(1 for p in project_service.list_projects() if str(getattr(p, "owner_account_id", "")) == str(account.account_id))
+    billing.require_count(account.account_id, "projects", owned)
     result = project_service.create_project(
         name=body.name,
         description=body.description,

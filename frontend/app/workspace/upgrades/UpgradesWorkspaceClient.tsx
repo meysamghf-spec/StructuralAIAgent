@@ -1,236 +1,282 @@
 "use client";
 
 import {
-  createUpgradeInvoice,
-  getUpgradeCatalog,
-  listEntitlements,
-  reconcilePayment,
-  type EntitlementRecord,
-  type PaymentInstructions,
-  type UpgradeCatalog,
-  type UpgradeProduct,
-} from "@/lib/payments";
-import {
-  buildQrCodeUrl,
-  formatCryptoAmount,
-  formatFiatAmount,
-  getPaymentProgressMessage,
-  getPaymentStatusLabel,
-} from "@/lib/upgrades-workspace";
-import { useAuth } from "@/hooks/useAuth";
-import { useCallback, useEffect, useState } from "react";
+  fmtLimit,
+  fmtStorage,
+  fmtToman,
+  getBillingAccount,
+  getBillingPlans,
+  startCheckout,
+  type BillingAccount,
+  type Catalog,
+  type Plan,
+} from "@/lib/billing";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
 
-function badgeClass(status: string): string {
-  if (status === "PAID" || status === "ACTIVE") return "status-pass";
-  if (status === "FAILED" || status === "EXPIRED" || status === "UNDERPAID") return "status-error";
-  if (status === "CONFIRMING" || status === "PAYMENT_DETECTED") return "status-warning";
-  return "status-review";
+const SHEET_LABEL: Record<string, string> = {
+  mabhas9_check: "Mabhas 9 checks",
+  seismic_2800: "Standard 2800 seismic",
+  rebar_sheets: "Rebar sheets",
+};
+
+function limitRows(p: Plan): [string, string][] {
+  const l = p.limits;
+  return [
+    ["Projects", fmtLimit(l.projects)],
+    ["Analyses / month", fmtLimit(l.analyses_per_month)],
+    [
+      "3D frame size",
+      l.frame_max_storeys === null ? "Unlimited" : `${l.frame_max_storeys} storeys × ${l.frame_max_bays} bays`,
+    ],
+    ["Design sheets", l.design_sheets.map((s) => SHEET_LABEL[s] ?? s).join(", ") || "—"],
+    ["Exports", l.exports.length ? l.exports.map((e) => (e === "dxf" ? "DXF" : e === "e2k" ? "ETABS" : "SAFE")).join(", ") : "—"],
+    ["AutoCAD imports / month", fmtLimit(l.autocad_imports_per_month)],
+    ["Optimization", l.optimization ? "Included" : "—"],
+    ["Seats", fmtLimit(l.seats)],
+    ["Storage", fmtStorage(l.storage_mb)],
+    ["Support", l.support],
+  ];
+}
+
+function UpgradesInner() {
+  const params = useSearchParams();
+  const [catalog, setCatalog] = useState<Catalog | null>(null);
+  const [account, setAccount] = useState<BillingAccount | null>(null);
+  const [duration, setDuration] = useState("12m");
+  const [currency, setCurrency] = useState<"toman" | "usdt">("toman");
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    const [c, a] = await Promise.all([getBillingPlans(), getBillingAccount()]);
+    setCatalog(c);
+    setAccount(a);
+  }, []);
+  useEffect(() => {
+    void load().catch((e) => setError(e instanceof Error ? e.message : "Could not load plans"));
+  }, [load]);
+
+  async function buy(plan: Plan) {
+    setError("");
+    setBusy(plan.id);
+    try {
+      const out = await startCheckout(plan.id, duration, currency === "toman" ? "card" : "crypto");
+      window.location.href = out.redirect_url;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Checkout failed");
+      setBusy("");
+    }
+  }
+
+  const status = params.get("status");
+  const invNo = params.get("invoice");
+  const current = account?.plan.id ?? "free";
+  const sub = account?.subscription;
+
+  return (
+    <div className="workspace-page billing-page">
+      <section className="workspace-card">
+        <h1>Plans &amp; billing</h1>
+        <p className="workspace-help">
+          Pick a plan for your engineering work. Pay with an Iranian bank card (Shetab) in toman, or with crypto (USDT/BTC).
+          Longer terms are discounted.
+        </p>
+        {account?.gateways.mock ? (
+          <p className="billing-mock-note" data-testid="mock-note">
+            Test mode: payment gateways are simulated. No real money is charged.
+          </p>
+        ) : null}
+      </section>
+
+      {status ? (
+        <p className={status === "paid" ? "billing-banner ok" : "billing-banner bad"} data-testid="pay-result">
+          {status === "paid"
+            ? `Payment received (invoice ${invNo}). Your plan is active.`
+            : status === "failed"
+              ? `Payment was not completed (invoice ${invNo}). You were not charged.`
+              : "We could not verify that payment. If money left your card, contact support with the invoice number."}
+        </p>
+      ) : null}
+      {error ? <p className="workspace-error">{error}</p> : null}
+
+      {account ? (
+        <section className="workspace-card billing-current" data-testid="current-plan">
+          <h2>Your plan: {account.plan.name}</h2>
+          {sub ? (
+            <p>
+              Active until <strong>{new Date(sub.expires_at).toLocaleDateString()}</strong>. Buying the same plan again
+              extends this date; buying a different plan switches now.
+            </p>
+          ) : account.complimentary ? (
+            <p>Complimentary access.</p>
+          ) : (
+            <p>Free plan. Upgrade any time; when a paid plan ends you return to Free.</p>
+          )}
+          <div className="billing-usage">
+            <span>
+              Analyses this month: <strong>{account.usage.analyses_per_month}</strong> /{" "}
+              {fmtLimit(account.plan.limits.analyses_per_month)}
+            </span>
+            <span>
+              AutoCAD imports this month: <strong>{account.usage.autocad_imports_per_month}</strong> /{" "}
+              {fmtLimit(account.plan.limits.autocad_imports_per_month)}
+            </span>
+          </div>
+        </section>
+      ) : null}
+
+      {catalog ? (
+        <>
+          <div className="billing-toggles">
+            <div className="billing-seg" role="group" aria-label="Billing period">
+              {catalog.durations.map((d) => (
+                <button
+                  key={d.id}
+                  type="button"
+                  className={duration === d.id ? "active" : ""}
+                  onClick={() => setDuration(d.id)}
+                >
+                  {d.label}
+                  {d.discount_pct ? <em>−{d.discount_pct}%</em> : null}
+                </button>
+              ))}
+            </div>
+            <div className="billing-seg" role="group" aria-label="Currency">
+              <button type="button" className={currency === "toman" ? "active" : ""} onClick={() => setCurrency("toman")}>
+                Toman · card
+              </button>
+              <button type="button" className={currency === "usdt" ? "active" : ""} onClick={() => setCurrency("usdt")}>
+                USDT · crypto
+              </button>
+            </div>
+          </div>
+
+          <section className="billing-grid">
+            {catalog.plans.map((p) => {
+              const q = p.quotes?.[duration];
+              const isCurrent = p.id === current;
+              return (
+                <article key={p.id} className={`billing-plan${p.highlight ? " highlight" : ""}`} data-plan={p.id}>
+                  {p.highlight ? <span className="billing-badge">Most popular</span> : null}
+                  <h3>
+                    {p.name} {p.name_fa ? <small lang="fa">{p.name_fa}</small> : null}
+                  </h3>
+                  <p className="workspace-meta">{p.tagline}</p>
+                  <div className="billing-price">
+                    {!p.purchasable || !q ? (
+                      <strong>Free</strong>
+                    ) : currency === "toman" ? (
+                      <>
+                        <strong>{fmtToman(q.amount_toman)}</strong>
+                        <span>
+                          for {q.months} month{q.months > 1 ? "s" : ""}
+                          {q.discount_pct ? <s> {fmtToman(q.list_toman)}</s> : null}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <strong>{q.amount_usdt.toLocaleString("en-US")} USDT</strong>
+                        <span>
+                          for {q.months} month{q.months > 1 ? "s" : ""}
+                          {q.discount_pct ? <s> {q.list_usdt} USDT</s> : null}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  <dl className="billing-limits">
+                    {limitRows(p).map(([k, v]) => (
+                      <div key={k}>
+                        <dt>{k}</dt>
+                        <dd>{v}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                  {p.purchasable ? (
+                    <button
+                      type="button"
+                      className="workspace-primary-button"
+                      disabled={!!busy}
+                      onClick={() => void buy(p)}
+                      data-testid={`buy-${p.id}`}
+                    >
+                      {busy === p.id
+                        ? "Redirecting…"
+                        : isCurrent
+                          ? `Renew ${p.name}`
+                          : `Get ${p.name} · ${currency === "toman" ? "Pay by card" : "Pay with crypto"}`}
+                    </button>
+                  ) : (
+                    <p className="workspace-meta">{isCurrent ? "Your current plan" : "Included for everyone"}</p>
+                  )}
+                </article>
+              );
+            })}
+          </section>
+        </>
+      ) : null}
+
+      {account ? (
+        <section className="workspace-card" data-testid="invoices">
+          <h2>Invoices</h2>
+          {account.invoices.length === 0 ? (
+            <p className="workspace-help">No invoices yet.</p>
+          ) : (
+            <div className="billing-table-wrap">
+              <table className="billing-table">
+                <thead>
+                  <tr>
+                    <th>Invoice</th>
+                    <th>Plan</th>
+                    <th>Amount</th>
+                    <th>Method</th>
+                    <th>Status</th>
+                    <th>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {account.invoices.map((i) => (
+                    <tr key={i.id}>
+                      <td>{i.number}</td>
+                      <td>
+                        {i.plan_name} · {i.months} mo
+                      </td>
+                      <td>{i.currency === "IRR" ? fmtToman(i.amount_toman) : `${i.amount_usdt} USDT`}</td>
+                      <td>
+                        {i.method === "card" ? "Card" : "Crypto"}
+                        {i.mock ? " (test)" : ""}
+                      </td>
+                      <td className={`billing-st ${i.status}`}>{i.status}</td>
+                      <td>{new Date(i.paid_at ?? i.created_at).toLocaleDateString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {account.history.length ? (
+            <>
+              <h3>Subscription history</h3>
+              <ul className="workspace-list">
+                {account.history.map((h, k) => (
+                  <li key={k}>
+                    {new Date(h.at).toLocaleDateString()}: {h.action} {h.plan_id}, until{" "}
+                    {new Date(h.expires_at).toLocaleDateString()} ({h.invoice})
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+        </section>
+      ) : null}
+    </div>
+  );
 }
 
 export default function UpgradesWorkspaceClient() {
-  const { features } = useAuth();
-  const [catalog, setCatalog] = useState<UpgradeCatalog | null>(null);
-  const [selectedProduct, setSelectedProduct] = useState<UpgradeProduct | null>(null);
-  const [currency, setCurrency] = useState("BTC");
-  const [network, setNetwork] = useState("bitcoin");
-  const [invoice, setInvoice] = useState<PaymentInstructions | null>(null);
-  const [paymentStatus, setPaymentStatus] = useState<string>("");
-  const [confirmations, setConfirmations] = useState(0);
-  const [upgradeActivated, setUpgradeActivated] = useState(false);
-  const [entitlements, setEntitlements] = useState<EntitlementRecord[]>([]);
-  const [error, setError] = useState<string>("");
-  const [loading, setLoading] = useState(false);
-
-  const loadCatalog = useCallback(async () => {
-    const [catalogData, entitlementData] = await Promise.all([getUpgradeCatalog(), listEntitlements()]);
-    setCatalog(catalogData);
-    setSelectedProduct(catalogData.products[0] ?? null);
-    setEntitlements(entitlementData);
-    if (catalogData.supported_crypto[0]) {
-      setCurrency(catalogData.supported_crypto[0].currency);
-      setNetwork(catalogData.supported_crypto[0].network);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadCatalog().catch((err) => {
-      setError(err instanceof Error ? err.message : "Failed to load upgrade catalog");
-    });
-  }, [loadCatalog]);
-
-  async function handleCreateInvoice() {
-    if (!selectedProduct) {
-      return;
-    }
-    setLoading(true);
-    setError("");
-    try {
-      const created = await createUpgradeInvoice({
-        upgrade_product_id: selectedProduct.id,
-        currency,
-        network,
-        idempotency_key: `ui-${selectedProduct.id}-${currency}-${Date.now()}`,
-      });
-      setInvoice(created);
-      setPaymentStatus(created.payment.status);
-      setConfirmations(created.payment.current_confirmations);
-      setUpgradeActivated(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create invoice");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleRefreshStatus() {
-    if (!invoice) {
-      return;
-    }
-    setLoading(true);
-    setError("");
-    try {
-      const result = await reconcilePayment(invoice.payment.id);
-      setPaymentStatus(result.payment.status);
-      setConfirmations(result.payment.current_confirmations);
-      setUpgradeActivated(result.upgrade_activated);
-      setInvoice({
-        ...invoice,
-        payment: result.payment,
-      });
-      const entitlementData = await listEntitlements();
-      setEntitlements(entitlementData);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to refresh payment status");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  const qrUrl = buildQrCodeUrl(invoice?.payment.payment_uri);
-  const requiredConfirmations = invoice?.payment.required_confirmations ?? 3;
-
   return (
-    <div className="workspace-page">
-      <section className="workspace-card">
-        <h1>Upgrade with Digital Currency</h1>
-        <p className="workspace-help">
-          Purchase product upgrades using supported cryptocurrencies. Payments are verified server-side
-          before your upgrade is activated. Never share private keys or seed phrases.
-        </p>
-      </section>
-
-      {error ? <p className="workspace-error">{error}</p> : null}
-
-      {features ? (
-        <section className="workspace-card">
-          <h2>Your feature access</h2>
-          <p className="workspace-help">
-            Feature availability is determined by the backend entitlement service.
-          </p>
-          <ul className="workspace-list">
-            {Object.entries(features.features).map(([key, entry]) => (
-              <li key={key}>
-                <strong>{key}</strong>: {entry.available ? "Available" : entry.reason}
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      <section className="workspace-card-grid">
-        {catalog?.products.map((product) => (
-          <article
-            key={product.id}
-            className={selectedProduct?.id === product.id ? "workspace-card selected-card" : "workspace-card"}
-          >
-            <button type="button" className="workspace-link-button" onClick={() => setSelectedProduct(product)}>
-              <strong>{product.name}</strong>
-              <span>{formatFiatAmount(product.fiat_price_usd)}</span>
-              <span className="workspace-meta">{product.description}</span>
-              <ul className="workspace-list">
-                {product.features.slice(0, 3).map((feature) => (
-                  <li key={feature}>{feature}</li>
-                ))}
-              </ul>
-            </button>
-          </article>
-        ))}
-      </section>
-
-      {selectedProduct ? (
-        <section className="workspace-card">
-          <h2>Create payment invoice</h2>
-          <div className="workspace-form-row">
-            <label htmlFor="currency-select">Currency</label>
-            <select
-              id="currency-select"
-              value={`${currency}:${network}`}
-              onChange={(event) => {
-                const [nextCurrency, nextNetwork] = event.target.value.split(":");
-                setCurrency(nextCurrency);
-                setNetwork(nextNetwork);
-              }}
-            >
-              {catalog?.supported_crypto.map((option) => (
-                <option key={`${option.currency}:${option.network}`} value={`${option.currency}:${option.network}`}>
-                  {option.display_name} ({option.network})
-                </option>
-              ))}
-            </select>
-          </div>
-          <p>
-            Selected upgrade: <strong>{selectedProduct.name}</strong> — {formatFiatAmount(selectedProduct.fiat_price_usd)}
-          </p>
-          <button type="button" className="workspace-primary-button" disabled={loading} onClick={() => void handleCreateInvoice()}>
-            Create invoice
-          </button>
-        </section>
-      ) : null}
-
-      {invoice ? (
-        <section className="workspace-card">
-          <h2>Payment instructions</h2>
-          <p>
-            Status:{" "}
-            <span className={badgeClass(paymentStatus)}>{getPaymentStatusLabel(paymentStatus)}</span>
-          </p>
-          <p>{getPaymentProgressMessage(paymentStatus, confirmations, requiredConfirmations)}</p>
-          <p>Send exactly {formatCryptoAmount(invoice.payment.crypto_amount, invoice.payment.currency)}</p>
-          <p className="workspace-meta">Network: {invoice.payment.network}</p>
-          <p className="workspace-meta">Payment address: {invoice.payment.payment_address}</p>
-          <p className="workspace-meta">Invoice expires: {new Date(invoice.payment.expires_at).toLocaleString()}</p>
-          {invoice.payment.payment_uri ? (
-            <p className="workspace-meta">Payment URI: {invoice.payment.payment_uri}</p>
-          ) : null}
-          {qrUrl ? (
-            <p>
-              <img src={qrUrl} alt="Payment QR code" width={180} height={180} />
-            </p>
-          ) : null}
-          {upgradeActivated ? (
-            <p className="status-pass">Upgrade activated after verified payment.</p>
-          ) : (
-            <button type="button" className="workspace-link-button" disabled={loading} onClick={() => void handleRefreshStatus()}>
-              Check payment status
-            </button>
-          )}
-        </section>
-      ) : null}
-
-      <section className="workspace-card">
-        <h2>Your entitlements</h2>
-        {entitlements.length === 0 ? (
-          <p className="workspace-help">No active upgrades yet. Complete a verified payment to activate an entitlement.</p>
-        ) : (
-          <ul className="workspace-list">
-            {entitlements.map((item) => (
-              <li key={item.id}>
-                {item.upgrade_product_id} — <span className={badgeClass(item.status)}>{item.status}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </div>
+    <Suspense fallback={null}>
+      <UpgradesInner />
+    </Suspense>
   );
 }

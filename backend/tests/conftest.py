@@ -9,6 +9,9 @@ from urllib.parse import urlparse, urlunparse
 
 import psycopg
 import pytest
+
+# Plan quotas are covered by tests/test_billing.py; keep them out of unrelated tests.
+os.environ.setdefault("BILLING_ENFORCEMENT", "0")
 from psycopg import sql
 
 from app.application.service_factory import build_project_service, reset_test_service_caches
