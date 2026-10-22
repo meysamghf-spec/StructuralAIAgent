@@ -2,12 +2,13 @@
 
 import { useAuth } from "@/hooks/useAuth";
 import { AUTH_NAV_LINKS } from "@/lib/auth-forms";
+import { completeGoogleSignIn, fetchGoogleSignInEnabled, googleSignInStartUrl } from "@/lib/auth-api";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 
 export default function LoginClient() {
-  const { login, isAuthenticated, loading } = useAuth();
+  const { login, isAuthenticated, loading, refresh } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const nextPath = searchParams.get("next") || "/";
@@ -16,6 +17,28 @@ export default function LoginClient() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [googleEnabled, setGoogleEnabled] = useState(false);
+
+  useEffect(() => {
+    void fetchGoogleSignInEnabled().then(setGoogleEnabled);
+    if (typeof window === "undefined" || !window.location.hash) return;
+    const params = new URLSearchParams(window.location.hash.slice(1));
+    const googleToken = params.get("google_token");
+    const googleError = params.get("google_error");
+    if (!googleToken && !googleError) return;
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    if (googleError) {
+      setError(googleError);
+      return;
+    }
+    setBusy(true);
+    const next = params.get("next") || "/";
+    void completeGoogleSignIn(googleToken as string)
+      .then(() => refresh())
+      .then(() => router.replace(next.startsWith("/") && !next.startsWith("//") ? next : "/"))
+      .catch((err) => setError(err instanceof Error ? err.message : "Google sign-in failed"))
+      .finally(() => setBusy(false));
+  }, [refresh, router]);
 
   useEffect(() => {
     if (!loading && isAuthenticated) {
@@ -73,6 +96,12 @@ export default function LoginClient() {
           {busy ? "Signing in…" : "Sign in"}
         </button>
       </form>
+
+      {googleEnabled ? (
+        <a className="button secondary google-signin-button" href={googleSignInStartUrl(nextPath)}>
+          <span aria-hidden="true" className="google-signin-g">G</span> Sign in with Google
+        </a>
+      ) : null}
 
       <p className="muted auth-switch">
         {AUTH_NAV_LINKS.signInToSignUp.prompt}{" "}

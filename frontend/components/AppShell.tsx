@@ -3,7 +3,7 @@
 import { useAuth } from "@/hooks/useAuth";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ChatDock } from "@/components/chat/ChatDock";
 import { useUiLang } from "@/hooks/useUiLang";
 import { visibleNavItems } from "@/lib/nav";
@@ -18,6 +18,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { lang, t, setLang } = useUiLang();
   const isAuthPage = AUTH_PATHS.has(pathname);
   const isChatHome = pathname === "/" && isAuthenticated;
+  const [navOpen, setNavOpen] = useState(false);
+  useEffect(() => setNavOpen(false), [pathname]);
 
   function handleLogout() {
     logout();
@@ -37,8 +39,28 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="shell">
-      <aside className="sidebar">
+    <div className="shell" data-nav-open={navOpen ? "true" : "false"}>
+      <header className="mobile-topbar">
+        <button
+          type="button"
+          className="button secondary mobile-nav-toggle"
+          aria-label={navOpen ? "Close menu" : "Open menu"}
+          aria-expanded={navOpen}
+          onClick={() => setNavOpen((v) => !v)}
+        >
+          {navOpen ? "✕" : "☰"}
+        </button>
+        <span className="mobile-topbar-title">StructuralAIAgent</span>
+      </header>
+      <button
+        type="button"
+        className="mobile-nav-backdrop"
+        aria-hidden={!navOpen}
+        tabIndex={-1}
+        data-open={navOpen ? "true" : "false"}
+        onClick={() => setNavOpen(false)}
+      />
+      <aside className="sidebar" data-open={navOpen ? "true" : "false"}>
         <div className="brand">
           <p className="brand-eyebrow">StructuralAIAgent</p>
           <h1>Engineering Workspace</h1>
