@@ -96,7 +96,7 @@ export function AutocadPanel() {
             placeholder="e.g. 3-storey residential building 12x20 m / ساختمان مسکونی ۴ طبقه ۱۲ در ۲۰ متر"
             onChange={(e) => setPrompt(e.target.value)}
           />
-          <button type="button" data-testid="cad-generate" disabled={prompt.trim().length < 3 || !!busy} onClick={() => run("prompt")}>
+          <button type="button" className="button" data-testid="cad-generate" disabled={prompt.trim().length < 3 || !!busy} onClick={() => run("prompt")}>
             {busy === "prompt" ? "Generating…" : "Generate DXF"}
           </button>
           {prompt.trim().length < 3 ? <p className="field-hint">Describe the building to enable.</p> : null}
@@ -111,7 +111,7 @@ export function AutocadPanel() {
             Real drawing width in m (optional)
             <input type="number" inputMode="decimal" min="0" step="0.1" value={width} onChange={(e) => setWidth(e.target.value)} />
           </label>
-          <button type="button" data-testid="cad-vectorize" disabled={!file || !!busy} onClick={() => run("upload")}>
+          <button type="button" className="button" data-testid="cad-vectorize" disabled={!file || !!busy} onClick={() => run("upload")}>
             {busy === "upload" ? "Converting…" : "Convert to DXF"}
           </button>
           {!file ? <p className="field-hint">Pick a PDF, or take/choose a photo of a plan.</p> : null}
@@ -122,7 +122,7 @@ export function AutocadPanel() {
         <div className="autocad-result" data-testid="cad-result">
           <div className="autocad-preview" dangerouslySetInnerHTML={{ __html: job.preview_svg }} />
           <div className="autocad-actions">
-            <button type="button" data-testid="cad-download" onClick={download}>Download DXF</button>
+            <button type="button" className="button" data-testid="cad-download" onClick={download}>Download DXF</button>
             <span className="chip">Sheet {String(s.sheet ?? "")}</span>
             {job.kind === "vectorize" ? <span className="chip" data-testid="cad-review-status">Review: {job.review.status}</span> : null}
           </div>
@@ -131,8 +131,8 @@ export function AutocadPanel() {
               <p className="field-hint">Engineer review: accept before this drawing is used as a model.</p>
               <input type="text" placeholder="Review note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
               <div className="autocad-actions">
-                <button type="button" data-testid="cad-accept" disabled={!!busy} onClick={() => review("accept")}>Accept</button>
-                <button type="button" className="secondary" data-testid="cad-flag" disabled={!!busy} onClick={() => review("flag")}>Flag</button>
+                <button type="button" className="button" data-testid="cad-accept" disabled={!!busy} onClick={() => review("accept")}>Accept</button>
+                <button type="button" className="button secondary" data-testid="cad-flag" disabled={!!busy} onClick={() => review("flag")}>Flag</button>
               </div>
             </div>
           ) : null}
