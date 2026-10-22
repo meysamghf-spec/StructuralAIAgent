@@ -264,7 +264,7 @@ export default function AgentsWorkspaceClient() {
         <section className="card first-project-cta">
           <p>You have no projects yet. Create one to start running workflows.</p>
           <Link href="/projects/new" className="button cta-button">
-            Create your first project / ساخت پروژه‌ی اول
+            Create your first project
           </Link>
         </section>
       ) : null}
