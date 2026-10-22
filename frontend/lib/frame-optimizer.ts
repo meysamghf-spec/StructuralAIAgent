@@ -69,7 +69,6 @@ export async function runFrameOptimization(
 ): Promise<FrameOptimizationResult> {
   const body = await apiFetch<{ frame_optimization: FrameOptimizationResult }>("/api/v1/frame3d/optimize", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ inputs, options }),
   });
   return body.frame_optimization;
