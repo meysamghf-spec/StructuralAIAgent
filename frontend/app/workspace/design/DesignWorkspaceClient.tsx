@@ -113,11 +113,7 @@ export default function DesignWorkspaceClient() {
       <header className="page-header">
         <p className="eyebrow">Design</p>
         <h2>Structural Design</h2>
-        <p className="subtitle">
-          Prepare code-based design checks from the engineering model, linked analysis runs, and
-          active code configuration. The platform records every run without fabricating design
-          results.
-        </p>
+        <p className="subtitle">Run code-based design checks from your model.</p>
       </header>
 
       <ProjectScopePanel
@@ -159,11 +155,14 @@ export default function DesignWorkspaceClient() {
                 {getDesignStatusLabel(readiness.readiness_status)}
               </p>
               <p className="muted">{readiness.summary}</p>
+              <details className="meta-summary">
+                <summary>Details</summary>
               <ul className="feature-list">
                 {formatDesignInventory(readiness.model_summary).map((item) => (
                   <li key={item}>{item}</li>
                 ))}
               </ul>
+              </details>
               <p className="muted">Governing steel code: {readiness.code_edition ?? "—"}</p>
               <p className="muted">
                 Validation: {getValidationStatusLabel(readiness.validation_status)}
@@ -181,7 +180,7 @@ export default function DesignWorkspaceClient() {
         <article className="card">
           <h3>Available analysis runs</h3>
           {analysisRuns.length === 0 ? (
-            <p className="muted">No analysis runs are linked to this project yet.</p>
+            <p className="muted">No analysis runs yet. Run one on the Analysis page first.</p>
           ) : (
             <ul className="feature-list">
               {analysisRuns.slice(0, 6).map((run) => (
@@ -259,7 +258,7 @@ export default function DesignWorkspaceClient() {
       <section className="card">
         <h3>Design run history</h3>
         {runs.length === 0 ? (
-          <p className="muted">No design runs recorded yet.</p>
+          <p className="muted">No design runs yet. Link an analysis run, then start a design check.</p>
         ) : (
           <ul className="timeline-list">
             {runs.map((run) => (

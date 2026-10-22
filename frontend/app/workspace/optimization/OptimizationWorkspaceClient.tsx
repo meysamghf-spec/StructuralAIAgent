@@ -154,11 +154,7 @@ export default function OptimizationWorkspaceClient() {
       <header className="page-header">
         <p className="eyebrow">Optimization</p>
         <h2>Structural Optimization</h2>
-        <p className="subtitle">
-          Define optimization objectives from the engineering model and upstream analysis or design
-          runs. Every run is recorded with explicit capability status — no fabricated optimized
-          structures.
-        </p>
+        <p className="subtitle">Set optimization goals from your model and recorded runs.</p>
       </header>
 
       <ProjectScopePanel
@@ -200,11 +196,14 @@ export default function OptimizationWorkspaceClient() {
                 {getOptimizationStatusLabel(readiness.readiness_status)}
               </p>
               <p className="muted">{readiness.summary}</p>
+              <details className="meta-summary">
+                <summary>Details</summary>
               <ul className="feature-list">
                 {formatOptimizationInventory(readiness.model_summary).map((item) => (
                   <li key={item}>{item}</li>
                 ))}
               </ul>
+              </details>
               <p className="muted">Governing code: {readiness.code_edition ?? "—"}</p>
               <p className="muted">
                 Validation: {getValidationStatusLabel(readiness.validation_status)}
@@ -379,7 +378,7 @@ export default function OptimizationWorkspaceClient() {
       <section className="card">
         <h3>Optimization history</h3>
         {runs.length === 0 ? (
-          <p className="muted">No optimization runs recorded yet.</p>
+          <p className="muted">No optimization runs yet. Choose an objective above and start a run.</p>
         ) : (
           <ul className="timeline-list">
             {runs.map((run) => (

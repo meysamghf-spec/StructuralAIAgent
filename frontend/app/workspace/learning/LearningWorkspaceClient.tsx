@@ -97,10 +97,7 @@ export default function LearningWorkspaceClient() {
       <header className="page-header">
         <p className="eyebrow">Experience</p>
         <h2>Engineering Learning</h2>
-        <p className="subtitle">
-          Approved experience can inform a later recommendation. It stays context only and does not
-          replace the PEM, engineering rules, or QA.
-        </p>
+        <p className="subtitle">Approved experience that informs later recommendations.</p>
       </header>
 
       <ProjectScopePanel
@@ -115,7 +112,7 @@ export default function LearningWorkspaceClient() {
 
       <section className="card">
         <h3>Learning records</h3>
-        {records.length === 0 ? <p className="muted">No learning records in this scope yet.</p> : null}
+        {records.length === 0 ? <p className="muted">No learning records yet. Approved outcomes appear here.</p> : null}
         <ul className="workspace-list">
           {records.map((record) => (
             <li

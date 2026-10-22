@@ -2590,3 +2590,10 @@ body {
 /* keep floating Chat button clear of page content */
 .shell .content { padding-bottom: 96px; }
 @media (max-width: 960px) { .chat-dock-toggle { bottom: max(14px, env(safe-area-inset-bottom)); right: 14px; } }
+
+/* UX cleanup */
+.page-header .subtitle { max-width: 60ch; }
+.field-hint { font-size: 0.85rem; color: var(--warning, #b7791f); margin: 0.35rem 0 0; }
+button:disabled { cursor: not-allowed; opacity: 0.55; }
+details.meta-summary > summary { cursor: pointer; font-size: 0.9rem; color: var(--muted, #667); }
+details.meta-summary[open] > summary { margin-bottom: 0.5rem; }

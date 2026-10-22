@@ -147,10 +147,7 @@ export default function ModelWorkspaceClient() {
       <header className="page-header">
         <p className="eyebrow">Model</p>
         <h2>Engineering Model</h2>
-        <p className="subtitle">
-          Review geometry, materials, members, loads, validation status, and revision history for the
-          project engineering model.
-        </p>
+        <p className="subtitle">Review geometry, members, loads, and revisions.</p>
       </header>
 
       <ProjectScopePanel
@@ -221,6 +218,8 @@ export default function ModelWorkspaceClient() {
 
             <article className="card">
               <h3>Model inventory</h3>
+              <details className="meta-summary">
+                <summary>Details</summary>
               <ul className="feature-list">
                 {formatModelCounts(summary).map((item) => (
                   <li key={item.label}>
@@ -228,6 +227,7 @@ export default function ModelWorkspaceClient() {
                   </li>
                 ))}
               </ul>
+              </details>
             </article>
 
             <article className="card">

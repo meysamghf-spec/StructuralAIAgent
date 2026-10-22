@@ -117,11 +117,7 @@ export default function IntegrationsWorkspaceClient() {
       <header className="page-header">
         <p className="eyebrow">Integrations</p>
         <h2>Structural Software Connection</h2>
-        <p className="subtitle">
-          Detect, connect, export, and analyze with local ETABS, SAP2000, or SAFE installations.
-          The platform never reports solver results unless they were genuinely produced by local
-          software.
-        </p>
+        <p className="subtitle">Connect local ETABS, SAP2000, or SAFE to export and analyze.</p>
       </header>
 
       <ProjectScopePanel
@@ -221,7 +217,7 @@ export default function IntegrationsWorkspaceClient() {
       <section className="card">
         <h3>Integration history</h3>
         {executions.length === 0 ? (
-          <p className="muted">No integration executions recorded yet.</p>
+          <p className="muted">No executions yet. Detect local software above to begin.</p>
         ) : (
           <ul className="timeline-list">
             {executions.map((execution) => (

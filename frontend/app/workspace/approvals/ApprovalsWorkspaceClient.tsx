@@ -57,9 +57,7 @@ export default function ApprovalsWorkspaceClient() {
       <header className="page-header">
         <p className="eyebrow">Review</p>
         <h2>Approvals</h2>
-        <p className="subtitle">
-          Review engineering decisions that need your sign-off before the platform continues.
-        </p>
+        <p className="subtitle">Decisions waiting for your sign-off.</p>
       </header>
 
       <ProjectScopePanel
@@ -151,7 +149,7 @@ export default function ApprovalsWorkspaceClient() {
 
       <section className="card">
         <h3>Recent decisions</h3>
-        {history.length === 0 ? <p className="muted">No completed approvals yet.</p> : null}
+        {history.length === 0 ? <p className="muted">No completed approvals yet. Pending items appear above.</p> : null}
         <ul className="workspace-list">
           {history.map((item) => (
             <li key={item.id} className="workspace-list-item compact">

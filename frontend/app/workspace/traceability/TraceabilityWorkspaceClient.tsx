@@ -38,10 +38,7 @@ export default function TraceabilityWorkspaceClient() {
       <header className="page-header">
         <p className="eyebrow">Lineage</p>
         <h2>Traceability</h2>
-        <p className="subtitle">
-          Follow how requirements, files, decisions, model changes, analysis, and reports connect across
-          the project.
-        </p>
+        <p className="subtitle">See how files, decisions, and results connect.</p>
       </header>
 
       <ProjectScopePanel
@@ -56,7 +53,7 @@ export default function TraceabilityWorkspaceClient() {
       <section className="card">
         <h3>Engineering chain</h3>
         {links.length === 0 ? (
-          <p className="muted">No traceability links recorded yet for this project.</p>
+          <p className="muted">No links yet. Upload files or run an analysis to build lineage.</p>
         ) : null}
         <ul className="trace-list">
           {links.map((link) => (
