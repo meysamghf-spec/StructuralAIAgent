@@ -2540,3 +2540,17 @@ body {
     padding: 1.25rem 1rem 2.5rem;
   }
 }
+
+/* Mobile: never overflow horizontally */
+.panel-stack { grid-template-columns: minmax(0, 1fr); }
+.panel-stack > *, .card, .grid > *, [class*="-grid"] > * { min-width: 0; }
+@media (max-width: 960px) {
+  html, body { overflow-x: hidden; max-width: 100%; }
+  .content, .content * { overflow-wrap: anywhere; }
+  .content select, .content input, .content textarea, .content img, .content canvas, .content svg, .content video { max-width: 100%; }
+  .content table { display: block; max-width: 100%; overflow-x: auto; }
+  .content pre, .content code { white-space: pre-wrap; word-break: break-word; }
+  .status-pill { white-space: normal; max-width: 100%; }
+  .chat-context-panel { max-width: 100vw; overflow-x: hidden; }
+  .chat-context-panel * { min-width: 0; overflow-wrap: anywhere; }
+}
