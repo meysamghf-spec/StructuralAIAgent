@@ -3,14 +3,13 @@ from __future__ import annotations
 
 import os
 from typing import Annotated, Literal
-from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from app.api.deps import get_current_account
 from app.application.billing import service
+from app.application.billing.crypto import EXPIRY_MIN, asset_catalog
 from app.application.billing.plans import catalog
 from app.domain.models.user import AuthenticatedAccount
 
@@ -29,12 +28,16 @@ def _base(request: Request) -> str:
 class CheckoutBody(BaseModel):
     plan_id: str
     duration_id: Literal["1m", "3m", "12m"]
-    method: Literal["card", "crypto"]
+    asset_id: str
+
+
+class MockBody(BaseModel):
+    ok: bool = True
 
 
 @router.get("/plans")
 def plans():
-    return catalog()
+    return {**catalog(), "assets": asset_catalog(), "invoice_minutes": EXPIRY_MIN}
 
 
 @router.get("/account")
@@ -44,23 +47,14 @@ def account(acc: Annotated[AuthenticatedAccount, Depends(get_current_account)]):
 
 @router.post("/checkout")
 def checkout(body: CheckoutBody, request: Request, acc: Annotated[AuthenticatedAccount, Depends(get_current_account)]):
-    base = _base(request)
-    return service.create_checkout(acc.account_id, body.plan_id, body.duration_id, body.method, api_base=base, frontend_base=base)
+    return service.create_checkout(acc.account_id, body.plan_id, body.duration_id, body.asset_id, frontend_base=_base(request))
 
 
-@router.api_route("/callback/{gateway}", methods=["GET", "POST"])
-async def callback(gateway: str, request: Request):
-    params = dict(request.query_params)
-    if request.method == "POST":
-        try:
-            params.update({k: str(v) for k, v in (await request.form()).items()})
-        except Exception:  # noqa: BLE001
-            pass
-    base = _base(request)
-    invoice_id = params.get("invoice", "")
-    try:
-        _, inv = service.complete(invoice_id, params, frontend_base=base)
-        q = {"invoice": inv["number"], "status": inv["status"]}
-    except Exception:  # noqa: BLE001
-        q = {"status": "error"}
-    return RedirectResponse(f"{base}/workspace/upgrades?{urlencode(q)}", status_code=303)
+@router.get("/invoices/{invoice_id}")
+def invoice(invoice_id: str, acc: Annotated[AuthenticatedAccount, Depends(get_current_account)]):
+    return {"invoice": service.refresh_invoice(acc.account_id, invoice_id)}
+
+
+@router.post("/invoices/{invoice_id}/mock-confirm")
+def mock_confirm(invoice_id: str, body: MockBody, acc: Annotated[AuthenticatedAccount, Depends(get_current_account)]):
+    return {"invoice": service.mock_confirm(acc.account_id, invoice_id, body.ok)}

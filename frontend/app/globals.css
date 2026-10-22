@@ -2627,3 +2627,21 @@ body {
 .billing-mockpay { max-width: 520px; }
 .billing-mock-actions { display: flex; gap: 12px; }
 .quota-prompt { background: #eef3ff; border: 1px solid #b9c9f5; padding: 10px 12px; border-radius: 8px; }
+
+/* crypto checkout */
+.billing-ref { display: block; font-size: 12px; opacity: 0.75; }
+.billing-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 14px; }
+.billing-chips button { padding: 8px 12px; border-radius: 999px; border: 1px solid var(--border, #334155); background: transparent; color: inherit; cursor: pointer; }
+.billing-chips button.active { background: var(--accent, #0284c7); border-color: var(--accent, #0284c7); color: #fff; }
+.billing-pay-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.billing-warn { background: rgba(234, 179, 8, 0.12); border: 1px solid rgba(234, 179, 8, 0.5); border-radius: 8px; padding: 10px 12px; }
+.billing-pay-grid { display: grid; grid-template-columns: minmax(0, 200px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.billing-qr { background: #fff; border-radius: 8px; padding: 6px; max-width: 200px; }
+.billing-qr svg { width: 100%; height: auto; display: block; }
+.billing-pay-fields { margin: 0; display: grid; gap: 10px; min-width: 0; }
+.billing-pay-fields dd { margin: 2px 0 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-width: 0; }
+.billing-pay-fields code { overflow-wrap: anywhere; word-break: break-all; min-width: 0; }
+.billing-copy { padding: 4px 10px; }
+.billing-timer { margin: 12px 0; }
+.billing-st.expired, .billing-st.cancelled { color: #f87171; }
+@media (max-width: 600px) { .billing-pay-grid { grid-template-columns: 1fr; } .billing-qr { margin: 0 auto; } }

@@ -6,7 +6,6 @@ import {
   fmtToman,
   getBillingAccount,
   getBillingPlans,
-  startCheckout,
   type BillingAccount,
   type Catalog,
   type Plan,
@@ -44,7 +43,6 @@ function UpgradesInner() {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [account, setAccount] = useState<BillingAccount | null>(null);
   const [duration, setDuration] = useState("12m");
-  const [currency, setCurrency] = useState<"toman" | "usdt">("toman");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
 
@@ -57,16 +55,9 @@ function UpgradesInner() {
     void load().catch((e) => setError(e instanceof Error ? e.message : "Could not load plans"));
   }, [load]);
 
-  async function buy(plan: Plan) {
-    setError("");
+  function buy(plan: Plan) {
     setBusy(plan.id);
-    try {
-      const out = await startCheckout(plan.id, duration, currency === "toman" ? "card" : "crypto");
-      window.location.href = out.redirect_url;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Checkout failed");
-      setBusy("");
-    }
+    window.location.href = `/workspace/upgrades/pay?plan=${plan.id}&duration=${duration}`;
   }
 
   const status = params.get("status");
@@ -79,12 +70,12 @@ function UpgradesInner() {
       <section className="workspace-card">
         <h1>Plans &amp; billing</h1>
         <p className="workspace-help">
-          Pick a plan for your engineering work. Pay with an Iranian bank card (Shetab) in toman, or with crypto (USDT/BTC).
-          Longer terms are discounted.
+          Pick a plan for your engineering work. Pay with crypto: USDT or USDC (Tron, BSC, Ethereum, Polygon), BTC (on-chain or
+          Lightning), ETH, TRX, BNB, TON or LTC. Prices are in USDT; toman is shown for reference. Longer terms are discounted.
         </p>
-        {account?.gateways.mock ? (
+        {account?.payments.mock ? (
           <p className="billing-mock-note" data-testid="mock-note">
-            Test mode: payment gateways are simulated. No real money is charged.
+            Test mode: crypto payments are simulated until receiving wallets are configured. No real money moves.
           </p>
         ) : null}
       </section>
@@ -93,9 +84,7 @@ function UpgradesInner() {
         <p className={status === "paid" ? "billing-banner ok" : "billing-banner bad"} data-testid="pay-result">
           {status === "paid"
             ? `Payment received (invoice ${invNo}). Your plan is active.`
-            : status === "failed"
-              ? `Payment was not completed (invoice ${invNo}). You were not charged.`
-              : "We could not verify that payment. If money left your card, contact support with the invoice number."}
+            : `Payment was not completed (invoice ${invNo}, ${status}). If you already sent coins, contact support with the invoice number and transaction hash.`}
         </p>
       ) : null}
       {error ? <p className="workspace-error">{error}</p> : null}
@@ -142,14 +131,6 @@ function UpgradesInner() {
                 </button>
               ))}
             </div>
-            <div className="billing-seg" role="group" aria-label="Currency">
-              <button type="button" className={currency === "toman" ? "active" : ""} onClick={() => setCurrency("toman")}>
-                Toman · card
-              </button>
-              <button type="button" className={currency === "usdt" ? "active" : ""} onClick={() => setCurrency("usdt")}>
-                USDT · crypto
-              </button>
-            </div>
           </div>
 
           <section className="billing-grid">
@@ -166,14 +147,6 @@ function UpgradesInner() {
                   <div className="billing-price">
                     {!p.purchasable || !q ? (
                       <strong>Free</strong>
-                    ) : currency === "toman" ? (
-                      <>
-                        <strong>{fmtToman(q.amount_toman)}</strong>
-                        <span>
-                          for {q.months} month{q.months > 1 ? "s" : ""}
-                          {q.discount_pct ? <s> {fmtToman(q.list_toman)}</s> : null}
-                        </span>
-                      </>
                     ) : (
                       <>
                         <strong>{q.amount_usdt.toLocaleString("en-US")} USDT</strong>
@@ -181,6 +154,7 @@ function UpgradesInner() {
                           for {q.months} month{q.months > 1 ? "s" : ""}
                           {q.discount_pct ? <s> {q.list_usdt} USDT</s> : null}
                         </span>
+                        <span className="billing-ref">≈ {fmtToman(q.amount_toman)} (reference)</span>
                       </>
                     )}
                   </div>
@@ -201,10 +175,10 @@ function UpgradesInner() {
                       data-testid={`buy-${p.id}`}
                     >
                       {busy === p.id
-                        ? "Redirecting…"
+                        ? "Opening…"
                         : isCurrent
                           ? `Renew ${p.name}`
-                          : `Get ${p.name} · ${currency === "toman" ? "Pay by card" : "Pay with crypto"}`}
+                          : `Get ${p.name} · Pay with crypto`}
                     </button>
                   ) : (
                     <p className="workspace-meta">{isCurrent ? "Your current plan" : "Included for everyone"}</p>
@@ -241,9 +215,12 @@ function UpgradesInner() {
                       <td>
                         {i.plan_name} · {i.months} mo
                       </td>
-                      <td>{i.currency === "IRR" ? fmtToman(i.amount_toman) : `${i.amount_usdt} USDT`}</td>
                       <td>
-                        {i.method === "card" ? "Card" : "Crypto"}
+                        {i.amount_usdt} USDT
+                        {i.amount_crypto && i.coin !== "USDT" ? ` (${i.amount_crypto} ${i.coin})` : ""}
+                      </td>
+                      <td>
+                        {i.coin} · {i.standard === "native" ? i.network : i.standard}
                         {i.mock ? " (test)" : ""}
                       </td>
                       <td className={`billing-st ${i.status}`}>{i.status}</td>

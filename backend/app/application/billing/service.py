@@ -8,7 +8,7 @@ from typing import Any
 
 from app.application.exceptions import ApplicationError
 
-from . import gateways, store
+from . import crypto, store
 from .plans import get_plan, load_config, quote
 
 METRIC_LABELS = {
@@ -107,6 +107,8 @@ def require_max(account_id: str, metric: str, value: int) -> None:
 
 
 def require_feature(account_id: str, metric: str, item: str | None = None) -> None:
+    if not account_id:
+        return
     if not enforcement_enabled():
         return
     plan = current_plan(account_id)
@@ -118,6 +120,8 @@ def require_feature(account_id: str, metric: str, item: str | None = None) -> No
 
 def consume(account_id: str, metric: str, n: int = 1) -> None:
     """Monthly metered quota: check then increment."""
+    if not account_id:
+        return
     key = MONTHLY[metric]
     plan = current_plan(account_id)
     lim = plan["limits"].get(metric)
@@ -141,59 +145,117 @@ def account_summary(account_id: str) -> dict[str, Any]:
         "usage": {"analyses_per_month": u.get("analyses", 0), "autocad_imports_per_month": u.get("autocad_imports", 0)},
         "invoices": list(reversed(data.get("invoices", [])))[:50],
         "history": list(reversed(data.get("history", [])))[:50],
-        "gateways": gateways.gateway_status(), "enforcement": enforcement_enabled(),
+        "payments": payment_status(), "enforcement": enforcement_enabled(),
     }
 
 
-def create_checkout(account_id: str, plan_id: str, duration_id: str, method: str, *, api_base: str, frontend_base: str) -> dict:
+def payment_status() -> dict[str, Any]:
+    assets = crypto.asset_catalog()
+    return {"methods": ["crypto"], "mock": not any(a["live"] for a in assets),
+            "live_assets": [a["id"] for a in assets if a["live"]], "btcpay": crypto.btcpay_configured()}
+
+
+MOCK_ADDR = {"tron": "TMockStructuralAiTestAddrDoNotPay01", "bsc": "0x000000000000000000000000000000000000dEaD",
+             "eth": "0x000000000000000000000000000000000000dEaD", "polygon": "0x000000000000000000000000000000000000dEaD",
+             "ton": "UQMockStructuralAiTestAddressDoNotPay0000000000000", "btcpay": "bc1qmockstructuralaitestaddressdonotpay0"}
+
+
+def create_checkout(account_id: str, plan_id: str, duration_id: str, asset_id: str, *, frontend_base: str = "") -> dict:
     plan = get_plan(plan_id)
     if not plan.get("purchasable"):
         raise ApplicationError("PLAN_NOT_PURCHASABLE", "This plan cannot be purchased.", status_code=422)
+    a = crypto.BY_ID.get(asset_id)
+    if not a:
+        raise ApplicationError("BAD_ASSET", "Pick a supported coin and network.", status_code=422)
     q = quote(plan_id, duration_id)
     inv_id = uuid.uuid4().hex
-    if method == "card":
-        gw = gateways.card_gateway(frontend_base); amount, currency = q["amount_rial"], "IRR"
-    elif method == "crypto":
-        gw = gateways.crypto_gateway(frontend_base); amount, currency = q["amount_usdt"], "USDT"
-    else:
-        raise ApplicationError("BAD_METHOD", "Payment method must be card or crypto.", status_code=422)
-    callback = f"{api_base}/api/v1/billing/callback/{gw.name}?invoice={inv_id}"
+    number = f"SA-{_now():%Y%m%d}-{inv_id[:6].upper()}"
+    live = crypto.is_live(a)
+    pay: dict[str, Any] = {"asset_id": a.id, "coin": a.coin, "network": a.network, "standard": a.standard,
+                           "contract": a.contract, "mock": not live, "tx": "", "checkout_url": ""}
     try:
-        start = gw.start(invoice_id=inv_id, amount=amount, description=f"StructuralAI {plan['name']} {q['months']} month(s)", callback_url=callback)
-    except Exception as exc:  # gateway down / not configured
-        raise ApplicationError("GATEWAY_ERROR", f"Payment gateway error: {exc}", status_code=502) from exc
-    invoice = {"id": inv_id, "number": f"SA-{_now():%Y%m%d}-{inv_id[:6].upper()}", "plan_id": plan_id, "plan_name": plan["name"],
-               "duration_id": duration_id, "months": q["months"], "discount_pct": q["discount_pct"], "method": method,
-               "gateway": gw.name, "mock": gw.name.endswith("-mock"), "amount": amount, "currency": currency,
-               "amount_toman": q["amount_toman"], "amount_usdt": q["amount_usdt"], "authority": start.authority,
-               "status": "pending", "created_at": _now().isoformat(), "paid_at": None, "ref_id": "", "card": ""}
+        if a.chain == "btcpay" and live:
+            bp = crypto.btcpay_create(inv_id, q["amount_usdt"], a, f"StructuralAI {plan['name']} {q['months']}m",
+                                      f"{frontend_base}/workspace/upgrades/pay?invoice={inv_id}")
+            pay.update(bp, pay_address="", amount_crypto="", rate_usd=None, rate_source="btcpay")
+        else:
+            cq = crypto.quote_crypto(a, q["amount_usdt"])
+            addr = crypto.receive_address(a) if live else MOCK_ADDR[a.chain]
+            pay.update(cq, pay_address=addr, **(crypto.start_marker(a) if live else {}))
+            pay["payment_uri"] = crypto.payment_uri(a, addr, cq["amount_crypto"])
+    except Exception as exc:  # noqa: BLE001
+        raise ApplicationError("GATEWAY_ERROR", f"Could not create the crypto invoice: {exc}", status_code=502) from exc
+    ts = crypto.now_ts()
+    invoice = {"id": inv_id, "number": number, "plan_id": plan_id, "plan_name": plan["name"],
+               "duration_id": duration_id, "months": q["months"], "discount_pct": q["discount_pct"], "method": "crypto",
+               "gateway": "btcpay" if a.chain == "btcpay" else f"watch-{a.chain}", **pay,
+               "amount_usdt": q["amount_usdt"], "amount_toman": q["amount_toman"],
+               "amount": pay.get("amount_crypto") or q["amount_usdt"], "currency": a.coin,
+               "status": "pending", "created_at": _now().isoformat(), "created_ts": ts,
+               "expires_at": datetime.fromtimestamp(ts + crypto.EXPIRY_MIN * 60, UTC).isoformat(),
+               "paid_at": None, "ref_id": ""}
     with store.edit(account_id) as data:
         data.setdefault("invoices", []).append(invoice)
     store.index_invoice(inv_id, account_id)
-    return {"invoice": invoice, "redirect_url": start.redirect_url}
+    return {"invoice": public_invoice(invoice)}
 
 
-def complete(invoice_id: str, params: dict[str, str], *, frontend_base: str) -> tuple[str, dict]:
-    account_id = store.account_for_invoice(invoice_id)
-    if not account_id:
+def public_invoice(inv: dict) -> dict:
+    out = {k: v for k, v in inv.items() if k not in ("from_block",)}
+    if inv.get("pay_address") and inv["status"] == "pending":
+        out["qr_svg"] = crypto.qr_svg(inv.get("payment_uri") or inv["pay_address"])
+    return out
+
+
+def _owned(account_id: str, invoice_id: str) -> dict:
+    if store.account_for_invoice(invoice_id) != account_id:
         raise ApplicationError("INVOICE_NOT_FOUND", "Invoice not found", status_code=404)
-    inv = next(i for i in store.load(account_id)["invoices"] if i["id"] == invoice_id)
-    if inv["status"] != "pending":
-        return account_id, inv  # idempotent
-    gw = gateways.gateway_by_name(inv["gateway"], frontend_base)
+    return next(i for i in store.load(account_id)["invoices"] if i["id"] == invoice_id)
+
+
+def refresh_invoice(account_id: str, invoice_id: str) -> dict:
+    """Poll the chain / BTCPay for a pending invoice; mark paid or expired."""
+    inv = _owned(account_id, invoice_id)
+    if inv["status"] != "pending" or inv.get("mock"):
+        if inv["status"] == "pending" and crypto.now_ts() > inv["created_ts"] + crypto.EXPIRY_MIN * 60:
+            return public_invoice(_settle(account_id, invoice_id, ok=False, status="expired"))
+        return public_invoice(inv)
+    found = None
     try:
-        res = gw.verify(authority=params.get("Authority") or params.get("trackId") or params.get("id") or inv["authority"],
-                        amount=inv["amount"], params=params)
-    except Exception as exc:  # noqa: BLE001
-        res = gateways.VerifyResult(False, message=f"Verify error: {exc}")
+        if inv.get("btcpay_id"):
+            st = crypto.btcpay_status(inv["btcpay_id"])
+            if st == "Settled":
+                found = {"tx": inv["btcpay_id"]}
+            elif st in ("Expired", "Invalid"):
+                return public_invoice(_settle(account_id, invoice_id, ok=False, status="expired"))
+        else:
+            found = crypto.find_payment(inv)
+    except Exception:  # noqa: BLE001 - RPC hiccup: stay pending, try next poll
+        found = None
+    if found:
+        return public_invoice(_settle(account_id, invoice_id, ok=True, tx=found["tx"]))
+    # grace: late payments are still matched for 24h after expiry
+    if crypto.now_ts() > inv["created_ts"] + 24 * 3600:
+        return public_invoice(_settle(account_id, invoice_id, ok=False, status="expired"))
+    return public_invoice(inv)
+
+
+def mock_confirm(account_id: str, invoice_id: str, ok: bool = True) -> dict:
+    inv = _owned(account_id, invoice_id)
+    if not inv.get("mock"):
+        raise ApplicationError("NOT_MOCK", "Only test invoices can be simulated.", status_code=409)
+    return public_invoice(_settle(account_id, invoice_id, ok=ok, tx="mock-" + invoice_id[:10], status="cancelled"))
+
+
+def _settle(account_id: str, invoice_id: str, *, ok: bool, tx: str = "", status: str = "failed") -> dict:
     with store.edit(account_id) as data:
         inv = next(i for i in data["invoices"] if i["id"] == invoice_id)
         if inv["status"] != "pending":
-            return account_id, inv
-        if not res.ok:
-            inv.update(status="failed", note=res.message)
-            return account_id, inv
-        inv.update(status="paid", paid_at=_now().isoformat(), ref_id=res.ref_id, card=res.card)
+            return inv
+        if not ok:
+            inv.update(status=status)
+            return inv
+        inv.update(status="paid", paid_at=_now().isoformat(), ref_id=tx, tx=tx)
         sub = active_subscription(data)
         if sub and sub["plan_id"] == inv["plan_id"]:
             start = datetime.fromisoformat(sub["expires_at"]); action = "renewed"
@@ -205,10 +267,12 @@ def complete(invoice_id: str, params: dict[str, str], *, frontend_base: str) -> 
                                 "expires_at": expires.isoformat(), "last_invoice": inv["number"], "auto_renew": False}
         data.setdefault("history", []).append({"at": _now().isoformat(), "action": action, "plan_id": inv["plan_id"],
                                                "invoice": inv["number"], "expires_at": expires.isoformat()})
-    return account_id, inv
+        return inv
 
 
 def check_frame_size(account_id: str, inputs: dict) -> None:
+    if not account_id:
+        return
     def _i(k):
         try:
             return int((inputs or {}).get(k) or 0)

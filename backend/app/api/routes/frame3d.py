@@ -31,10 +31,10 @@ def export_frame3d(
     meta = cte.FORMATS.get(body.format)
     if meta is None:
         raise HTTPException(status_code=422, detail=f"Unknown format {body.format!r}; use one of {sorted(cte.FORMATS)}")
-    billing.require_feature(acc.account_id, "exports", "dxf" if body.format.startswith("dxf") else body.format)
+    billing.require_feature(getattr(acc, "account_id", None), "exports", "dxf" if body.format.startswith("dxf") else body.format)
     if body.format == "dxf_rebar":
-        billing.require_feature(acc.account_id, "design_sheets", "rebar_sheets")
-    billing.check_frame_size(acc.account_id, body.inputs)
+        billing.require_feature(getattr(acc, "account_id", None), "design_sheets", "rebar_sheets")
+    billing.check_frame_size(getattr(acc, "account_id", None), body.inputs)
     try:
         inputs = body.inputs
         if body.format in ("dxf_rebar", "dxf_foundation"):
@@ -60,8 +60,8 @@ def run_frame3d_manual(
     acc: Annotated[AuthenticatedAccount, Depends(get_current_account)],
 ) -> dict[str, Any]:
     """Run the in-house 3D frame solver (+ 2800, Mabhas 9 design, footings) on manual-form inputs; same payload as chat."""
-    billing.check_frame_size(acc.account_id, body.inputs)
-    billing.consume(acc.account_id, "analyses_per_month")
+    billing.check_frame_size(getattr(acc, "account_id", None), body.inputs)
+    billing.consume(getattr(acc, "account_id", None), "analyses_per_month")
     try:
         payload = build_frame3d_payload("", manual_inputs=body.inputs)
     except (TypeError, ValueError, SpaceFrameSolverError) as exc:
