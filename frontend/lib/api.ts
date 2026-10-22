@@ -939,3 +939,30 @@ export async function createApprovalRequest(
     }),
   });
 }
+
+/** Same endpoint as uploadProjectFile, via XHR so the UI can show upload progress (0–1). */
+export function uploadProjectFileWithProgress(
+  projectId: string,
+  file: File,
+  onProgress: (fraction: number) => void,
+): Promise<ProjectFileSummary> {
+  return new Promise((resolve, reject) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${getApiBaseUrl()}/api/v1/projects/${projectId}/files`);
+    const headers = getUploadAuthHeaders() as Record<string, string>;
+    for (const [k, v] of Object.entries(headers ?? {})) xhr.setRequestHeader(k, v);
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+    xhr.onload = () => {
+      let body: any = {};
+      try { body = JSON.parse(xhr.responseText); } catch { /* ignore */ }
+      if (xhr.status >= 200 && xhr.status < 300) { onProgress(1); resolve(body as ProjectFileSummary); return; }
+      const msg = typeof body?.error?.message === "string" ? body.error.message
+        : xhr.status === 413 ? "File is too large for the server (limit 100 MB)." : `Upload failed (${xhr.status})`;
+      reject(new Error(msg));
+    };
+    xhr.onerror = () => reject(new Error("Network error during upload"));
+    xhr.send(formData);
+  });
+}

@@ -2554,3 +2554,17 @@ body {
   .chat-context-panel { max-width: 100vw; overflow-x: hidden; }
   .chat-context-panel * { min-width: 0; overflow-wrap: anywhere; }
 }
+
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); border: 0; }
+.upload-dropzone { border: 2px dashed rgba(148,163,184,.4); border-radius: 12px; padding: 1.25rem; display: grid; gap: .6rem; justify-items: center; text-align: center; }
+.upload-dropzone.drag-over { border-color: #0ea5e9; background: rgba(14,165,233,.08); }
+.upload-button { cursor: pointer; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 1.25rem; }
+.upload-button[aria-disabled="true"] { opacity: .5; pointer-events: none; }
+.upload-hint { margin: 0; }
+.upload-progress { width: 100%; display: grid; gap: .3rem; font-size: .9rem; }
+.upload-progress progress { width: 100%; height: 8px; }
+@media (max-width: 960px) {
+  .upload-dropzone { padding: 1rem; }
+  .upload-button { width: 100%; }
+  .brief-field-controls { grid-template-columns: minmax(0, 1fr); }
+}

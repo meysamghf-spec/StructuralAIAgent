@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     postgres_password: SecretStr | None = None
     test_database_url: str | None = None
     file_storage_root: str = ""
-    max_upload_bytes: int = 10 * 1024 * 1024
+    max_upload_bytes: int = 100 * 1024 * 1024
     auto_index_files: bool = False
 
     crypto_payment_gateway: str = "mock"

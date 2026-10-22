@@ -2,9 +2,9 @@
 
 import { ProjectScopePanel } from "@/components/workspace/ProjectScopePanel";
 import { useProjectScope } from "@/hooks/useProjectScope";
-import { listProjectFiles, uploadProjectFile, type ProjectFileSummary } from "@/lib/api";
+import { listProjectFiles, uploadProjectFileWithProgress, type ProjectFileSummary } from "@/lib/api";
 import { formatWorkspaceDate, getFileStatusLabel } from "@/lib/workspace";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FilePreview } from "@/components/files/FilePreview";
 import { downloadProjectFile } from "@/lib/api";
 import { useUiLang } from "@/hooks/useUiLang";
@@ -16,6 +16,9 @@ export default function FilesWorkspaceClient() {
     useProjectScope();
   const [files, setFiles] = useState<ProjectFileSummary[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState<{ name: string; pct: number; index: number; total: number } | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const { t } = useUiLang();
 
@@ -41,14 +44,20 @@ export default function FilesWorkspaceClient() {
     setUploading(true);
     setError(null);
     try {
-      for (const file of Array.from(selected)) {
-        await uploadProjectFile(selectedProjectId, file);
+      const list = Array.from(selected);
+      for (const [i, file] of list.entries()) {
+        setProgress({ name: file.name, pct: 0, index: i + 1, total: list.length });
+        await uploadProjectFileWithProgress(selectedProjectId, file, (f) =>
+          setProgress({ name: file.name, pct: Math.round(f * 100), index: i + 1, total: list.length }),
+        );
+        await refresh(selectedProjectId);
       }
-      await refresh(selectedProjectId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setUploading(false);
+      setProgress(null);
+      if (inputRef.current) inputRef.current.value = "";
     }
   }
 
@@ -72,13 +81,39 @@ export default function FilesWorkspaceClient() {
 
       <section className="card">
         <h3>Upload files</h3>
-        <input
-          className="input"
-          type="file"
-          multiple
-          disabled={!selectedProjectId || uploading}
-          onChange={(event) => void handleUpload(event.target.files)}
-        />
+        <div
+          className={dragOver ? "upload-dropzone drag-over" : "upload-dropzone"}
+          data-testid="upload-dropzone"
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => { e.preventDefault(); setDragOver(false); void handleUpload(e.dataTransfer.files); }}
+        >
+          <input
+            ref={inputRef}
+            id="files-upload-input"
+            className="visually-hidden"
+            type="file"
+            multiple
+            disabled={!selectedProjectId || uploading}
+            onChange={(event) => void handleUpload(event.target.files)}
+          />
+          <label
+            htmlFor="files-upload-input"
+            className="button upload-button"
+            aria-disabled={!selectedProjectId || uploading}
+          >
+            {uploading ? "Uploading…" : "Upload files"}
+          </label>
+          <p className="muted upload-hint">
+            {selectedProjectId ? "or drag and drop files here" : "Select a project above to upload files."}
+          </p>
+          {progress ? (
+            <div className="upload-progress" role="status">
+              <span>{progress.total > 1 ? `${progress.index}/${progress.total} · ` : ""}{progress.name} — {progress.pct}%</span>
+              <progress max={100} value={progress.pct} />
+            </div>
+          ) : null}
+        </div>
         <p className="muted">
           Supported workflows include PDF, text, and other ingested engineering formats already configured
           in the platform.
