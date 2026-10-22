@@ -2597,3 +2597,6 @@ body {
 button:disabled { cursor: not-allowed; opacity: 0.55; }
 details.meta-summary > summary { cursor: pointer; font-size: 0.9rem; color: var(--muted, #667); }
 details.meta-summary[open] > summary { margin-bottom: 0.5rem; }
+.page-header > .button { display: inline-block; margin-top: 0.75rem; position: static; width: auto; }
+.project-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
+.project-actions .button { white-space: nowrap; }
