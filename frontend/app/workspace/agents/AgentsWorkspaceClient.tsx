@@ -257,11 +257,17 @@ export default function AgentsWorkspaceClient() {
       <header className="page-header">
         <p className="eyebrow">Engineering Assistants</p>
         <h2>Agent Workspace</h2>
-        <p className="subtitle">
-          Choose a project, an assistant, and the current engineering model. Runs stay traceable to
-          that project, the PEM snapshot, and any approved learning used as context.
-        </p>
+        <p className="subtitle">Run structural workflows on a project with traceable assistants.</p>
       </header>
+
+      {!loading && projects.length === 0 ? (
+        <section className="card first-project-cta">
+          <p>You have no projects yet. Create one to start running workflows.</p>
+          <Link href="/projects/new" className="button cta-button">
+            Create your first project / ساخت پروژه‌ی اول
+          </Link>
+        </section>
+      ) : null}
 
       <section className="card">
         <h3>Active project</h3>
@@ -285,25 +291,49 @@ export default function AgentsWorkspaceClient() {
             ? `Current model${pem.name ? ` ${pem.name}` : ""} · version ${pem.version} · snapshot ${pem.snapshotId}`
             : "No current engineering model is stored for this project."}
         </p>
-        <div className="workflow-glance" aria-label="Structural workflow status">
-          {(
-            [
-              ["Project", selectedProject?.name ?? "None"],
-              ["Agent", "Structural Engineering Agent"],
-              ["Agent version", selectedExecution ? String(selectedExecution.agent_version) : "—"],
-              ["PEM version", pem ? String(pem.version) : "—"],
-              ["Model", workflowGlance?.model ?? "Not run"],
-              ["Analysis", workflowGlance?.analysis ?? "Not run"],
-              ["Design", workflowGlance?.design ?? "Not run"],
-              ["QA", workflowGlance?.qa ?? "Not run"],
-              ["Output", workflowGlance?.output ?? "Not generated"],
-            ] as const
-          ).map(([label, value]) => (
-            <p key={label} className="status-pill">
-              {label}: {value}
-            </p>
-          ))}
-        </div>
+        <details className="workflow-progress" aria-label="Structural workflow status">
+          <summary>
+            <ol className="workflow-steps">
+              {(
+                [
+                  ["Model", workflowGlance?.model],
+                  ["Analysis", workflowGlance?.analysis],
+                  ["Design", workflowGlance?.design],
+                  ["Output", workflowGlance?.output],
+                ] as const
+              ).map(([label, value]) => {
+                const done = !!value && !/not\s*(run|generated)|pending|—/i.test(value);
+                return (
+                  <li key={label} className={done ? "step done" : "step"} title={`${label}: ${value ?? "Not run"}`}>
+                    <span className="step-dot" aria-hidden="true" />
+                    <span className="step-label">{label}</span>
+                  </li>
+                );
+              })}
+            </ol>
+            <span className="workflow-progress-hint">Details</span>
+          </summary>
+          <dl className="workflow-details">
+            {(
+              [
+                ["Project", selectedProject?.name ?? "None"],
+                ["Agent", "Structural Engineering Agent"],
+                ["Agent version", selectedExecution ? String(selectedExecution.agent_version) : "—"],
+                ["PEM version", pem ? String(pem.version) : "—"],
+                ["Model", workflowGlance?.model ?? "Not run"],
+                ["Analysis", workflowGlance?.analysis ?? "Not run"],
+                ["Design", workflowGlance?.design ?? "Not run"],
+                ["QA", workflowGlance?.qa ?? "Not run"],
+                ["Output", workflowGlance?.output ?? "Not generated"],
+              ] as const
+            ).map(([label, value]) => (
+              <div key={label}>
+                <dt>{label}</dt>
+                <dd>{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </details>
         <p className="muted">{workflowGlance?.message ?? "No structural workflow has been run for this project."}</p>
         <p className="muted">Approval: {workflowGlance?.approval ?? "Not approved"}</p>
         <div className="button-row">

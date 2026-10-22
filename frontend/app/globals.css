@@ -2568,3 +2568,25 @@ body {
   .upload-button { width: 100%; }
   .brief-field-controls { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Agent Workspace redesign */
+.first-project-cta { display: grid; gap: .75rem; justify-items: start; }
+.cta-button { font-size: 1.05rem; padding: .9rem 1.4rem; min-height: 52px; display: inline-flex; align-items: center; }
+.workflow-progress { border: 1px solid rgba(148,163,184,.25); border-radius: 10px; padding: .6rem .8rem; }
+.workflow-progress > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: .75rem; }
+.workflow-progress > summary::-webkit-details-marker { display: none; }
+.workflow-steps { flex: 1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; padding: 0; list-style: none; }
+.workflow-steps .step { position: relative; display: grid; justify-items: center; gap: .3rem; font-size: .85rem; color: #94a3b8; }
+.workflow-steps .step + .step::before { content: ""; position: absolute; top: 6px; right: 50%; width: 100%; height: 2px; background: #334155; z-index: 0; }
+.workflow-steps .step.done + .step.done::before { background: #0ea5e9; }
+.step-dot { width: 14px; height: 14px; border-radius: 50%; background: #334155; border: 2px solid #475569; position: relative; z-index: 1; }
+.step.done .step-dot { background: #0ea5e9; border-color: #38bdf8; }
+.step.done { color: #e2e8f0; }
+.workflow-progress-hint { font-size: .8rem; color: #94a3b8; }
+.workflow-progress[open] .workflow-progress-hint { color: #e2e8f0; }
+.workflow-details { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: .4rem .8rem; margin: .7rem 0 0; }
+.workflow-details dt { font-size: .75rem; color: #94a3b8; }
+.workflow-details dd { margin: 0; overflow-wrap: anywhere; }
+/* keep floating Chat button clear of page content */
+.shell .content { padding-bottom: 96px; }
+@media (max-width: 960px) { .chat-dock-toggle { bottom: max(14px, env(safe-area-inset-bottom)); right: 14px; } }
