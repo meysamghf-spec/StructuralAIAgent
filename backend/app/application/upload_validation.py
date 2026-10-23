@@ -26,6 +26,12 @@ _ALLOWED_EXTENSIONS = {
     ".jpeg",
     ".gif",
     ".webp",
+    ".zip",
+    ".svg",
+    ".md",
+    ".json",
+    ".e2k",
+    ".s2k",
 }
 
 

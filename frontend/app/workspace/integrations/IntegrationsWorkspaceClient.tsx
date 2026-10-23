@@ -2,6 +2,9 @@
 
 import { listAutocadJobs } from "@/lib/autocad";
 import Link from "next/link";
+import { AutocadDrawingsSection } from "@/components/autocad/AutocadDrawingsSection";
+import { StructuralSetSection } from "@/components/autocad/StructuralSetSection";
+import { SolverInlinePanel } from "@/components/frame3d/SolverInlinePanel";
 import { ProjectScopePanel } from "@/components/workspace/ProjectScopePanel";
 import { useProjectScope } from "@/hooks/useProjectScope";
 import {
@@ -32,6 +35,8 @@ export default function IntegrationsWorkspaceClient() {
   const [analysisSoftware, setAnalysisSoftware] = useState("ETABS");
   const [analysisMessage, setAnalysisMessage] = useState<string | null>(null);
   const [cadCount, setCadCount] = useState<number | null>(null);
+  const [inline, setInline] = useState<string | null>(null);
+  const toggle = (k: string) => setInline(inline === k ? null : k);
 
   useEffect(() => {
     listAutocadJobs(selectedProjectId).then((j) => setCadCount(j.length)).catch(() => setCadCount(null));
@@ -136,7 +141,7 @@ export default function IntegrationsWorkspaceClient() {
 
       <section className="grid cards-3">
         {capabilities.map((capability) => (
-          <article className="card" key={capability.software}>
+          <article className={`card${inline === capability.software ? " card-wide" : ""}`} key={capability.software}>
             <h3>{getSoftwareDisplayName(capability.software, capability.expected_version)}</h3>
             <p className={`status-pill ${getAvailabilityClass(capability.availability)}`}>
               {getAvailabilityLabel(capability.availability)}
@@ -153,6 +158,20 @@ export default function IntegrationsWorkspaceClient() {
                 Built in: SAP2000 model export (.s2k, no local install needed). In the chat ask «خروجی SAP2000» /
                 &quot;export SAP2000&quot; after a 3D frame analysis, or download model.s2k from the CAD or Model page.
               </p>
+            ) : null}
+            {["ETABS", "SAP2000", "SAFE"].includes(capability.software.toUpperCase()) ? (
+              <>
+                <button
+                  className="button secondary"
+                  type="button"
+                  aria-expanded={inline === capability.software}
+                  data-testid={`inline-toggle-${capability.software}`}
+                  onClick={() => toggle(capability.software)}
+                >
+                  {inline === capability.software ? "Hide model & downloads" : "Show model & downloads"}
+                </button>
+                {inline === capability.software ? <SolverInlinePanel software={capability.software} /> : null}
+              </>
             ) : null}
             {capability.message &&
             !getConnectionHelpMessage(
@@ -197,7 +216,7 @@ export default function IntegrationsWorkspaceClient() {
             )}
           </article>
         ))}
-        <article className="card" id="autocad" data-testid="autocad-integration-card">
+        <article className={`card${inline === "AUTOCAD" ? " card-wide" : ""}`} id="autocad" data-testid="autocad-integration-card">
           <h3>AutoCAD (DXF R2018)</h3>
           <p className={`status-pill ${getAvailabilityClass("AVAILABLE")}`}>{getAvailabilityLabel("AVAILABLE")}</p>
           <p className="muted">
@@ -212,10 +231,22 @@ export default function IntegrationsWorkspaceClient() {
             <Link className="button secondary" href="/">
               Use in chat
             </Link>
-            <Link className="button" href="/workspace/cad">
-              Open drawings
-            </Link>
+            <button
+              className="button"
+              type="button"
+              aria-expanded={inline === "AUTOCAD"}
+              data-testid="autocad-open-inline"
+              onClick={() => toggle("AUTOCAD")}
+            >
+              {inline === "AUTOCAD" ? "Hide drawings" : "Open drawing"}
+            </button>
           </div>
+          {inline === "AUTOCAD" ? (
+            <div className="inline-panel" data-testid="autocad-inline">
+              <StructuralSetSection />
+              <AutocadDrawingsSection />
+            </div>
+          ) : null}
         </article>
       </section>
 

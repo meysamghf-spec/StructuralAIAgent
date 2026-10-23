@@ -103,3 +103,101 @@ def optimize_frame3d(
         raise HTTPException(status_code=422, detail=f"Cannot optimize this model: {exc}") from exc
     res["report_markdown"] = fopt.optimization_markdown(res, str(body.inputs.get("lang") or "en"))
     return {"frame_optimization": res}
+
+
+# ---------------------------------------------------------------- downloads (tables / figures / drawings / models / ZIP)
+from uuid import UUID as _UUID  # noqa: E402
+
+from app.api.deps import get_conversation_service, get_file_ingestion_service, get_project_access_service  # noqa: E402
+
+
+class Frame3dDownloadRequest(BaseModel):
+    kind: str = Field(description="table | figure | model | drawing | report")
+    name: str = Field(description="item key from GET /frame3d/downloads/catalog (table 'all' = every table in one .xlsx)")
+    format: str = Field(default="", description="xlsx|csv (tables), png|svg (figures), dxf|pdf (drawings)")
+    inputs: dict[str, Any] | None = None
+    project_id: str | None = None
+    optimization: dict[str, Any] | None = None
+    save_to_files: bool = False
+
+
+class Frame3dPackageRequest(BaseModel):
+    inputs: dict[str, Any] | None = None
+    project_id: str | None = None
+    optimization: dict[str, Any] | None = None
+    save_to_files: bool = True
+
+
+def _resolve(body, acc, conv, access):
+    if body.project_id:
+        try:
+            access.require_project(_UUID(body.project_id), acc)
+        except ValueError as exc:
+            raise HTTPException(422, "invalid project_id") from exc
+    inputs = body.inputs
+    if not inputs and body.project_id:
+        from app.api.routes.autocad import latest_frame_inputs
+        inputs = latest_frame_inputs(conv, acc, body.project_id)
+    if not inputs:
+        raise HTTPException(409, "No 3D frame analysis yet — run one in chat or on the Model page first.")
+    billing.check_frame_size(getattr(acc, "account_id", None), inputs)
+    return inputs
+
+
+def _saver(files, project_id, acc):
+    def save(name: str, data: bytes, ctype: str = "application/octet-stream") -> str:
+        try:
+            return str(files.ingest_upload(_UUID(project_id), filename=name, content=data, content_type=ctype,
+                                           created_by=acc.account_id).id)
+        except Exception:  # noqa: BLE001 — saving to Files is best effort; the download itself still succeeds
+            return ""
+    return save
+
+
+@router.get("/downloads/catalog")
+def downloads_catalog(acc: Annotated[AuthenticatedAccount, Depends(get_current_account)]) -> dict[str, Any]:
+    from app.application import results_package as rp
+    return rp.catalog()
+
+
+@router.post("/download")
+def download_item(body: Frame3dDownloadRequest, acc: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+                  conv=Depends(get_conversation_service), files=Depends(get_file_ingestion_service),
+                  access=Depends(get_project_access_service)) -> Response:
+    from app.application import results_package as rp
+    inputs = _resolve(body, acc, conv, access)
+    if body.kind in ("model", "drawing"):
+        billing.require_feature(getattr(acc, "account_id", None), "exports", "dxf" if body.name.startswith(("dxf", "structural")) else body.name)
+    try:
+        name, data, mime = rp.item(body.kind, body.name, body.format, inputs, body.optimization)
+    except KeyError as exc:
+        raise HTTPException(404, f"unknown or empty item {body.kind}/{body.name}") from exc
+    except (TypeError, ValueError, SpaceFrameSolverError) as exc:
+        raise HTTPException(422, f"Cannot build this download: {exc}") from exc
+    headers = {"Content-Disposition": f'attachment; filename="{name}"'}
+    if body.save_to_files and body.project_id:
+        headers["X-File-Id"] = _saver(files, body.project_id, acc)(name, data, mime)
+    return Response(content=data, media_type=mime, headers=headers)
+
+
+@router.post("/package")
+def download_package(body: Frame3dPackageRequest, acc: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+                     conv=Depends(get_conversation_service), files=Depends(get_file_ingestion_service),
+                     access=Depends(get_project_access_service)) -> Response:
+    """Everything for one run as a ZIP: tables (xlsx + csv), figures (png), model exports, drawings (dxf + set pdf), report."""
+    from app.application import results_package as rp
+    inputs = _resolve(body, acc, conv, access)
+    billing.require_feature(getattr(acc, "account_id", None), "exports", "dxf")
+    saved: list[str] = []
+    on_file = None
+    if body.save_to_files and body.project_id:
+        save = _saver(files, body.project_id, acc)
+        on_file = lambda n, d: saved.append(save(n, d, rp.XLSX if n.endswith(".xlsx") else "application/zip"))  # noqa: E731
+    try:
+        data, names = rp.build_zip(inputs, body.optimization, on_file=on_file)
+    except (TypeError, ValueError, SpaceFrameSolverError) as exc:
+        raise HTTPException(422, f"Cannot build the package: {exc}") from exc
+    return Response(content=data, media_type="application/zip",
+                    headers={"Content-Disposition": 'attachment; filename="frame-results.zip"',
+                             "X-Files": str(len(names)), "X-File-Ids": ",".join(x for x in saved if x),
+                             "Access-Control-Expose-Headers": "X-Files, X-File-Ids, X-File-Id"})

@@ -10,6 +10,7 @@ export type ChatRun = {
   label: string;
   status: string;
   inputs: Record<string, unknown> | null;
+  optimization?: unknown;
   summary: Record<string, unknown>;
   job_id?: string;
   filename?: string;

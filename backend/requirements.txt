@@ -17,3 +17,4 @@ pillow>=10,<12
 opencv-python-headless>=4.9,<5
 numpy>=1.26,<3
 segno>=1.6
+matplotlib>=3.8,<4
