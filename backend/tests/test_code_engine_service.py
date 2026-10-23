@@ -16,8 +16,10 @@ def test_list_us_default_standards() -> None:
 
 
 def test_get_us_code_defaults() -> None:
+    from app.domain.models.pem import Jurisdiction
+
     service = build_code_engine_service()
-    defaults = service.get_defaults()
+    defaults = service.get_defaults(Jurisdiction.US)
     config = defaults.configuration
     assert config.governing_building_code.edition == "IBC 2024"
     assert config.loading_standard.edition == "ASCE 7-22"
@@ -52,3 +54,11 @@ def test_run_stub_check_returns_not_applicable() -> None:
     )
     assert result.outcome.value == "NOT_APPLICABLE"
     assert result.code_family == "AISC 360"
+
+
+def test_default_jurisdiction_is_iran() -> None:
+    from app.domain.models.pem import Jurisdiction
+
+    config = build_code_engine_service().get_defaults().configuration
+    assert config.jurisdiction == Jurisdiction.IRAN
+    assert "Mabhas 9" in config.concrete_standard.edition
