@@ -2693,3 +2693,65 @@ details.meta-summary[open] > summary { margin-bottom: 0.5rem; }
   font-size: 1.1rem; cursor: pointer;
 }
 .chat-sidebar-header { position: relative; padding-right: 3rem; }
+
+/* ---- Action button groups: wrap cleanly, never overlap (mobile fix) ---- */
+.chat-message-actions,
+.tool-execution-toggle,
+.agent-error-actions,
+.chat-error-actions,
+.approval-actions,
+.form-actions,
+.button-row,
+.project-actions,
+.frame3d-actions,
+.autocad-actions,
+.autocad-card-actions,
+.billing-mock-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: stretch;
+  max-width: 100%;
+  min-width: 0;
+}
+.chat-message-actions { margin-top: 0.75rem; }
+a.button,
+.chat-action-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  line-height: 1.3;
+  text-decoration: none;
+  box-sizing: border-box;
+}
+.chat-message-actions > .button,
+.tool-execution-toggle > .button {
+  position: static;
+  margin: 0;
+  height: auto;
+  min-height: 2.5rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  overflow: visible;
+  text-overflow: clip;
+}
+.project-actions { flex-shrink: 1; }
+@media (max-width: 640px) {
+  .chat-message-actions > .button,
+  .tool-execution-toggle > .button,
+  .autocad-card-actions > .button,
+  .billing-mock-actions > .button,
+  .project-actions > .button {
+    flex: 1 1 calc(50% - 0.25rem);
+    min-width: 0;
+    max-width: 100%;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+}
+@media (max-width: 380px) {
+  .chat-message-actions > .button,
+  .tool-execution-toggle > .button { flex-basis: 100%; }
+}
