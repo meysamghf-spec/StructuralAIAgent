@@ -153,3 +153,12 @@ def test_inadequate_sections_payload_is_json_safe_and_renders():
         p = f3.build_frame3d_payload(fu.merge_with_pending("assume", [req]))
         json.dumps(p, allow_nan=False)
         assert f3.frame3d_markdown(p)
+
+
+def test_context_keeps_latest_frame_spec_last():
+    from types import SimpleNamespace as N
+    from app.application.agent_orchestration_service import _context_memories
+    from app.application import frame3d_chat_analysis as f3
+    mems = [N(content='[frame3d-spec]{"storeys":4}')] + [N(content=f"m{i}") for i in range(40)] + [N(content='[frame3d-spec]{"storeys":6}')]
+    ctx = {"memories": [{"content": m.content} for m in _context_memories(mems)]}
+    assert f3.prior_frame3d_spec(ctx)["storeys"] == 6
