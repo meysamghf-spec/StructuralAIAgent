@@ -2803,3 +2803,14 @@ a.button,
   .v3d-tabs .v3d-btn { flex: 1 1 calc(50% - 4px); }
   .v3d-table { display: block; overflow-x: auto; }
 }
+/* structural drawing set (CAD page + chat) */
+.structural-set { border: 1px solid var(--border, #d9dee7); border-radius: 12px; padding: 12px; margin-top: 10px; max-width: 100%; min-width: 0; }
+.structural-set-head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; align-items: baseline; }
+.structural-set-meta { margin: 4px 0 8px; font-size: 13px; overflow-wrap: anywhere; }
+.structural-sheet-list { list-style: none; padding: 0; margin: 8px 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 6px; }
+.structural-sheet-btn { width: 100%; display: flex; gap: 8px; align-items: center; text-align: start; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border, #d9dee7); background: transparent; color: inherit; cursor: pointer; min-width: 0; }
+.structural-sheet-btn.active { border-color: var(--accent, #0284c7); background: rgba(2, 132, 199, 0.08); }
+.structural-sheet-no { font-weight: 700; flex: none; }
+.structural-sheet-title { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
+.structural-sheet-scale { flex: none; font-size: 12px; }
+.structural-set-notes { margin: 4px 0; padding-inline-start: 18px; font-size: 13px; }

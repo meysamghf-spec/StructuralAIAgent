@@ -122,6 +122,9 @@ def sheet_columns(inp, design, info) -> Sheet:
         _, s0, sm, l0 = rd.parse_spacing(c.get("ties"))
         nd = rd.parse_bars(c["bars"])
         dt = rd.parse_spacing(c.get("ties"))[0]
+        if not _ok(c.get("bars")):
+            rows.append([POS_MARK[c["position"]], f"S{c['storey']}", f"{b:.0f}x{h:.0f}", "NG - enlarge section", "", "", "", "", c["position"], ""])
+            continue
         rows.append([POS_MARK[c["position"]], f"S{c['storey']}", f"{b:.0f}x{h:.0f}", c["bars"], f"{c.get('rho_pct', '')}",
                      f"Φ{dt}@{s0}", f"{l0 or max(b, h, 450):.0f}", f"Φ{dt}@{sm}", c["position"], f"{c.get('DC', '')}"])
     pen.table(xs[0] - 20 * s, ys[0] - 45 * s,
@@ -169,7 +172,7 @@ def sheet_beams(inp, design, info, k: int, sheet_no: str) -> Sheet:
     for g in sorted((g for g in design["beams"] if g["storey"] == k), key=lambda g: (g["direction"], g["position"] != "edge")):
         rows.append([_beam_mark(k, g["direction"], g["position"]), g["direction"], g["position"], f"{bb:.0f}x{bh:.0f}",
                      g["top_bars"], g["bottom_bars"], (g.get("stirrups") or "").replace(", ", " / "), g.get("members", ""),
-                     f"{max(g.get('DC_flexure', 0), g.get('DC_shear', 0)):.2f}"])
+                     f"{max(g.get('DC_flexure') or 0, g.get('DC_shear') or 0):.2f}"])
     pen.table(xs[0] - 20 * s, ys[0] - 45 * s, ["Mark", "Dir", "Position", "b x h", "Top (support)", "Bottom", "Stirrups", "Spans", "D/C"],
               rows, [16, 10, 18, 20, 24, 20, 80, 12, 12], title=f"BEAM SCHEDULE - STOREY {k} / جدول تیرها")
     _finish(doc, sheet_no, info, f"پلان تیرریزی طبقه {k}", f"BEAM LAYOUT STOREY {k}", s)
@@ -177,12 +180,20 @@ def sheet_beams(inp, design, info, k: int, sheet_no: str) -> Sheet:
 
 
 # ---------------------------------------------------------------- S-201 typical beam elevations
+def _ok(bars) -> bool:
+    try:
+        rd.parse_bars(bars)
+        return True
+    except ValueError:
+        return False
+
+
 def _typical_beams(design) -> list[dict]:
     out = []
     for d in ("X", "Y"):
-        gs = [g for g in design["beams"] if g["direction"] == d]
+        gs = [g for g in design["beams"] if g["direction"] == d and _ok(g.get("top_bars")) and _ok(g.get("bottom_bars"))]
         if gs:
-            out.append(max(gs, key=lambda g: (rd.parse_bars(g["top_bars"])[0] * rd.parse_bars(g["top_bars"])[1] ** 2, g["Mu_neg_kn_m"])))
+            out.append(max(gs, key=lambda g: (rd.parse_bars(g["top_bars"])[0] * rd.parse_bars(g["top_bars"])[1] ** 2, g.get("Mu_neg_kn_m") or 0)))
     return out
 
 
@@ -209,7 +220,7 @@ def sheet_beam_details(inp, design, info) -> Sheet:
              "دیتیل تیپ تیرها؛ برای سایر تیرها میلگردها طبق جدول تیرها"]
     pen.notes(-1500, y - 400, "BEAM DETAILING NOTES / یادداشت‌های تیر", notes)
     # sections of the drawn beams at 1:20 scale-annotated region to the right
-    x0 = max(rd._beam_spans(inp, g["direction"])[0] * rd._beam_spans(inp, g["direction"])[1] for g in beams) + 3000
+    x0 = max(rd._beam_spans(inp, g["direction"])[0] * rd._beam_spans(inp, g["direction"])[1] for g in beams) + 3000 if beams else 0.0
     p20 = ds.Pen(doc.modelspace(), (x0, 0), 20)
     xx = 0.0
     for sp in sh.secs[:6]:
@@ -228,6 +239,8 @@ def sheet_column_sections(inp, design, info) -> Sheet:
     sh = rd._Sheet(scratch.modelspace(), 0.0, "tmp")
     seen, groups = set(), []
     for c in sorted(design["columns"], key=lambda c: (list(POS_MARK).index(c["position"]), c["storey"])):
+        if not _ok(c.get("bars")):
+            continue
         key = (c["position"], c["bars"], c.get("ties"))
         if key in seen:
             continue
@@ -317,6 +330,9 @@ def build_structural_set(inp, raw: dict[str, Any], design: dict[str, Any] | None
     sheets.append(sheet_beam_details(inp, design, info))
     sheets.append(sheet_column_sections(inp, design, info))
     notes: list[str] = []
+    ng = [g["group"] for g in design["beams"] + design["columns"] if not _ok(g.get("bars") or g.get("top_bars"))]
+    if ng:
+        notes.append("no reinforcement found for " + ", ".join(ng[:8]) + (" …" if len(ng) > 8 else "") + " — enlarge those sections and regenerate")
     try:
         f = sheet_foundation(inp, raw, design, info)
     except ValueError as exc:
