@@ -108,8 +108,10 @@ class FileIngestionService:
 
         if record.file_type in {FileType.UNKNOWN, FileType.IMAGE}:
             metadata = dict(record.metadata)
+            stored_ok = _is_stored_artifact(record)
             metadata["ingestion"] = {
                 "stored": True,
+                "kind": "cad_or_engineering_model" if stored_ok else "unparsed",
                 "byte_length": len(content),
                 "note": _skip_extraction_note(record),
             }
@@ -117,8 +119,8 @@ class FileIngestionService:
                 self._file_repository.update_statuses(
                     project_id,
                     file_id,
-                    parsing_status=ParsingStatus.SKIPPED,
-                    extraction_status=ExtractionStatus.SKIPPED,
+                    parsing_status=ParsingStatus.COMPLETE if stored_ok else ParsingStatus.SKIPPED,
+                    extraction_status=ExtractionStatus.COMPLETE if stored_ok else ExtractionStatus.SKIPPED,
                     confidence=None,
                     metadata=metadata,
                 ),
@@ -229,3 +231,13 @@ def _skip_extraction_note(record: ProjectFile) -> str:
         extension,
         "Engineering file stored; automated extraction was not run for this format.",
     )
+
+
+STORED_ARTIFACT_EXTENSIONS = {".dxf", ".dwg", ".s2k", ".$2k", ".e2k", ".f2k", ".edb", ".sdb", ".ifc", ".svg", ".png", ".jpg", ".jpeg", ".zip"}
+
+
+def _is_stored_artifact(record: ProjectFile) -> bool:
+    """CAD drawings, solver models and images are complete once stored (no text extraction needed)."""
+    name = (record.filename or "").lower()
+    return any(name.endswith(ext) for ext in STORED_ARTIFACT_EXTENSIONS)
+

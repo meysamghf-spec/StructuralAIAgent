@@ -76,3 +76,37 @@ export async function listAutocadJobs(projectId?: string | null): Promise<Autoca
   const res = await ok(await fetch(`${base()}/jobs${q}`, { headers: getAuthHeaders() }));
   return ((await res.json()) as { jobs: AutocadJobMeta[] }).jobs;
 }
+
+// ---------------------------------------------------------------- architectural sets
+export type ArchSheet = { no: string; title_en: string; title_fa: string; kind: string; scale: number; dxf: string; png?: string; pdf?: string };
+export type ArchSetMeta = {
+  id: string;
+  title: string;
+  created_at?: string;
+  project_id?: string | null;
+  sheets: ArchSheet[];
+  pdf?: string | null;
+  zip?: string | null;
+  checks?: string[][];
+  assumptions?: string[];
+  warnings?: string[];
+};
+
+export async function listArchSets(projectId?: string | null): Promise<ArchSetMeta[]> {
+  const q = projectId ? `?project_id=${encodeURIComponent(projectId)}` : "";
+  const res = await ok(await fetch(`${base()}/arch-sets${q}`, { headers: getAuthHeaders() }));
+  return ((await res.json()) as { sets: ArchSetMeta[] }).sets;
+}
+
+export async function fetchArchFile(setId: string, name: string): Promise<Blob> {
+  return (await ok(await fetch(`${base()}/arch-sets/${setId}/files/${encodeURIComponent(name)}`, { headers: getAuthHeaders() }))).blob();
+}
+
+export async function downloadArchFile(setId: string, name: string): Promise<void> {
+  const url = URL.createObjectURL(await fetchArchFile(setId, name));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `arch-${setId.slice(0, 6)}-${name}`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}

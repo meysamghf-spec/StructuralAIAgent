@@ -617,6 +617,7 @@ export type ProjectContextResponse = {
     loading_standard: string;
     concrete_standard: string;
     steel_standard: string;
+    seismic_standard?: string | null;
   } | null;
   unit_configuration: {
     system: string;

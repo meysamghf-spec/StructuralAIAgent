@@ -1,3 +1,4 @@
+import { ArchitecturalSetSection } from "@/components/autocad/ArchitecturalSetSection";
 import { AutocadDrawingsSection } from "@/components/autocad/AutocadDrawingsSection";
 import { StructuralSetSection } from "@/components/autocad/StructuralSetSection";
 import { FrameDownloads } from "@/components/frame3d/FrameDownloads";
@@ -8,6 +9,7 @@ import CadWorkspaceClient from "./CadWorkspaceClient";
 export default function CadWorkspacePage() {
   return (
     <>
+      <ArchitecturalSetSection />
       <StructuralSetSection />
       <FrameDownloads groups={["drawings", "models", "figures"]} title="Drawings & model downloads" />
       <AutocadDrawingsSection />

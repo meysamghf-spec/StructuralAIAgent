@@ -92,6 +92,53 @@ def do_review(jid: str, body: ReviewBody, account: Annotated[AuthenticatedAccoun
     return service.review(jid, _owner(account), body.decision, body.note)
 
 
+# ---------------------------------------------------------------- architectural sets (plans, sections, elevations ...)
+class ArchSetBody(BaseModel):
+    prompt: str = Field(default="", max_length=2000)
+    project_id: str | None = None
+    program: dict | None = None
+
+
+_MEDIA = {".dxf": "application/dxf", ".pdf": "application/pdf", ".png": "image/png", ".zip": "application/zip"}
+
+
+@router.get("/arch-sets")
+def arch_sets(account: Annotated[AuthenticatedAccount, Depends(get_current_account)], project_id: str | None = None):
+    from app.application.architecture import service as arch
+    keys = ("id", "title", "created_at", "project_id", "sheets", "pdf", "zip", "checks", "assumptions", "warnings", "project_files")
+    return {"sets": [{k: m.get(k) for k in keys} for m in arch.list_sets(_owner(account), project_id)]}
+
+
+@router.post("/arch-sets")
+def create_arch_set(body: ArchSetBody, account: Annotated[AuthenticatedAccount, Depends(get_current_account)]):
+    from app.application.architecture import program as prog
+    from app.application.architecture import service as arch
+    p = prog.BuildingProgram.from_dict(body.program) if body.program else prog.BuildingProgram()
+    if body.prompt:
+        p, _ = prog.parse(body.prompt, p)
+    return arch.create_set(p, owner=_owner(account), project_id=body.project_id, source=body.prompt)
+
+
+@router.get("/arch-sets/{sid}")
+def get_arch_set(sid: str, account: Annotated[AuthenticatedAccount, Depends(get_current_account)]):
+    from app.application.architecture import service as arch
+    m = arch.get_set(sid, _owner(account))
+    if not m:
+        raise HTTPException(404, "Set not found")
+    return m
+
+
+@router.get("/arch-sets/{sid}/files/{name}")
+def arch_file(sid: str, name: str, account: Annotated[AuthenticatedAccount, Depends(get_current_account)]):
+    from pathlib import Path as _P
+
+    from app.application.architecture import service as arch
+    f = arch.file_path(sid, _owner(account), name)
+    if f is None:
+        raise HTTPException(404, "File not found")
+    ext = _P(name).suffix.lower()
+    return FileResponse(f, media_type=_MEDIA.get(ext, "application/octet-stream"),
+                        filename=None if ext == ".png" else f"arch-{sid[:6]}-{name}")
 # ---------------------------------------------------------------- structural drawing set (S-sheets)
 from uuid import UUID as _UUID  # noqa: E402
 
