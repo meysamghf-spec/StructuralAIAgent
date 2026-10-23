@@ -35,9 +35,18 @@ export async function hydrateFrame3dFromServer(projectId: string | null): Promis
   if (!projectId || loadFrame3dInputs(projectId)) return false;
   try {
     const runs = await listProjectChatRuns(projectId);
-    const last = runs.find((r) => r.kind === "frame3d_analysis" && r.inputs);
+    const usable = (r: ChatRun) =>
+      r.kind === "frame3d_analysis" &&
+      !!r.inputs &&
+      !/missing|fail|error|blocked/i.test(r.status) &&
+      r.inputs.bays_x != null &&
+      r.inputs.bays_y != null &&
+      r.inputs.storeys != null;
+    const last = runs.find(usable);
     if (!last?.inputs) return false;
-    saveFrame3dInputs(projectId, last.inputs);
+    // Drop nulls so form defaults stay in place for anything the chat did not specify.
+    const clean = Object.fromEntries(Object.entries(last.inputs).filter(([, v]) => v !== null && v !== undefined));
+    saveFrame3dInputs(projectId, clean);
     if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(FRAME3D_EVENT));
     return true;
   } catch {
