@@ -440,7 +440,9 @@ function mapAciBeamResults(raw: unknown): AciRcBeamResults | null {
 }
 
 function mapEngineeringResult(metadata: Record<string, unknown>): EngineeringResult | null {
-  if (metadata.mode !== "agent_execution") {
+  const er = metadata.engineering_results as Record<string, unknown> | undefined;
+  const hasResults = !!er && typeof er === "object" && typeof er.kind === "string";
+  if (metadata.mode !== "agent_execution" && !hasResults) {
     return null;
   }
 
