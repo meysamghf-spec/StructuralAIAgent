@@ -67,7 +67,15 @@ export function parseDxf(text: string): DxfDoc {
         if (type === "HATCH") { xs = xs.slice(1); ys = ys.slice(1); } // first 10/20 is the elevation point
         const pts = xs.map((x, k) => [Number(x), Number(ys[k] ?? 0), 0]);
         if (pts.length > 1) out.push({ type: "POLY", layer, pts, closed: type === "HATCH" || (type === "LWPOLYLINE" && (n(70) & 1) === 1), fill: type === "HATCH" });
-      } else if (type === "CIRCLE" || type === "ARC") out.push({ type: "CIRCLE", layer, c: [n(10), n(20), n(30)], r: n(40) });
+      } else if (type === "ARC") {
+        const c = [n(10), n(20)], r = n(40), a0 = n(50), a1raw = n(51);
+        const a1 = a1raw <= a0 ? a1raw + 360 : a1raw, steps = Math.max(6, Math.ceil((a1 - a0) / 10));
+        const pts = Array.from({ length: steps + 1 }, (_, k) => {
+          const a = ((a0 + ((a1 - a0) * k) / steps) * Math.PI) / 180;
+          return [c[0] + r * Math.cos(a), c[1] + r * Math.sin(a), 0];
+        });
+        out.push({ type: "POLY", layer, pts, closed: false });
+      } else if (type === "CIRCLE") out.push({ type: "CIRCLE", layer, c: [n(10), n(20), n(30)], r: n(40) });
       else if (type === "SOLID") out.push({ type: "POLY", layer, pts: [[n(10), n(20), 0], [n(11), n(21), 0], [n(13), n(23), 0], [n(12), n(22), 0]], closed: true, fill: true });
       else if (type === "TEXT" || type === "MTEXT") {
         const center = Boolean((g[72]?.[0] && g[72][0] !== "0") || (g[73]?.[0] && g[73][0] !== "0"));

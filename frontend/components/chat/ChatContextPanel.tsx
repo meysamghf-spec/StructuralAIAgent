@@ -148,6 +148,11 @@ export function ChatContextPanel({
                 <li>Building code: {context.code_configuration.governing_building_code}</li>
                 <li>Concrete: {context.code_configuration.concrete_standard}</li>
                 <li>Steel: {context.code_configuration.steel_standard}</li>
+                {context.code_configuration.seismic_standard ? <li>Seismic: {context.code_configuration.seismic_standard}</li> : null}
+                <li>Loads: {context.code_configuration.loading_standard}</li>
+                {context.unit_configuration ? (
+                  <li>Units: {context.unit_configuration.system === "SI_METRIC" ? "SI" : "US customary"} ({context.unit_configuration.force_unit}, {context.unit_configuration.length_unit}, {context.unit_configuration.stress_unit})</li>
+                ) : null}
               </ul>
             ) : (
               <p className="muted">Project code profile is not configured yet.</p>

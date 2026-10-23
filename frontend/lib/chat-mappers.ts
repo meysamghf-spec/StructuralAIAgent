@@ -568,6 +568,7 @@ export function mapBackendMessage(message: BackendMessage): ChatMessage {
     status: mapExecutionStatus(message.metadata.progress ?? message.metadata.execution_status),
     engineeringResult: mapEngineeringResult(message.metadata),
     autocadResult: mapAutocadResult(message.metadata.autocad_result),
+    archSet: (message.metadata.arch_set as import("./autocad").ArchSetMeta | undefined) ?? null,
   };
 }
 

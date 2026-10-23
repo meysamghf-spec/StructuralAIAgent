@@ -37,7 +37,7 @@ def list_standards(
 def get_code_defaults(
     code_engine: Annotated[CodeEngineService, Depends(get_code_engine_service)],
     _: Annotated[AuthenticatedAccount, Depends(get_current_account)],
-    jurisdiction: Jurisdiction = Query(default=Jurisdiction.US),
+    jurisdiction: Jurisdiction = Query(default=Jurisdiction.IRAN),
 ) -> CodeDefaultsEnvelopeResponse:
     return CodeDefaultsEnvelopeResponse.from_domain(code_engine.get_defaults(jurisdiction))
 

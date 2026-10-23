@@ -17,6 +17,7 @@ from app.domain.models.code_engine import (
 from app.domain.models.pem import (
     CodeConfiguration,
     Jurisdiction,
+    create_iran_default_code_configuration,
     create_software_default_code_configuration,
 )
 
@@ -37,7 +38,9 @@ class CodeEngineService:
             key=lambda item: item.plugin_id,
         )
 
-    def get_defaults(self, jurisdiction: Jurisdiction = Jurisdiction.US) -> CodeDefaultsResult:
+    def get_defaults(self, jurisdiction: Jurisdiction = Jurisdiction.IRAN) -> CodeDefaultsResult:
+        if jurisdiction == Jurisdiction.IRAN:
+            return CodeDefaultsResult(jurisdiction=jurisdiction, configuration=create_iran_default_code_configuration())
         if jurisdiction != Jurisdiction.US:
             config = create_software_default_code_configuration()
             config.jurisdiction = jurisdiction

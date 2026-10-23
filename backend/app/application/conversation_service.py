@@ -484,6 +484,26 @@ class ConversationService:
             return str(record.id)
 
         try:
+            from app.application.architecture import service as arch
+
+            pending = None
+            for m in reversed(self._repo.list_messages(conversation.id, limit=6)):
+                if m.role == MessageRole.ASSISTANT:
+                    pending = (m.metadata or {}).get("arch_interview")
+                    break
+            if not attachments:
+                def _save_any(filename: str, content: bytes, ctype: str) -> str | None:
+                    record = self._file_ingestion.ingest_upload(pid, filename=filename, content=content,
+                                                                content_type=ctype, created_by=account.account_id)
+                    return str(record.id)
+
+                res = arch.chat_turn(user_content, owner=str(account.account_id), project_id=str(pid) if pid else None,
+                                     pending=pending, save_project_file=_save_any if pid else None)
+                if res is not None:
+                    return res
+        except Exception:  # noqa: BLE001
+            logger.exception("architecture chat failed")
+        try:
             return run_chat_autocad(
                 user_content, [(a.filename, _reader(a.file_id)) for a in attachments],
                 owner=str(account.account_id), project_id=str(pid) if pid else None,
