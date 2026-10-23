@@ -183,7 +183,7 @@ export function ChatThread({
                   {message.engineeringResult.frame3dResults ? (
                     <Frame3dResultCard results={message.engineeringResult.frame3dResults} />
                   ) : null}
-                  {!message.engineeringResult.frame3dResults && projectId && message.engineeringResult.artifacts.length > 0 ? (
+                  {!message.engineeringResult.frame3dResults && projectId && (message.engineeringResult.artifacts.length > 0 || (message.engineeringResult.agentRun?.tools ?? []).some((t) => (t.artifacts ?? []).length > 0)) ? (
                     <FrameDownloads collapsed title="Results & downloads (latest frame run)" />
                   ) : null}
                   {message.engineeringResult.aciBeamResults ? (
