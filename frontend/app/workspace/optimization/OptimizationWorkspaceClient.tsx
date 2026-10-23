@@ -2,6 +2,7 @@
 
 import { ProjectScopePanel } from "@/components/workspace/ProjectScopePanel";
 import { useProjectScope } from "@/hooks/useProjectScope";
+import { FrameDownloads } from "@/components/frame3d/FrameDownloads";
 import { FrameOptimizerPanel } from "@/components/optimization/FrameOptimizerPanel";
 import {
   formatMemberOptimizationResults,
@@ -159,6 +160,7 @@ export default function OptimizationWorkspaceClient() {
       </header>
 
       <FrameOptimizerPanel />
+      <FrameDownloads groups={["analysis", "design", "figures"]} title="Current frame model downloads" collapsed />
 
       <ProjectScopePanel
         projects={projects}

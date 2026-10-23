@@ -177,9 +177,9 @@ export function Frame3dWorkspacePanel({ mode }: { mode: Mode }) {
       {results?.viewer?.footings.length && (mode === "design" || mode === "results") ? (
         <FoundationView data={results.viewer} qa={results.foundation?.qaKpa ?? 150} t={makeT(results.lang)} />
       ) : null}
-      {results ? (
+      {results || saved ? (
         <DownloadsPanel
-          inputs={(results.inputs as Record<string, unknown> | null) ?? saved}
+          inputs={(results?.inputs as Record<string, unknown> | null) ?? saved}
           projectId={projectId}
           groups={
             mode === "analysis"
