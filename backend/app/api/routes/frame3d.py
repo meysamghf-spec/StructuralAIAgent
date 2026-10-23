@@ -201,3 +201,44 @@ def download_package(body: Frame3dPackageRequest, acc: Annotated[AuthenticatedAc
                     headers={"Content-Disposition": 'attachment; filename="frame-results.zip"',
                              "X-Files": str(len(names)), "X-File-Ids": ",".join(x for x in saved if x),
                              "Access-Control-Expose-Headers": "X-Files, X-File-Ids, X-File-Id"})
+
+
+@router.post("/package/jobs")
+def start_package_job(body: Frame3dPackageRequest, acc: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+                      conv=Depends(get_conversation_service), files=Depends(get_file_ingestion_service),
+                      access=Depends(get_project_access_service)) -> dict[str, Any]:
+    """Start building the ZIP in the background (cached by inputs); poll GET /package/jobs/{id}, then fetch /file."""
+    from app.application import package_jobs as pj
+    from app.application import results_package as rp
+    inputs = _resolve(body, acc, conv, access)
+    missing = [k for k in ("storeys", "bays_x", "bays_y") if inputs.get(k) in (None, "")]
+    if missing:
+        raise HTTPException(422, f"Cannot build the package: {', '.join(missing)} {'is' if len(missing) == 1 else 'are'} required")
+    billing.require_feature(getattr(acc, "account_id", None), "exports", "dxf")
+    on_file = None
+    if body.save_to_files and body.project_id:
+        save = _saver(files, body.project_id, acc)
+        on_file = lambda n, d: save(n, d, rp.XLSX if n.endswith(".xlsx") else "application/zip")  # noqa: E731
+    st = pj.start(inputs, body.optimization, owner=str(acc.account_id), on_file=on_file)
+    return {k: v for k, v in st.items() if k not in ("key", "heartbeat", "owner")}
+
+
+@router.get("/package/jobs/{job_id}")
+def package_job_status(job_id: str, acc: Annotated[AuthenticatedAccount, Depends(get_current_account)]) -> dict[str, Any]:
+    from app.application import package_jobs as pj
+    try:
+        st = pj.status(job_id, str(acc.account_id))
+    except KeyError as exc:
+        raise HTTPException(404, "Unknown ZIP job (it may have expired) — start it again.") from exc
+    return {k: v for k, v in st.items() if k not in ("key", "heartbeat", "owner")}
+
+
+@router.get("/package/jobs/{job_id}/file")
+def package_job_file(job_id: str, acc: Annotated[AuthenticatedAccount, Depends(get_current_account)]):
+    from fastapi.responses import FileResponse
+    from app.application import package_jobs as pj
+    try:
+        path = pj.zip_path(job_id, str(acc.account_id))
+    except KeyError as exc:
+        raise HTTPException(404, "ZIP not ready or expired — start it again.") from exc
+    return FileResponse(path, media_type="application/zip", filename="frame-results.zip")
