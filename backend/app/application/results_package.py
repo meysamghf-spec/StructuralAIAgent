@@ -46,7 +46,9 @@ def catalog() -> dict[str, Any]:
 # ------------------------------------------------------------------ run
 def run(inputs: dict[str, Any]):
     from app.application.frame3d_chat_analysis import run_frame3d_for_export
-    data = {"design_code": "MABHAS9", "foundation": True, **inputs}
+    data = {"design_code": "MABHAS9", "seismic_code": "IRAN_2800", "foundation": True, **inputs}
+    if data.get("seismic_code") in (None, "", "ASSUMED_C") and data.get("seismic_c") in (None, ""):
+        data["seismic_code"] = "IRAN_2800"  # Iranian default: gives drift, modal + 2800 base-shear tables
     return run_frame3d_for_export(data)
 
 
@@ -356,6 +358,12 @@ def build_zip(inputs: dict[str, Any], optimization: dict[str, Any] | None = None
                 put(f"drawings/{cte.FORMATS[f]['filename']}", txt.encode("utf-8"))
             except Exception as exc:  # noqa: BLE001
                 errors.append(f"{f}: {exc}")
+                continue
+            try:
+                import ezdxf
+                put(f"drawings/pdf/{cte.FORMATS[f]['filename'].rsplit('.', 1)[0]}.pdf", dxf_pdf(ezdxf.read(io.StringIO(txt))))
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"{f} pdf: {exc}")
         if with_set and design:
             try:
                 from app.application.autocad import structural_set as ss
