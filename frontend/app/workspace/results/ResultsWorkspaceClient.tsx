@@ -27,6 +27,9 @@ import {
 } from "@/lib/results-workspace";
 import { formatWorkspaceDate } from "@/lib/workspace";
 import Link from "next/link";
+import { StructuralSetSection } from "@/components/autocad/StructuralSetSection";
+import { FrameDownloads } from "@/components/frame3d/FrameDownloads";
+import { ReportPanel } from "@/components/frame3d/ReportPanel";
 import { useCallback, useEffect, useState } from "react";
 
 function badgeClass(status: string): string {
@@ -51,6 +54,7 @@ export default function ResultsWorkspaceClient() {
   const [designReady, setDesignReady] = useState<string>("");
   const [optimizationReady, setOptimizationReady] = useState<string>("");
   const [selectedResult, setSelectedResult] = useState<EngineeringResultSet | null>(null);
+  const [inlineView, setInlineView] = useState<"design" | "reports" | "cad" | null>(null);
   const [validationDetails, setValidationDetails] = useState<EngineeringResultValidation | null>(
     null,
   );
@@ -241,9 +245,9 @@ export default function ResultsWorkspaceClient() {
             <div className="workspace-card-grid">
               {selectedResult.engineering_results_available ? (
                 <>
-                  <Link className="workspace-link-button" href={projectLink("/workspace/design", selectedProjectId)}>
-                    Open Design
-                  </Link>
+                  <button type="button" className="workspace-link-button" aria-expanded={inlineView === "design"} onClick={() => setInlineView(inlineView === "design" ? null : "design")}>
+                    {inlineView === "design" ? "Hide design" : "Show design"}
+                  </button>
                   <Link
                     className="workspace-link-button"
                     href={projectLink("/workspace/optimization", selectedProjectId)}
@@ -252,12 +256,12 @@ export default function ResultsWorkspaceClient() {
                   </Link>
                 </>
               ) : null}
-              <Link className="workspace-link-button" href={projectLink("/workspace/reports", selectedProjectId)}>
-                Open Reports
-              </Link>
-              <Link className="workspace-link-button" href={projectLink("/workspace/cad", selectedProjectId)}>
-                Open CAD
-              </Link>
+              <button type="button" className="workspace-link-button" aria-expanded={inlineView === "reports"} onClick={() => setInlineView(inlineView === "reports" ? null : "reports")}>
+                {inlineView === "reports" ? "Hide report" : "Show report"}
+              </button>
+              <button type="button" className="workspace-link-button" aria-expanded={inlineView === "cad"} onClick={() => setInlineView(inlineView === "cad" ? null : "cad")}>
+                {inlineView === "cad" ? "Hide drawings" : "Show drawings"}
+              </button>
               <Link
                 className="workspace-link-button"
                 href={projectLink("/workspace/traceability", selectedProjectId)}
@@ -265,6 +269,13 @@ export default function ResultsWorkspaceClient() {
                 View Traceability
               </Link>
             </div>
+            {inlineView ? (
+              <div className="inline-panel" data-testid={`results-inline-${inlineView}`}>
+                {inlineView === "design" ? <FrameDownloads groups={["design", "foundation"]} title="Design results" /> : null}
+                {inlineView === "reports" ? <ReportPanel /> : null}
+                {inlineView === "cad" ? <StructuralSetSection /> : null}
+              </div>
+            ) : null}
           </section>
 
           <section className="workspace-card">

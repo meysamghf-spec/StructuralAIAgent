@@ -42,7 +42,9 @@ def extract_runs(conversation, messages) -> list[dict[str, Any]]:
                 kind = "frame_optimization"
             runs.append({**base, "kind": kind, "label": eng.get("label") or _LABELS.get(kind, kind.replace("_", " ")),
                          "status": str(eng.get("status") or md.get("execution_status") or "completed"),
-                         "inputs": eng.get("inputs") if kind == "frame3d_analysis" else None,
+                         "inputs": eng.get("inputs") if kind == "frame3d_analysis" else (eng.get("frame") if kind == "frame_optimization" else None),
+                         **({"optimization": {k: eng.get(k) for k in ("initial", "fsd", "optimal", "groups", "savings_pct")}}
+                            if kind == "frame_optimization" else {}),
                          "summary": _summary(eng), "validation": md.get("validation_status")})
         ac = md.get("autocad_result")
         if isinstance(ac, dict) and ac.get("job_id"):

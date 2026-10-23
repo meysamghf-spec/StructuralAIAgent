@@ -5,6 +5,7 @@ import { getCurrentProjectId } from "@/lib/current-project";
 import { saveFrame3dInputs } from "@/lib/frame3d-store";
 
 import { downloadFrame3dExport } from "@/lib/api";
+import { DownloadsPanel } from "@/components/frame3d/DownloadsPanel";
 import type { Frame3dExport, Frame3dResults } from "@/lib/chat-types";
 import dynamic from "next/dynamic";
 import { isRtl, makeT } from "@/lib/frame3d-i18n";
@@ -18,7 +19,7 @@ type Frame3dResultCardProps = {
   results: Frame3dResults;
 };
 
-export function Frame3dResultCard({ results }: Frame3dResultCardProps) {
+export function Frame3dResultCard({ results, downloads = true }: Frame3dResultCardProps & { downloads?: boolean }) {
   const completed = results.status === "completed";
   const limit = results.driftReferenceLimitPct;
   const t = makeT(results.lang);
@@ -170,6 +171,10 @@ export function Frame3dResultCard({ results }: Frame3dResultCardProps) {
           fromMemory={results.modelFromProjectMemory}
           t={t}
         />
+      ) : null}
+
+      {downloads && completed && results.inputs ? (
+        <DownloadsPanel inputs={results.inputs as unknown as Record<string, unknown>} projectId={getCurrentProjectId()} collapsed title={results.lang === "fa" ? "دانلود همه خروجی‌ها" : "Download all outputs"} />
       ) : null}
 
       {results.storeyForces.length > 0 ? (
