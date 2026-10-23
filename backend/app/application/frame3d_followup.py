@@ -152,7 +152,7 @@ def merge_with_pending(text: str, previous_user_texts: list[str]) -> str:
         if f3.is_frame3d_request(prev) or (is_assume_reply(text) and re.search(r"\bframe\b|قاب|ghab", norm(prev), re.I)):
             inp = f3.parse_frame3d_request(prev)
             if f3.missing_inputs(inp):
-                return f"{prev}\n{text}"
+                return f"{prev} ؛ {text}"
             return text  # last frame was complete: the reply is an edit of that model
     return text
 
@@ -177,6 +177,10 @@ def apply_defaults(inp: Any) -> list[str]:
         if getattr(inp, k) is None or (k not in inp.parsed and k in ("bay_x_m", "bay_y_m", "storey_height_m")):
             setattr(inp, k, v)
             assumed.append(k)
+    for key, (b, h) in (("column", (0.50, 0.50)), ("beam", (0.40, 0.50))):  # typical 4-storey RC IMF sizes
+        if f"{key}_b_m" not in inp.parsed and f"{key}_h_m" not in inp.parsed:
+            setattr(inp, f"{key}_b_m", b); setattr(inp, f"{key}_h_m", h)
+            assumed += [f"{key}_b_m", f"{key}_h_m"]
     if inp.seismic_code != "IRAN_2800" and "seismic_c" not in inp.parsed:
         inp.seismic_code = "IRAN_2800"; assumed.append("seismic_code")
     if inp.design_code != "MABHAS9":

@@ -121,3 +121,21 @@ def test_us_codes_note(monkeypatch):
     base = f3.build_frame3d_payload("3-storey frame, 2x2 bays of 5 m")
     p = f3.build_frame3d_payload("storeys ro 4 kon va ACI estefade kon", _spec(base))
     assert p["inputs"]["storeys"] == 4 and "ACI" in p["followup_note"]
+
+
+def test_3d_frame_without_storeys_is_frame_request_and_assume_completes():
+    from app.application import frame3d_chat_analysis as f3
+    first = "یک قاب سه بعدی بتنی تحلیل کن، پهنه خطر زیاد، خاک II"
+    assert f3.is_frame3d_request(first)
+    merged = fu.merge_with_pending("storeys, bays_x and bays_y farz kon", [first])
+    p = f3.build_frame3d_payload(merged)
+    assert p["status"] == "completed" and p["inputs"]["storeys"] == 4
+    import json
+    json.dumps(p, allow_nan=False)  # Postgres json rejects Infinity
+
+
+def test_pending_sections_numbers_do_not_leak_into_storeys():
+    from app.application import frame3d_chat_analysis as f3
+    merged = fu.merge_with_pending("farz kon", ["قاب سه بعدی تحلیل کن ستون 50x50 تیر 40x50"])
+    p = f3.build_frame3d_payload(merged)
+    assert p["inputs"]["storeys"] == 4 and p["inputs"]["column_b_m"] == 0.5

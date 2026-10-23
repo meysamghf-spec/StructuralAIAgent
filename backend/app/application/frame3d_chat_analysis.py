@@ -141,7 +141,12 @@ def is_frame3d_request(user_request: str) -> bool:
     t = _norm(user_request).lower()
     storey = re.search(r"stor(e)?y|stories|storeys|floors?\b|طبقه", t)
     frame = re.search(r"\bframe\b|\bbays?\b|قاب|دهانه|3d|سه ?بعدی", t)
-    return bool(storey and frame)
+    if storey and frame:
+        return True
+    # «قاب سه بعدی ... تحلیل کن» / "analyze a 3D frame" without storey words -> frame solver (asks for missing params)
+    frame3d = re.search(r"قاب\s*(?:ی\s*)?(?:بتنی\s*|فولادی\s*)?سه\s*‌?\s*بعدی|3d\s*(?:rc\s*|concrete\s*|steel\s*)?frame|ghab(?:e)?\s*3d|space\s*frame", t)
+    analyse = re.search(r"تحلیل|analy[sz]|tahlil|solve|حل کن", t)
+    return bool(frame3d and analyse)
 
 
 _EXPORT_WORD = r"export|download|خروجی|اکسپورت|دانلود|فایل"
@@ -932,7 +937,24 @@ def _viewer_payload(raw: dict[str, Any], inp: "Frame3dInputs", design: dict[str,
             "modes": (raw.get("modal") or {}).get("shapes") or []}
 
 
+def _finite(o: Any) -> Any:
+    """JSON-safe payload: ±Infinity / NaN (e.g. D/C of an inadequate section) -> None (Postgres json rejects them)."""
+    if isinstance(o, float):
+        return o if math.isfinite(o) else None
+    if isinstance(o, dict):
+        return {k: _finite(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)):
+        return [_finite(v) for v in o]
+    return o
+
+
 def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None = None, *,
+                          manual_inputs: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    payload = _build_frame3d_payload(user_request, prior_spec, manual_inputs=manual_inputs)
+    return _finite(payload) if payload is not None else None
+
+
+def _build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None = None, *,
                           manual_inputs: dict[str, Any] | None = None) -> dict[str, Any] | None:
     """Analyse a described frame, or re-run the project's last frame when only an export is asked for.
 
