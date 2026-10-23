@@ -343,7 +343,7 @@ export const STREAMING_CAPABILITIES: StreamingCapabilities = {
 };
 
 export const ENGINEERING_FILE_ACCEPT =
-  ".txt,.pdf,.dwg,.dxf,.edb,.sdb,.f2k,.xlsx,.xls,.docx,.doc,.csv,.png,.jpg,.jpeg,.gif,.webp";
+  ".txt,.pdf,.dwg,.dxf,.edb,.sdb,.s2k,.f2k,.xlsx,.xls,.docx,.doc,.csv,.png,.jpg,.jpeg,.gif,.webp";
 
 export const ENGINEERING_PROMPT_EXAMPLES = [
   "Analyze a simply supported reinforced concrete beam with a 6 m span and uniform load of 20 kN/m.",

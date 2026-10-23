@@ -169,7 +169,7 @@ PHRASES: list[tuple[str, str]] = [
     ("Footings overlap: use combined (strip) footings along the overlapping grid lines; a strap beam is an alternative for edge columns at the property line.", "پی‌ها تداخل دارند: از پی ترکیبی (نواری) در امتداد محورهای دارای تداخل استفاده کنید؛ برای ستون‌های کناریِ کنار مرز ملک، تیر تراز (strap) گزینهٔ دیگری است."),
     ("each way", "در هر دو جهت"),
     # --- exports
-    ("ETABS model (.e2k)", "مدل ایتبس (.e2k)"), ("SAFE foundation loads (.f2k)", "بارهای فونداسیون سیف (.f2k)"),
+    ("ETABS model (.e2k)", "مدل ایتبس (.e2k)"), ("SAFE foundation loads (.f2k)", "بارهای فونداسیون سیف (.f2k)"), ("SAP2000 model (.s2k)", "مدل SAP2000 (.s2k)"),
     ("AutoCAD plans per storey (.dxf)", "پلان هر طبقه برای اتوکد (.dxf)"), ("AutoCAD 3D wireframe (.dxf)", "قاب سه‌بعدی سیمی برای اتوکد (.dxf)"),
     ("Not yet opened in a licensed ETABS: syntax copied from public ETABS 2016/21 exports, import not confirmed.", "هنوز در ایتبس اصل باز نشده: دستور فایل از خروجی‌های عمومی ایتبس ۲۰۱۶/۲۱ برداشته شده و ایمپورت تأیید نشده است."),
     ("Seismic EX/EY use DIR \"X\"/\"Y\" without the ±5% accidental eccentricity (our analysis includes it); set 'X + Ecc. Y' in ETABS if you need it.", "بار زلزلهٔ EX/EY بدون خروج از مرکزیت اتفاقی ±۵٪ نوشته شده (تحلیل ما آن را دارد)؛ در صورت نیاز در ایتبس «X + Ecc. Y» را تنظیم کنید."),

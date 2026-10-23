@@ -1,4 +1,4 @@
-"""3D frame text exports (ETABS .e2k, SAFE .f2k, DXF) — /api/v1/frame3d."""
+"""3D frame text exports (ETABS .e2k, SAFE .f2k, SAP2000 .s2k, DXF) — /api/v1/frame3d."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/frame3d", tags=["frame3d"])
 
 
 class Frame3dExportRequest(BaseModel):
-    format: str = Field(description="e2k | f2k | dxf_plans | dxf_3d | dxf_rebar | dxf_foundation")
+    format: str = Field(description="e2k | f2k | s2k | dxf_plans | dxf_3d | dxf_rebar | dxf_foundation")
     inputs: dict[str, Any] = Field(description="`inputs` of a frame3d_analysis result (plus optional `parsed_from_request`)")
 
 

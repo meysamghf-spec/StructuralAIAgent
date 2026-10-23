@@ -20,6 +20,7 @@ const DOWNLOADS = [
   { format: "dxf_foundation", filename: "foundation-details.dxf" },
   { format: "e2k", filename: "model.e2k" },
   { format: "f2k", filename: "foundation.f2k" },
+  { format: "s2k", filename: "model.s2k" },
 ];
 
 export function CadDrawingsPanel() {

@@ -56,7 +56,7 @@ export function classifyProjectFile(filename: string, fileType?: string | null):
   if (extension === "edb") {
     return "etabs";
   }
-  if (extension === "sdb" || extension === "f2k") {
+  if (extension === "sdb" || extension === "s2k" || extension === "f2k") {
     return "sap2000";
   }
   if (extension === "dwg") {
