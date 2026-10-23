@@ -8,6 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 
 from app.api.deps import (
+    get_accessible_project,
     get_actor_id,
     get_conversation_service,
     get_current_account,
@@ -138,3 +139,14 @@ async def upload_conversation_attachment(
         attachment=MessageAttachmentResponse.from_domain(attachment),
         project_id=conversation.project_id,
     )
+
+
+@router.get("/project-runs/{project_id}")
+def list_project_chat_runs(
+    project_id: UUID,
+    service: Annotated[ConversationService, Depends(get_conversation_service)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    _project=Depends(get_accessible_project),
+) -> dict:
+    """Runs produced in chat for a project (frame analysis, beam, optimization, AutoCAD drawings)."""
+    return {"project_id": str(project_id), "runs": service.list_project_chat_runs(account, project_id)}
