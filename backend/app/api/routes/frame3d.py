@@ -211,9 +211,6 @@ def start_package_job(body: Frame3dPackageRequest, acc: Annotated[AuthenticatedA
     from app.application import package_jobs as pj
     from app.application import results_package as rp
     inputs = _resolve(body, acc, conv, access)
-    missing = [k for k in ("storeys", "bays_x", "bays_y") if inputs.get(k) in (None, "")]
-    if missing:
-        raise HTTPException(422, f"Cannot build the package: {', '.join(missing)} {'is' if len(missing) == 1 else 'are'} required")
     billing.require_feature(getattr(acc, "account_id", None), "exports", "dxf")
     on_file = None
     if body.save_to_files and body.project_id:

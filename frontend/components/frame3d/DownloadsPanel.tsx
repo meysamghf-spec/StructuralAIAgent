@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import { useUiLang } from "@/hooks/useUiLang";
-import { DOWNLOADS, download, downloadAll, fetchDownload, type DownloadGroup, type DownloadItem } from "@/lib/frame3d-downloads";
+import { DOWNLOADS, download, downloadAll, fetchDownload, type DownloadGroup, type ZipProgress, type DownloadItem } from "@/lib/frame3d-downloads";
 
 type Props = {
   inputs: Record<string, unknown> | null | undefined;
@@ -21,6 +21,10 @@ const FA: Record<string, string> = {
   "Also save to project Files": "ذخیره در فایل‌های پروژه",
   "Preparing ZIP…": "در حال آماده‌سازی ZIP…",
   "files in the ZIP": "فایل در ZIP",
+  "Building all files on the server": "ساخت همهٔ فایل‌ها روی سرور",
+  "usually 30–90 s": "معمولاً ۳۰ تا ۹۰ ثانیه",
+  "Downloading ZIP…": "در حال دانلود ZIP…",
+  "Try again": "تلاش دوباره",
   "saved to Files": "در فایل‌ها ذخیره شد",
   "Run an analysis first to enable downloads.": "برای دانلود، ابتدا تحلیل را اجرا کنید.",
   "Tables": "جداول", "Design": "طراحی", "Foundation": "فونداسیون", "Optimization": "بهینه‌سازی", "Figures": "شکل‌ها",
@@ -36,6 +40,7 @@ export function DownloadsPanel({ inputs, projectId, optimization, groups, title,
   const tr = (s: string) => (lang === "fa" ? FA[s] ?? s : s);
   const [open, setOpen] = useState(!collapsed);
   const [busy, setBusy] = useState<string | null>(null);
+  const [zip, setZip] = useState<ZipProgress | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [toFiles, setToFiles] = useState(true);
@@ -75,26 +80,30 @@ export function DownloadsPanel({ inputs, projectId, optimization, groups, title,
     }
   }
   async function all() {
-    setBusy("zip");
+    if (zip) return;
+    setZip({ state: "starting", elapsedS: 0 });
     setErr(null);
     setMsg(null);
     try {
-      const r = await downloadAll(ctx);
+      const r = await downloadAll(ctx, setZip);
       setMsg(`${r.files} ${tr("files in the ZIP")}${r.saved ? ` · ${tr("saved to Files")}` : ""}`);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
-      setBusy(null);
+      setZip(null);
     }
   }
+  const zipLabel = !zip
+    ? err ? tr("Try again") + " — " + tr("Download all (ZIP)") : tr("Download all (ZIP)")
+    : zip.state === "downloading" ? tr("Downloading ZIP…") : `${tr("Preparing ZIP…")} ${zip.elapsedS}s`;
 
   return (
     <section className="downloads-panel" data-testid="downloads-panel" dir={lang === "fa" ? "rtl" : "ltr"}>
       <div className="downloads-head">
         <h3>{title ?? tr("Downloads")}</h3>
         <div className="downloads-actions">
-          <button className="button" type="button" disabled={!inputs || busy !== null} onClick={() => void all()}>
-            {busy === "zip" ? tr("Preparing ZIP…") : tr("Download all (ZIP)")}
+          <button className="button" type="button" disabled={!inputs || zip !== null} onClick={() => void all()} data-testid="zip-btn">
+            {zipLabel}
           </button>
           {collapsed !== undefined ? (
             <button className="button secondary" type="button" aria-expanded={open} onClick={() => setOpen(!open)}>
@@ -109,6 +118,12 @@ export function DownloadsPanel({ inputs, projectId, optimization, groups, title,
         </label>
       ) : null}
       {!inputs ? <p className="muted">{tr("Run an analysis first to enable downloads.")}</p> : null}
+      {zip && zip.state !== "downloading" ? (
+        <p className="muted" role="status">
+          {tr("Building all files on the server")} ({tr("usually 30–90 s")}) — {zip.elapsedS}s
+          <progress style={{ display: "block", width: "100%" }} max={90} value={Math.min(zip.elapsedS, 88)} />
+        </p>
+      ) : null}
       {msg ? <p className="muted" role="status">{msg}</p> : null}
       {err ? <p className="alert error">{err}</p> : null}
       {open && inputs
