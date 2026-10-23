@@ -938,9 +938,11 @@ def _viewer_payload(raw: dict[str, Any], inp: "Frame3dInputs", design: dict[str,
 
 
 def _finite(o: Any) -> Any:
-    """JSON-safe payload: ±Infinity / NaN (e.g. D/C of an inadequate section) -> None (Postgres json rejects them)."""
+    """JSON-safe payload (Postgres json rejects Infinity/NaN): ±inf (D/C of an inadequate section) -> ±999, NaN -> 0."""
     if isinstance(o, float):
-        return o if math.isfinite(o) else None
+        if math.isnan(o):
+            return 0.0
+        return o if math.isfinite(o) else math.copysign(999.0, o)
     if isinstance(o, dict):
         return {k: _finite(v) for k, v in o.items()}
     if isinstance(o, (list, tuple)):

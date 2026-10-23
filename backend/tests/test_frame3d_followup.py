@@ -144,3 +144,12 @@ def test_pending_sections_numbers_do_not_leak_into_storeys():
 def test_resolved_pending_request_is_not_merged_again():
     first = "یک قاب سه بعدی بتنی تحلیل کن، پهنه خطر زیاد، خاک II"
     assert fu.merge_with_pending("storeys ro 6 kon", ["storeys, bays_x and bays_y farz kon", first]) == "storeys ro 6 kon"
+
+
+def test_inadequate_sections_payload_is_json_safe_and_renders():
+    import json
+    from app.application import frame3d_chat_analysis as f3
+    for req in ("قاب سه بعدی تحلیل کن ستون 30x30 تیر 25x30", "analyze a 3D frame, columns 30x30 beams 25x30"):
+        p = f3.build_frame3d_payload(fu.merge_with_pending("assume", [req]))
+        json.dumps(p, allow_nan=False)
+        assert f3.frame3d_markdown(p)
