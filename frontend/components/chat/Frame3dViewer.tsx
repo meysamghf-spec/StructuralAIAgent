@@ -188,7 +188,7 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
       }
       const ftgMat = new THREE.MeshLambertMaterial({ color: 0xb08d57, transparent: true, opacity: 0.85 });
       const pickables: Array<import("three").Object3D> = [];
-      for (const f of data.footings) {
+      for (const f of data.footings ?? []) {
         const box = new THREE.Mesh(new THREE.BoxGeometry(f.B, f.B, f.h), ftgMat);
         box.position.set(f.x, f.y, -0.3 - f.h / 2);
         box.userData = { id: `F-${f.column}` };
@@ -419,7 +419,7 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
   }, [data, storey, jointLabels, frameLabels, extruded, showDeformed, animate, display, load, scaleMul, baseScale, selected, view, gridLine, modeNo]);
 
   const sel = data.members.find((m) => m.id === selected) ?? null;
-  const selFooting = data.footings.find((f) => `F-${f.column}` === selected) ?? null;
+  const selFooting = (data.footings ?? []).find((f) => `F-${f.column}` === selected) ?? null;
   const selForces = sel ? memberForces(data, load, sel.id) : null;
   const tree = explorerTree(data);
   const reactions = baseReactions(data, load);

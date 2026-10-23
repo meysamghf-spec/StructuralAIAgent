@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 
 import { Frame3dResultCard } from "@/components/chat/Frame3dResultCard";
+import { SectionErrorBoundary } from "@/components/common/SectionErrorBoundary";
 import { DownloadsPanel } from "@/components/frame3d/DownloadsPanel";
 import { makeT } from "@/lib/frame3d-i18n";
 import { projectChatHref } from "@/lib/current-project";
@@ -40,6 +41,14 @@ export async function runFrame3d(inputs: Record<string, unknown>): Promise<unkno
 }
 
 export function Frame3dWorkspacePanel({ mode }: { mode: Mode }) {
+  return (
+    <SectionErrorBoundary label="3D frame workspace">
+      <Frame3dWorkspacePanelInner mode={mode} />
+    </SectionErrorBoundary>
+  );
+}
+
+function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
   const { lang, t } = useUiLang();
   const [projectId, setProjectId] = useState<string | null>(null);
   const [values, setValues] = useState<Record<string, string>>(inputsToForm(DEFAULT_FRAME_INPUTS));
@@ -172,10 +181,14 @@ export function Frame3dWorkspacePanel({ mode }: { mode: Mode }) {
       {note ? <p className="muted">{note}</p> : null}
       {error ? <p className="alert error">{error}</p> : null}
       {results?.viewer ? (
-        <Frame3dViewer data={results.viewer} results={results} t={makeT(results.lang)} embedded />
+        <SectionErrorBoundary label="3D viewer">
+          <Frame3dViewer data={results.viewer} results={results} t={makeT(results.lang)} embedded />
+        </SectionErrorBoundary>
       ) : null}
-      {results?.viewer?.footings.length && (mode === "design" || mode === "results") ? (
-        <FoundationView data={results.viewer} qa={results.foundation?.qaKpa ?? 150} t={makeT(results.lang)} />
+      {results?.viewer?.footings?.length && (mode === "design" || mode === "results") ? (
+        <SectionErrorBoundary label="Foundation">
+          <FoundationView data={results.viewer} qa={results.foundation?.qaKpa ?? 150} t={makeT(results.lang)} />
+        </SectionErrorBoundary>
       ) : null}
       {results ? (
         <DownloadsPanel

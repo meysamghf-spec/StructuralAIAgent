@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { SectionErrorBoundary } from "@/components/common/SectionErrorBoundary";
 import { useUiLang } from "@/hooks/useUiLang";
 import { DOWNLOADS, download, downloadAll, fetchDownload, type DownloadGroup, type ZipProgress, type DownloadItem } from "@/lib/frame3d-downloads";
 
@@ -35,7 +36,37 @@ const GROUP_LABEL: Record<DownloadGroup, string> = {
   drawings: "Drawings", models: "Model exports", reports: "Reports",
 };
 
-export function DownloadsPanel({ inputs, projectId, optimization, groups, title, collapsed }: Props) {
+const REQUIRED = ["storeys", "bays_x", "bays_y"] as const;
+
+/** Required geometry keys that are present but empty (a run that stopped at "missing required input"). */
+export function missingInputs(inputs: Record<string, unknown> | null | undefined): string[] {
+  if (!inputs || typeof inputs !== "object") return [];
+  return REQUIRED.filter((k) => k in inputs && (inputs[k] === null || inputs[k] === "" || inputs[k] === undefined));
+}
+
+export function IncompleteInputsNote({ missing, lang }: { missing: string[]; lang?: string }) {
+  const fa = lang === "fa";
+  return (
+    <p className="alert" role="note" data-testid="incomplete-inputs-note" dir={fa ? "rtl" : "ltr"}>
+      {fa
+        ? `ورودی‌های این اجرا کامل نیست${missing.length ? ` (${missing.join("، ")})` : ""}. لطفاً ورودی‌ها را در چت کامل کنید تا دانلودها فعال شوند.`
+        : `This run's inputs are incomplete${missing.length ? ` (${missing.join(", ")})` : ""}. Complete the inputs in chat to enable downloads.`}
+    </p>
+  );
+}
+
+export function DownloadsPanel(props: Props) {
+  const { lang } = useUiLang();
+  const missing = missingInputs(props.inputs);
+  if (missing.length) return <IncompleteInputsNote missing={missing} lang={lang} />;
+  return (
+    <SectionErrorBoundary label="Downloads">
+      <DownloadsPanelInner {...props} />
+    </SectionErrorBoundary>
+  );
+}
+
+function DownloadsPanelInner({ inputs, projectId, optimization, groups, title, collapsed }: Props) {
   const { lang } = useUiLang();
   const tr = (s: string) => (lang === "fa" ? FA[s] ?? s : s);
   const [open, setOpen] = useState(!collapsed);

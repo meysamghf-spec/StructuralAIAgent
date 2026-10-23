@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { SectionErrorBoundary } from "@/components/common/SectionErrorBoundary";
 import { getCurrentProjectId } from "@/lib/current-project";
 import { saveFrame3dInputs } from "@/lib/frame3d-store";
 
@@ -78,7 +79,9 @@ export function Frame3dResultCard({ results, downloads = true }: Frame3dResultCa
             <FoundationView data={results.viewer} qa={results.foundation?.qaKpa ?? 150} t={t} />
           ) : null}
           {viewerOpen && results.viewer ? (
-            <Frame3dViewer data={results.viewer} results={results} t={t} onClose={() => setViewerOpen(false)} initialMode={results.animateMode ?? null} />
+            <SectionErrorBoundary label="3D viewer">
+              <Frame3dViewer data={results.viewer} results={results} t={t} onClose={() => setViewerOpen(false)} initialMode={results.animateMode ?? null} />
+            </SectionErrorBoundary>
           ) : null}
           <PlanView xs={results.gridX} ys={results.gridY} label={t("Frame plan")} />
         </div>

@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { AutocadDrawingCard } from "@/components/autocad/AutocadDrawingCard";
-import { DownloadsPanel } from "@/components/frame3d/DownloadsPanel";
+import { SectionErrorBoundary } from "@/components/common/SectionErrorBoundary";
+import { DownloadsPanel, IncompleteInputsNote, missingInputs } from "@/components/frame3d/DownloadsPanel";
 import { listProjectChatRuns, type ChatRun } from "@/lib/chat-runs";
 import { getCurrentProjectId, PROJECT_EVENT, projectChatHref } from "@/lib/current-project";
 
@@ -18,7 +19,15 @@ const KIND_LABEL: Record<string, string> = {
 };
 
 /** Runs made in chat for the selected project — shown on Results, Optimization, Validation, Traceability, Files. */
-export function ChatRunsSection({ kinds, title = "Runs from chat" }: { kinds?: string[]; title?: string }) {
+export function ChatRunsSection(props: { kinds?: string[]; title?: string }) {
+  return (
+    <SectionErrorBoundary label="Runs from chat">
+      <ChatRunsSectionInner {...props} />
+    </SectionErrorBoundary>
+  );
+}
+
+function ChatRunsSectionInner({ kinds, title = "Runs from chat" }: { kinds?: string[]; title?: string }) {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [runs, setRuns] = useState<ChatRun[] | null>(null);
   const [error, setError] = useState("");
@@ -54,12 +63,13 @@ export function ChatRunsSection({ kinds, title = "Runs from chat" }: { kinds?: s
       <ul className="chat-runs-list">
         {shown.map((r) => (
           <li key={r.message_id + r.kind} className="chat-run-item">
+            <SectionErrorBoundary label={r.label || "Run"}>
             <div className="chat-run-head">
               <span className="chat-progress-badge">{KIND_LABEL[r.kind] ?? r.kind}</span>
               <strong dir="auto">{r.label}</strong>
             </div>
             <p className="muted chat-run-meta">
-              {new Date(r.created_at).toLocaleString()} · {r.status}
+              {(r.created_at ? new Date(r.created_at).toLocaleString() : "")} · {r.status}
               {Object.entries(r.summary || {})
                 .slice(0, 4)
                 .map(([k, v]) => ` · ${k.replace(/_/g, " ")}: ${typeof v === "number" ? Math.round(v * 1000) / 1000 : v}`)
@@ -91,11 +101,14 @@ export function ChatRunsSection({ kinds, title = "Runs from chat" }: { kinds?: s
                     layers={[]}
                     review={{ status: r.status, note: "" }}
                   />
+                ) : /missing|fail|error|incomplete/i.test(String(r.status ?? "")) || missingInputs(r.inputs).length ? (
+                  <IncompleteInputsNote missing={missingInputs(r.inputs)} />
                 ) : (
                   <DownloadsPanel inputs={r.inputs} projectId={projectId} optimization={r.optimization} />
                 )}
               </div>
             ) : null}
+            </SectionErrorBoundary>
           </li>
         ))}
       </ul>
