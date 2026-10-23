@@ -483,6 +483,13 @@ class ConversationService:
                                                         content_type="application/dxf", created_by=account.account_id)
             return str(record.id)
 
+        from app.application.autocad import structural_set as _ss
+
+        if not attachments and _ss.wants_structural_set(user_content):
+            try:
+                return self._run_structural_set(conversation, account, user_content, _save if pid else None)
+            except Exception:  # noqa: BLE001
+                logger.exception("structural drawing set failed")
         try:
             from app.application.architecture import service as arch
 
@@ -511,6 +518,44 @@ class ConversationService:
         except Exception:  # noqa: BLE001
             logger.exception("autocad chat failed")
             return None
+
+    def _run_structural_set(self, conversation, account: AuthenticatedAccount, text: str, save) -> tuple[str, dict]:
+        """«نقشه‌های اجرایی سازه را بده» -> S-sheet set from the latest 3D frame analysis in this chat / project."""
+        from app.application.autocad import structural_set as ss
+        from app.application.chat_runs import extract_runs
+
+        fa = any("\u0600" <= ch <= "\u06ff" for ch in text)
+        pid = conversation.project_id
+        runs = extract_runs(conversation, self._repo.list_messages(conversation.id))
+        if pid is not None:
+            runs += self.list_project_chat_runs(account, pid)
+        runs.sort(key=lambda r: r["created_at"], reverse=True)
+        inputs = next((r["inputs"] for r in runs if r.get("kind") == "frame3d_analysis" and r.get("inputs")), None)
+        if not inputs:
+            msg = ("برای نقشه‌های اجرایی سازه ابتدا باید قاب سه‌بعدی تحلیل و طراحی شود. مثلاً بنویسید: «۳ دهانه ۵ متری در جهت x و ۲ دهانه ۴ متری در جهت y، ۴ طبقه با ارتفاع ۳.۲ متر»."
+                   if fa else "To produce the structural drawings I first need a 3D frame analysis. For example: "
+                   "\"3 bays of 5 m in x, 2 bays of 4 m in y, 4 storeys of 3.2 m\".")
+            return msg, {"mode": "rule_based", "intent": "structural_drawings", "needs": "frame3d_analysis"}
+
+        def _save3(name, data, ctype):
+            return save(name, data) if save and ctype == "application/dxf" else (
+                str(self._file_ingestion.ingest_upload(pid, filename=name, content=data, content_type=ctype,
+                                                       created_by=account.account_id).id) if save else None)
+
+        meta = ss.generate_and_store(inputs, owner=str(account.account_id), project_id=str(pid) if pid else None,
+                                     save_project_file=_save3 if save else None)
+        head = "**نقشه‌های اجرایی سازه (مبحث ۹)**" if fa else "**Structural drawing set (Mabhas 9)**"
+        lines = [head, ""]
+        for it in meta["sheets"]:
+            lines.append(f"- {it['sheet_no']} — {it['title_fa'] if fa else it['title']} ({it['scale']})")
+        for n in meta["notes"]:
+            lines.append(f"- ⚠ {n}")
+        lines.append("")
+        lines.append("هر برگ یک فایل DXF جدا است و یک PDF ترکیبی هم ساخته شد؛ همه در صفحه CAD و فایل‌های پروژه هستند." if fa
+                     else "Each sheet is its own DXF plus one combined PDF; all are on the CAD page and in project Files.")
+        return "\n".join(lines), {"mode": "rule_based", "intent": "structural_drawings",
+                                  "structural_set": {"id": meta["id"], "sheets": meta["sheets"], "pdf": meta["pdf"],
+                                                     "pdf_file_id": meta["pdf_file_id"], "notes": meta["notes"]}}
 
     def _run_project_orchestration(
         self,

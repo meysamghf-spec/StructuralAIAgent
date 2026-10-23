@@ -17,7 +17,7 @@ export function AutocadDrawingsSection() {
       const pid = getCurrentProjectId();
       setJobs(null);
       listAutocadJobs(scope === "project" ? pid : null)
-        .then(setJobs)
+        .then((js) => setJobs(js.filter((j) => (j.kind as string) !== "structural")))
         .catch((e) => setError(e instanceof Error ? e.message : String(e)));
     };
     sync();

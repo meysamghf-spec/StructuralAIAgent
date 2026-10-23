@@ -1,4 +1,5 @@
 import { mapAutocadResult } from "./autocad";
+import { mapStructuralSet } from "./structural-set";
 import { mapViewerData, storeyShears } from "./frame3d-viewer";
 /** Map backend chat payloads to frontend chat domain types. */
 
@@ -569,6 +570,7 @@ export function mapBackendMessage(message: BackendMessage): ChatMessage {
     engineeringResult: mapEngineeringResult(message.metadata),
     autocadResult: mapAutocadResult(message.metadata.autocad_result),
     archSet: (message.metadata.arch_set as import("./autocad").ArchSetMeta | undefined) ?? null,
+    structuralSet: mapStructuralSet(message.metadata.structural_set),
   };
 }
 
