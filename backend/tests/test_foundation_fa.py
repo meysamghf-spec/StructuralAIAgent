@@ -98,7 +98,8 @@ def test_footing_in_dxf_and_f2k():
     assert {t.dxf.text for t in msp.query('TEXT[layer=="S-TAG"]')} >= {"F1", "F2", "F3"}
     t = cte.parse_f2k(cte.build_f2k(inp, raw))
     areas = t["OBJECT GEOMETRY - AREAS 01 - GENERAL"]
-    assert len(areas) == 9 and areas[0]["Area"].startswith("FTG")
+    assert sum(a["Area"].startswith("FTG") for a in areas) == 9 and areas[0]["Area"].startswith("FTG")
+    assert sum(a["Area"].startswith("STF") for a in areas) == 9  # column stiff zones
 
 
 # ------------------------------------------------------------------ language
