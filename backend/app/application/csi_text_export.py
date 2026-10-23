@@ -310,119 +310,129 @@ def e2k_members_3d(parsed: dict[str, Any]) -> list[tuple[str, str, tuple, tuple]
 
 # --------------------------------------------------------------------------- SAFE .f2k
 def build_f2k(inp, raw: dict[str, Any]) -> str:
+    """SAFE 2016+ text model: mat (or designed footings) on soil springs, column stiff zones and point loads per pattern.
+
+    Table/field names follow SAFE-saved .f2k files (MATERIAL PROPERTIES 03 - CONCRETE, SLAB PROPERTIES 01/02,
+    OpeningType on slab assignments, AUTOMATIC SLAB MESH OPTIONS, LOAD CASES 02 - STATIC, ...), so Import ->
+    Run Analysis gives deformed shape, slab forces and soil pressure directly.
+    """
     lay = frame_layout(inp)
     ex = raw["export"]
     pats = {"D": "DEAD", "L": "LIVE", "Ex": "EX", "Ey": "EY"}
-    T: list[str] = []
-    add = T.append
-    add('File "foundation.f2k" exported by StructuralAIAgent (column reactions of the chat 3D frame; units kN, m)')
-    add(" ")
-    add('TABLE:  "PROGRAM CONTROL"')
-    add('   ProgramName="SAFE 2014"   Version=14.0.0   ProgLevel="Post Tensioning"   CurrUnits="KN, m, C"   ModelDatum=0')
-    add(" ")
-    add('TABLE:  "GRID LINES"')
-    for i, x in enumerate(lay["XS"]):
-        add(f'   CoordSys=GLOBAL   AxisDir=X   GridID="{_x_label(i)}"   Ordinate={_g(x)}')
-    for j, y in enumerate(lay["YS"]):
-        add(f'   CoordSys=GLOBAL   AxisDir=Y   GridID="{_y_label(j)}"   Ordinate={_g(y)}')
-    add(" ")
+    conc, rebar = lay["conc"], lay["rebar"]
+    Ec = ex["Ec_kn_m2"]
     fd = raw.get("foundation_design")
     ftgs = fd["footings"] if fd and fd.get("status") == "PASS" and fd.get("footings") else None
-    ov = 1.0; t_mat = 0.6; ks = 20000.0
+    qa = float(fd["qa_kpa"]) if fd and fd.get("qa_kpa") else None
+    ks = float((raw.get("soil") or {}).get("subgrade_kn_m3") or (120.0 * qa if qa else 20000.0))  # Bowles ks ~ 40*SF*qa
+    ov = 1.0
+    t_mat = max(0.6, max((f_["h_m"] for f_ in ftgs), default=0.0) if ftgs else 0.6)
     x0, x1 = -ov, lay["XS"][-1] + ov
     y0, y1 = -ov, lay["YS"][-1] + ov
-    areas: list[tuple[str, str, list[str]]] = []   # (area name, slab property, corner point names)
-    extra_pts: dict[str, tuple[float, float]] = {}
-    slabs: dict[str, float] = {}
+    pts: dict[str, tuple[float, float]] = {}
+    areas: list[tuple[str, str, list[str]]] = []  # (name, slab prop, corner points CCW)
+    slabs: dict[str, tuple[str, float]] = {}       # prop -> (type, thickness)
+
+    def rect(prefix, cx, cy, bx, by):
+        names = []
+        for c, (sx, sy) in enumerate(((-1, -1), (1, -1), (1, 1), (-1, 1)), start=1):
+            pts[f"{prefix}_{c}"] = (cx + sx * bx / 2, cy + sy * by / 2); names.append(f"{prefix}_{c}")
+        return names
+
     if ftgs:
         for n, f_ in enumerate(ftgs, start=1):
-            pn = []
-            for c, (sx, sy) in enumerate(((-1, -1), (1, -1), (1, 1), (-1, 1)), start=1):
-                extra_pts[f"F{n}_{c}"] = (f_["x"] + sx * f_["B_m"] / 2, f_["y"] + sy * f_["B_m"] / 2); pn.append(f"F{n}_{c}")
             prop = f"FTG_H{round(f_['h_m'] * 100)}"
-            slabs[prop] = f_["h_m"]
-            areas.append((f"FTG{n}", prop, pn))
+            slabs[prop] = ("Mat", f_["h_m"])
+            areas.append((f"FTG{n}", prop, rect(f"F{n}", f_["x"], f_["y"], f_["B_m"], f_["B_m"])))
     else:
-        extra_pts = {"M1": (x0, y0), "M2": (x1, y0), "M3": (x1, y1), "M4": (x0, y1)}
-        slabs["MAT_PLACEHOLDER"] = t_mat
-        areas.append(("MAT1", "MAT_PLACEHOLDER", list(extra_pts)))
-    add('TABLE:  "OBJECT GEOMETRY - POINT COORDINATES"')
+        slabs["MAT"] = ("Mat", t_mat)
+        areas.append(("MAT1", "MAT", rect("M", (x0 + x1) / 2, (y0 + y1) / 2, x1 - x0, y1 - y0)))
+    t_stf = 2 * max(t for _ty, t in slabs.values())
+    slabs["COLSTIFF"] = ("Stiff", t_stf)
     for (i, j), p in lay["pts"].items():
-        add(f'   Point={p}   GlobalX={_g(lay["XS"][i])}   GlobalY={_g(lay["YS"][j])}   GlobalZ=0   SpecialPt=Yes')
-    for name, (x, y) in extra_pts.items():
-        add(f'   Point={name}   GlobalX={_g(x)}   GlobalY={_g(y)}   GlobalZ=0   SpecialPt=No')
-    add(" ")
-    conc = lay["conc"]
-    label = "isolated footings from the foundation design" if ftgs else "PLACEHOLDER mat material"
-    add('TABLE:  "MATERIAL PROPERTIES 01 - GENERAL"')
-    add(f'   Material={conc}   Type=Concrete   Notes="{label}"')
-    add(" ")
-    add('TABLE:  "MATERIAL PROPERTIES 02 - BASIC MECHANICAL PROPERTIES"')
-    Ec = ex["Ec_kn_m2"]
-    add(f'   Material={conc}   UnitWeight=25   UnitMass=2.5493   E1={_g(Ec)}   G12={_g(Ec / 2.4)}   U12=0.2   A1=1E-05')
-    add(" ")
-    add('TABLE:  "MATERIAL PROPERTIES 03 - CONCRETE"')
-    add(f'   Material={conc}   Fc={_g(inp.fc_mpa * 1000)}   LtWtConc=No')
-    add(" ")
-    add('TABLE:  "SLAB PROPERTIES 01 - GENERAL"')
-    for sname, th in slabs.items():
-        add(f'   Slab={sname}   Type={"Footing" if ftgs else "Mat"}   MatProp={conc}   Thickness={_g(th)}   Ortho=No')
-    add(" ")
-    add('TABLE:  "SOIL PROPERTIES"')
-    add(f'   Soil=SOIL_PLACEHOLDER   Subgrade={_g(ks)}   NonlinOpt="Compression Only"')
-    add(" ")
-    add('TABLE:  "OBJECT GEOMETRY - AREAS 01 - GENERAL"')
-    for an, _sp, pn in areas:
-        add(f'   Area={an}   NumPoints=4   ' + "   ".join(f"Point{k}={p}" for k, p in enumerate(pn, start=1)))
-    add(" ")
-    add('TABLE:  "SLAB PROPERTY ASSIGNMENTS"')
-    for an, sp, _pn in areas:
-        add(f'   Area={an}   SlabProp={sp}')
-    add(" ")
-    add('TABLE:  "SOIL PROPERTY ASSIGNMENTS"')
-    for an, _sp, _pn in areas:
-        add(f'   Area={an}   SoilProp=SOIL_PLACEHOLDER')
-    add(" ")
-    add('TABLE:  "LOAD PATTERNS"')
-    add("   LoadPat=DEAD   Type=DEAD   SelfWtMult=1")
-    add("   LoadPat=LIVE   Type=LIVE   SelfWtMult=0")
+        areas.append((f"STF{p}", "COLSTIFF", rect(f"S{p}", lay["XS"][i], lay["YS"][j], inp.column_b_m, inp.column_h_m)))
     seismic = "Ex" in ex["reactions"]
-    if seismic:
-        add("   LoadPat=EX   Type=QUAKE   SelfWtMult=0")
-        add("   LoadPat=EY   Type=QUAKE   SelfWtMult=0")
-    add(" ")
-    add('TABLE:  "LOAD CASES 01 - GENERAL"')
-    dtype = {"DEAD": "DEAD", "LIVE": "LIVE", "EX": "QUAKE", "EY": "QUAKE"}
     used = [pats[c] for c in ex["reactions"]]
-    for p in used:
-        add(f"   LoadCase={p}   Type=LinStatic   DesignType={dtype[p]}")
+
+    T: list[str] = []
+    add = T.append
+
+    def table(name, rows):
+        add(f'TABLE:  "{name}"')
+        for r in rows:
+            add("   " + "   ".join(f"{k}={v}" for k, v in r))
+        add(" ")
+
+    add('File C:\\StructuralAIAgent\\foundation.f2k was saved by StructuralAIAgent (SAFE 2016 text format; units kN, m, C)')
     add(" ")
-    add('TABLE:  "LOAD CASES 06 - LOADS APPLIED"')
-    for p in used:
-        add(f"   LoadCase={p}   LoadPat={p}   SF=1")
-    add(" ")
-    add('TABLE:  "LOAD COMBINATIONS"')
+    table("PROGRAM CONTROL", [[("ProgramName", '"SAFE 2016"'), ("Version", "16.0.0"), ("ProgLevel", '"Post Tensioning"'),
+                               ("CurrUnits", '"KN, m, C"'), ("MergeTol", "0.001"), ("ModelDatum", "0"), ("StHtAbove", "0"),
+                               ("StHtBelow", "3"), ("ConcCode", '"ACI 318-14"')]])
+    table("ANALYSIS OPTIONS", [[("Option", '"Slab Analysis"'), ("Value", "Yes")]])
+    table("AUTOMATIC SLAB MESH OPTIONS", [[("MeshOpt", "Rectangular"), ("Localize", "Yes"), ("Merge", "Yes"),
+                                           ("MaxSize", "0.5"), ("MaxSize2", "0.5")]])
+    table("ADVANCED MODELING OPTIONS", [[("ModelOpt", '"Model with Rigid Diaphragm"'), ("Value", "No")]])
+    table("COORDINATE SYSTEMS", [[("Name", "GLOBAL"), ("Type", "Cartesian"), ("X", "0"), ("Y", "0"), ("Z", "0"), ("AboutZ", "0")]])
+    table("GRID LINES", [[("CoordSys", "GLOBAL"), ("AxisDir", "X"), ("GridID", _x_label(i)), ("Ordinate", _g(x)), ("Visible", "Yes"), ("BubbleLoc", "Top")]
+                         for i, x in enumerate(lay["XS"])]
+          + [[("CoordSys", "GLOBAL"), ("AxisDir", "Y"), ("GridID", _y_label(j)), ("Ordinate", _g(y)), ("Visible", "Yes"), ("BubbleLoc", "Left")]
+             for j, y in enumerate(lay["YS"])])
+    table("MATERIAL PROPERTIES 01 - GENERAL", [[("Material", conc), ("Type", "Concrete")], [("Material", rebar), ("Type", "Rebar")]])
+    table("MATERIAL PROPERTIES 03 - CONCRETE", [[("Material", conc), ("E", _g(Ec)), ("U", "0.2"), ("A", "9.9E-06"), ("UnitWt", "25"),
+                                                 ("Fc", _g(inp.fc_mpa * 1000)), ("LtWtConc", "No"), ("UserModRup", "No")]])
+    table("MATERIAL PROPERTIES 04 - REBAR", [[("Material", rebar), ("E", "2E+08"), ("UnitWt", "76.9729"),
+                                              ("Fy", _g(inp.fy_mpa * 1000)), ("Fu", _g(inp.fy_mpa * 1500))]])
+    table("SLAB PROPERTIES 01 - GENERAL", [[("Slab", s), ("Type", ty), ("ThickPlate", "Yes"), ("Color", "Gray8Dark" if ty == "Mat" else "Red")]
+                                           for s, (ty, _t) in slabs.items()])
+    table("SLAB PROPERTIES 02 - SOLID SLABS", [[("Slab", s), ("Type", ty), ("MatProp", conc), ("Thickness", _g(t)), ("Ortho", "No")]
+                                               for s, (ty, t) in slabs.items()])
+    table("SOIL PROPERTIES", [[("Soil", "SOIL1"), ("Subgrade", _g(ks)), ("NonlinOpt", '"Compression Only"')]])
+    table("OBJECT GEOMETRY - POINT COORDINATES",
+          [[("Point", p), ("GlobalX", _g(lay["XS"][i])), ("GlobalY", _g(lay["YS"][j])), ("GlobalZ", "0"), ("SpecialPt", "Yes")]
+           for (i, j), p in lay["pts"].items()]
+          + [[("Point", n), ("GlobalX", _g(x)), ("GlobalY", _g(y)), ("GlobalZ", "0"), ("SpecialPt", "No")] for n, (x, y) in pts.items()])
+    table("OBJECT GEOMETRY - AREAS 01 - GENERAL",
+          [[("Area", an), ("NumPoints", "4")] + [(f"Point{k}", p) for k, p in enumerate(pn, start=1)] for an, _sp, pn in areas])
+    table("SLAB PROPERTY ASSIGNMENTS", [[("Area", an), ("SlabProp", sp), ("OpeningType", "None")] for an, sp, _pn in areas])
+    table("SOIL PROPERTY ASSIGNMENTS", [[("Area", an), ("SoilProp", "SOIL1")] for an, sp, _pn in areas if sp != "COLSTIFF"])
+    dtype = {"DEAD": "Dead", "LIVE": "Live", "EX": "Quake", "EY": "Quake"}
+    table("LOAD PATTERNS", [[("LoadPat", p), ("Type", dtype[p]), ("SelfWtMult", "1" if p == "DEAD" else "0")] for p in used])
+    table("LOAD CASES 01 - GENERAL", [[("LoadCase", p), ("Type", '"Linear Static"'), ("DesignOpt", "Default"),
+                                       ("DesignType", dtype[p].upper())] for p in used])
+    table("LOAD CASES 02 - STATIC", [[("LoadCase", p), ("InitialCond", "Zero")] for p in used])
+    table("LOAD CASES 06 - LOADS APPLIED", [[("LoadCase", p), ("LoadType", '"Load Pattern"'), ("LoadName", p), ("LoadSF", "1")] for p in used])
     rename = {"Dead": "DEAD", "Live": "LIVE", "EX": "EX", "EY": "EY"}
-    combos = [(c, lbl, {rename[k]: v for k, v in f.items()}) for c, lbl, f in _combo_table(raw)]
-    service = [("SERV1", "D+L (service, soil pressure)", {"DEAD": 1.0, "LIVE": 1.0})]
+    combos = [(c, {rename[k]: v for k, v in f.items() if rename[k] in used}) for c, _lbl, f in _combo_table(raw)]
+    service = [("SERV1", {"DEAD": 1.0, "LIVE": 1.0})]
     if seismic:
-        for s, sg in ((1, "+"), (-1, "-")):
+        n = 1
+        for s in (1, -1):
             for E in ("EX", "EY"):
-                service.append((f"SERV-{E}{sg}", f"D+0.75L{sg}0.525{E} (service, assumed)", {"DEAD": 1.0, "LIVE": 0.75, E: 0.525 * s}))
-    for cname, _lbl, factors in combos + service:
-        for pat, sf in factors.items():
-            add(f'   Combo={cname}   Load={pat}   Type="Linear Add"   SF={_g(sf)}')
-    add(" ")
-    add('TABLE:  "LOAD ASSIGNMENTS - POINT LOADS"')
+                n += 1; service.append((f"SERV{n}", {"DEAD": 1.0, "LIVE": 0.75, E: 0.525 * s}))
+    rows = []
+    for cname, factors in combos + service:
+        strength = not cname.startswith("SERV")
+        for k, (pat, sf) in enumerate(factors.items()):
+            r = [("Combo", cname), ("Load", pat), ("SF", _g(sf))]
+            if k == 0:
+                r += [("Type", '"Linear Add"'), ("DSStrength", "Yes" if strength else "No"), ("DSServInit", "No"),
+                      ("DSServNorm", "No" if strength else "Yes"), ("DSServLong", "No")]
+            rows.append(r)
+    table("LOAD COMBINATIONS", rows)
     nodes = {f"N{i}_{j}_0": p for (i, j), p in lay["pts"].items()}
+    lrows = []
     for case, reac in ex["reactions"].items():
         for nid, r in reac.items():
             fx, fy, fz, mx, my, mz = (-v for v in r)  # load on the foundation = - support reaction
-            add(f"   Point={nodes[nid]}   LoadPat={pats[case]}   Fx={_g(fx)}   Fy={_g(fy)}   Fgrav={_g(-fz)}   "
-                f"Mx={_g(mx)}   My={_g(my)}   Mz={_g(mz)}   XDim={_g(inp.column_b_m)}   YDim={_g(inp.column_h_m)}")
-    add(" ")
+            lrows.append([("Point", nodes[nid]), ("LoadPat", pats[case]), ("Fx", _g(fx)), ("Fy", _g(fy)), ("Fgrav", _g(-fz)),
+                          ("Mx", _g(mx)), ("My", _g(my)), ("Mz", _g(mz)), ("XDim", _g(inp.column_b_m)), ("YDim", _g(inp.column_h_m))])
+    table("LOAD ASSIGNMENTS - POINT LOADS", lrows)
+    table("PUNCHING SHEAR DESIGN OVERWRITES 01 - GENERAL",
+          [[("Point", p), ("Check", '"Program Determined"'), ("LocType", '"Program Determined"'), ("Perimeter", '"Program Determined"'),
+            ("EffDepth", '"Program Determined"'), ("Openings", '"Program Determined"'), ("Reinforcement", "None")]
+           for p in lay["pts"].values()])
     add("END TABLE DATA")
-    return "\r\n".join(T) + "\r\n"
+    return _ascii_e2k("\r\n".join(T) + "\r\n")
 
 
 def parse_f2k(text: str) -> dict[str, list[dict[str, str]]]:
