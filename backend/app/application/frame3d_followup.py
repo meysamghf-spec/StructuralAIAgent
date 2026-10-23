@@ -154,6 +154,7 @@ def merge_with_pending(text: str, previous_user_texts: list[str]) -> str:
             if f3.missing_inputs(inp):
                 return f"{prev} ؛ {text}"
             return text  # last frame was complete: the reply is an edit of that model
+        break  # only the message right before the reply can be the pending question's request
     return text
 
 

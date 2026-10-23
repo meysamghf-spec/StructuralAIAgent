@@ -139,3 +139,8 @@ def test_pending_sections_numbers_do_not_leak_into_storeys():
     merged = fu.merge_with_pending("farz kon", ["قاب سه بعدی تحلیل کن ستون 50x50 تیر 40x50"])
     p = f3.build_frame3d_payload(merged)
     assert p["inputs"]["storeys"] == 4 and p["inputs"]["column_b_m"] == 0.5
+
+
+def test_resolved_pending_request_is_not_merged_again():
+    first = "یک قاب سه بعدی بتنی تحلیل کن، پهنه خطر زیاد، خاک II"
+    assert fu.merge_with_pending("storeys ro 6 kon", ["storeys, bays_x and bays_y farz kon", first]) == "storeys ro 6 kon"
