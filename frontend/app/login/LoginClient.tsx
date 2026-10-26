@@ -104,7 +104,7 @@ export default function LoginClient() {
   const registerHref = `${AUTH_NAV_LINKS.signInToSignUp.href}?email=${encodeURIComponent(email.trim())}`;
 
   return (
-    <section className="panel-stack auth-panel">
+    <section className="panel-stack auth-panel" dir={lang === "fa" ? "rtl" : "ltr"}>
       <header className="page-header">
         <p className="eyebrow">{t("Sign in")}</p>
         <h2>{t("Welcome back")}</h2>
@@ -210,9 +210,9 @@ export default function LoginClient() {
       ) : null}
 
       <p className="muted auth-switch">
-        {AUTH_NAV_LINKS.signInToSignUp.prompt}{" "}
+        {lang === "fa" ? copy.noAccount : AUTH_NAV_LINKS.signInToSignUp.prompt}{" "}
         <Link href={AUTH_NAV_LINKS.signInToSignUp.href} className="auth-inline-link">
-          {AUTH_NAV_LINKS.signInToSignUp.label}
+          {lang === "fa" ? copy.signUp : AUTH_NAV_LINKS.signInToSignUp.label}
         </Link>
       </p>
     </section>

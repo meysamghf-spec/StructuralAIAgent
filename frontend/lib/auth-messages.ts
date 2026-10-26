@@ -96,6 +96,8 @@ export const LOGIN_COPY = {
     password: "Password",
     submit: "Sign in",
     busy: "Signing in…",
+    noAccount: "Don't have an account?",
+    signUp: "Sign up",
   },
   fa: {
     remember: "مرا به خاطر بسپار",
@@ -107,5 +109,7 @@ export const LOGIN_COPY = {
     password: "رمز عبور",
     submit: "ورود",
     busy: "در حال ورود…",
+    noAccount: "حساب ندارید؟",
+    signUp: "ثبت‌نام",
   },
 } as const;
