@@ -97,14 +97,15 @@ export default function AgentsWorkspaceClient() {
           apiFetch<ProjectListResponse>("/api/v1/projects"),
           listAgents(),
         ]);
-        setProjects(projectResponse.projects);
-        setAssistants(buildAssistantProfiles(agentResponse.agents));
+        const projectList = Array.isArray(projectResponse?.projects) ? projectResponse.projects : [];
+        setProjects(projectList);
+        setAssistants(buildAssistantProfiles(Array.isArray(agentResponse?.agents) ? agentResponse.agents : []));
 
         const projectId =
           initialProjectId &&
-          projectResponse.projects.some((project) => project.id === initialProjectId)
+          projectList.some((project) => project.id === initialProjectId)
             ? initialProjectId
-            : projectResponse.projects[0]?.id ?? "";
+            : projectList[0]?.id ?? "";
         setSelectedProjectId(projectId);
         if (projectId) {
           await refreshProjectContext(projectId);
