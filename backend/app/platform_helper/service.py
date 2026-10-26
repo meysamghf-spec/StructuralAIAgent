@@ -5,7 +5,11 @@ The LLM never produces engineering numbers; engineering intents are NOT handled 
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import re
+import threading
+import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
@@ -20,6 +24,20 @@ from app.platform_helper.prompt import build_system_prompt
 logger = logging.getLogger(__name__)
 
 TokenSink = Callable[[str], None]
+@dataclass(frozen=True)
+class DiagnoseDecision:
+    """Product hook result: which known errors a message reports and whether it is a real bug worth filing."""
+    codes: tuple[str, ...] = ()
+    file: bool = True
+    reason: str = "error"  # error | expected_limit | explain_only
+    severity: str = "medium"
+    category: str = "bug"
+
+
+DiagnoseProvider = Callable[[str], DiagnoseDecision]
+AUTO_MARKERS = ("خودکار گزارش شد", "reported automatically", "خودکار گزارش شده")
+_NORM_NUM = re.compile(r"\b[0-9a-f]{8}-[0-9a-f-]{27}\b|\d+")
+
 KnowledgeProvider = Callable[[bool, str], str]  # (fa, message) -> generated knowledge markdown (sections chosen per question)
 FaqProvider = Callable[[str, bool, "dict[str, str] | None", bool], "str | None"]  # (message, fa, context, allow_overview)
 
@@ -61,7 +79,8 @@ class HelperService:
     def __init__(self, settings: HelperSettings | None = None, *, llm: LLMClient | None = None,
                  store: IssueStore | None = None, notifier: IssueNotifier | None = None,
                  knowledge_path: str | None = None, product: str = "structuralai",
-                 knowledge_provider: KnowledgeProvider | None = None, faq_provider: FaqProvider | None = None) -> None:
+                 knowledge_provider: KnowledgeProvider | None = None, faq_provider: FaqProvider | None = None,
+                 diagnose_provider: DiagnoseProvider | None = None, clock: Callable[[], float] | None = None) -> None:
         self.settings = settings or load_settings()
         self.llm = llm or LLMClient(self.settings.providers)
         self.store = store or InMemoryIssueStore()
@@ -73,6 +92,11 @@ class HelperService:
         # static FAQ used when the LLM is unavailable.
         self.knowledge_provider = knowledge_provider
         self.faq_provider = faq_provider
+        self.diagnose_provider = diagnose_provider
+        self._clock = clock or time.time
+        self._recent: dict[tuple[str, str], tuple[float, str]] = {}  # (account, dedupe key) -> (when, issue id)
+        self._filed_at: dict[str, list[float]] = {}  # account -> timestamps of new auto reports (rate limit)
+        self._lock = threading.Lock()
 
     # ------------------------------------------------------------- public
     def classify(self, message: str) -> Intent:
@@ -94,7 +118,11 @@ class HelperService:
         if intent.name == "report_it":
             return self._report_it(list(history), message, account_id=account_id, project_id=project_id,
                                    conversation_id=conversation_id, page=page, fa=fa)
-        return self.converse(message, history, intent=intent.name, context=context, fa=fa, on_token=on_token)
+        reply = self.converse(message, history, intent=intent.name, context=context, fa=fa, on_token=on_token)
+        if intent.name == "diagnose":
+            reply = self._auto_file_diagnosis(reply, message, list(history), on_token, account_id=account_id, project_id=project_id,
+                                              conversation_id=conversation_id, page=page, fa=fa)
+        return reply
 
     def converse(self, message: str, history: Iterable[tuple[str, str]] = (), *, intent: str = "platform_help",
                  context: dict[str, str] | None = None, fa: bool | None = None, on_token: TokenSink | None = None) -> HelperReply:
@@ -133,14 +161,14 @@ class HelperService:
 
     def auto_report(self, title: str, *, error_text: str = "", page: str = "", account_id: str = "", project_id: str = "",
                     conversation_id: str = "", user_message: str = "", severity: str = "medium",
-                    suspected_files: list[str] | None = None) -> IssueReport | None:
-        """Hook for engine failures. Never raises; deduplicates; records only (no code change)."""
+                    suspected_files: list[str] | None = None, codes: tuple[str, ...] = ()) -> IssueReport | None:
+        """Hook for engine failures (an unexpected exception). Never raises; deduplicates and rate-limits per user; records only."""
         try:
-            issue, _ = self.issues.report(IssueReport(
-                title=title, error_text=error_text, page=page, account_id=account_id, project_id=project_id,
-                conversation_id=conversation_id, user_message=user_message, severity=severity, source="auto_detected",
-                suspected_files=suspected_files or []))
-            return issue
+            decision = DiagnoseDecision(codes=codes or ("ENGINE_FAILURE",), file=True, severity=severity)
+            outcome, issue = self._file_auto(decision, error_text or title, account_id=account_id, project_id=project_id,
+                                             conversation_id=conversation_id, page=page, fa=False, source_title=title,
+                                             user_message=user_message, suspected_files=suspected_files)
+            return issue if outcome in ("filed", "duplicate") else None
         except Exception:  # noqa: BLE001
             logger.exception("auto_report failed")
             return None
@@ -194,9 +222,105 @@ class HelperService:
                     "Type \"issue status\" to follow progress.")
         return HelperReply(text, "bug_report", issue_id=issue.id, metadata={"issue_status": issue.status})
 
+    # ------------------------------------------------------------- automatic reporting of real platform errors
+    def _rate_ok(self, account: str, now: float) -> bool:
+        with self._lock:
+            ts = [t for t in self._filed_at.get(account or "anon", []) if now - t < 3600]
+            self._filed_at[account or "anon"] = ts
+            return len(ts) < self.settings.auto_max_per_hour
+
+    def _rate_note(self, account: str, now: float) -> None:
+        with self._lock:
+            self._filed_at.setdefault(account or "anon", []).append(now)
+
+    @staticmethod
+    def _fingerprint(codes: tuple[str, ...], page: str, text: str) -> str:
+        norm = _NORM_NUM.sub("#", " ".join((text or "").lower().split()))[:160]
+        return hashlib.sha256(f"auto|{','.join(sorted(codes))}|{page}|{norm}".encode()).hexdigest()[:24]
+
+    def _file_auto(self, decision: DiagnoseDecision, message: str, *, last_assistant: str = "", account_id: str, project_id: str,
+                   conversation_id: str, page: str, fa: bool, source_title: str = "", user_message: str = "",
+                   suspected_files: list[str] | None = None) -> tuple[str, IssueReport | None]:
+        """Returns (outcome, issue). outcome: filed | duplicate | rate_limited | disabled. Never raises."""
+        if not self.settings.auto_report:
+            return "disabled", None
+        now = self._clock()
+        key = self._fingerprint(decision.codes, page, message)
+        who = account_id or "anon"
+        with self._lock:
+            hit = self._recent.get((who, key))
+            self._recent = {k: v for k, v in self._recent.items() if now - v[0] < max(self.settings.auto_dedupe_seconds, 1)}
+        if hit and now - hit[0] < self.settings.auto_dedupe_seconds:
+            return "duplicate", self.store.get(hit[1])
+        if not self._rate_ok(who, now):
+            return "rate_limited", None
+        codes = ",".join(decision.codes) or "ERROR"
+        first = (source_title or message).strip().splitlines()[0][:100] if (source_title or message).strip() else "error"
+        try:
+            issue, created = self.issues.report(IssueReport(
+                title=f"[{codes}] {first}", summary=message, category=decision.category, severity=decision.severity,
+                source="auto_detected", page=page, account_id=account_id, project_id=project_id, conversation_id=conversation_id,
+                user_message=user_message or message, assistant_excerpt=last_assistant, error_text=message,
+                suspected_files=list(suspected_files or []),
+                actual=f"Diagnosed by the assistant as: {codes}", locale="fa" if fa else "en", dedupe_key=key))
+        except Exception:  # noqa: BLE001 - reporting must never break the chat
+            logger.exception("auto file failed")
+            return "disabled", None
+        with self._lock:
+            self._recent[(who, key)] = (now, issue.id)
+        self._rate_note(who, now)
+        return "filed", issue
+
+    def _auto_file_diagnosis(self, reply: HelperReply, message: str, history: list[tuple[str, str]], on_token: TokenSink | None, *,
+                             account_id: str, project_id: str, conversation_id: str, page: str, fa: bool) -> HelperReply:
+        """Diagnosis already explained the cause; now file real errors automatically and tell the user honestly."""
+        try:
+            decision = self.diagnose_provider(message) if self.diagnose_provider else DiagnoseDecision()
+        except Exception:  # noqa: BLE001
+            logger.exception("diagnose provider failed")
+            decision = DiagnoseDecision()
+        outcome, issue = "explain_only", None
+        note = ""
+        if decision.file:
+            last_assistant = next((c for r, c in reversed(history) if r == "assistant"), "")
+            outcome, issue = self._file_auto(decision, message, last_assistant=last_assistant, account_id=account_id, project_id=project_id,
+                                             conversation_id=conversation_id, page=page, fa=fa)
+        elif decision.reason == "expected_limit":
+            outcome = "expected_limit"
+        sid = issue.id[:8] if issue else ""
+        if outcome == "filed":
+            note = (f"این خطا خودکار گزارش شد (کد {sid}) تا مدیر پلتفرم آن را بررسی کند. من کد یا سایت را تغییر نمی‌دهم؛ هر اصلاحی فقط پس از تأیید مدیر اعمال می‌شود. "
+                    "برای پیگیری بنویسید «وضعیت گزارش‌ها»." if fa else
+                    f"This error was reported automatically (id {sid}) so a platform admin can review it. I do not change code or the site; "
+                    "any fix is applied only after admin approval. Type \"issue status\" to follow it.")
+        elif outcome == "duplicate":
+            note = (f"این خطا قبلاً خودکار گزارش شده است (کد {sid})؛ نیازی به گزارش دوباره نیست." if fa else
+                    f"This error was already reported automatically (id {sid}); no need to report it again.")
+        elif outcome == "expected_limit":
+            note = ("این یک محدودیت عادی پلن است و نه خطای پلتفرم، پس گزارش نشد. اگر فکر می‌کنید اشتباه است بنویسید «گزارش کن»." if fa else
+                    "This is a normal plan limit, not a platform error, so it was not reported. If you think it is wrong, type \"report it\".")
+        elif outcome == "rate_limited":
+            note = ("به‌دلیل تعداد زیاد گزارش‌های اخیر شما، این مورد فعلاً خودکار ثبت نشد. اگر ادامه داشت بنویسید «گزارش کن»." if fa else
+                    "You have sent many reports recently, so this one was not filed automatically. If it keeps happening, type \"report it\".")
+        elif outcome == "disabled":
+            note = ("گزارش خودکار فعال نیست؛ برای ثبت بنویسید «گزارش کن»." if fa else "Automatic reporting is off; type \"report it\" to file this.")
+        if note:
+            if on_token is not None:
+                on_token("\n\n" + note)
+            reply.text = f"{reply.text}\n\n{note}"
+        if issue is not None:
+            reply.issue_id = issue.id
+        reply.metadata = {**reply.metadata, "auto_report": outcome, "error_codes": list(decision.codes), "auto_reported": outcome in ("filed", "duplicate")}
+        return reply
+
     def _report_it(self, history: list[tuple[str, str]], message: str, *, account_id: str, project_id: str, conversation_id: str,
                    page: str, fa: bool) -> HelperReply:
         """"report it" after a diagnosis: file the user's earlier error message (explicit request, so filing is fine)."""
+        last_a = next((c for r, c in reversed(history) if r == "assistant"), "")
+        if any(m in last_a for m in AUTO_MARKERS):
+            text = ("این مورد همین حالا خودکار گزارش شده است؛ لازم نیست دوباره گزارش کنید." if fa else
+                    "That was already reported automatically; you do not need to report it again.")
+            return HelperReply(text, "report_it", metadata={"auto_reported": True})
         prev = next((c for r, c in reversed(history) if r == "user" and classify(c).name == "diagnose"), "")
         if not prev:
             text = ("چه مشکلی را گزارش کنم؟ بنویسید: «گزارش مشکل: <شرح خطا>»." if fa else

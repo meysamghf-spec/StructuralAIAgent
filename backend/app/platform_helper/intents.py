@@ -25,6 +25,12 @@ _BUG_PREFIX = re.compile(r"^\s*(?:گزارش\s*(?:مشکل|باگ|خطا)|report
 _BUG_WORDS = re.compile(
     r"(\bbug\b|doesn'?t work|not working|isn'?t working|broken|crash|stack ?trace|\berror\b|failed|can'?t (approve|submit|send|open|upload)|"
     r"باگ|کار نمی ?کند|کار نمیکنه|کار نمی ?کنه|خراب|ارور|خطا|نمی ?شود|نمیشه|نمی ?تونم|نمیتونم|مشکل داره|ایراد)", re.I)
+_ERROR_CODES = re.compile(
+    r"(quota_exceeded|rate_limited|requires_analysis|missing_required_input|unsupported_code|"
+    r"(?:error|http|status|code|خطای?|کد)\s*[:#]?\s*(?:40[1-3]|409|429|5\d\d)\b|\b(?:40[1-3]|409|429|50[0-4])\s*(?:error|conflict|خطا)|"
+    r"internal server error|bad gateway|service unavailable|gateway timeout|timed out|timeout|traceback|unhandled exception|"
+    r"تایم ?اوت|خطای سرور)", re.I)
+_NAMED_CODES = re.compile(r"(quota_exceeded|rate_limited|requires_analysis|missing_required_input|unsupported_code)", re.I)
 _REPORT_IT = re.compile(r"^\s*(?:(?:yes|ok|okay|sure|please|بله|آره|اره|باشه|لطفا)[\s,،!.]*)*(?:report it|file it|file (?:an? )?(?:issue|report)|log it|"
                         r"گزارش(?:ش)?(?: را| رو)? (?:کن|کنید|ثبت کن|بده)|ثبت(?:ش)?(?: کن| کنید)|گزارش مشکل)\s*[.!؟?]*\s*$", re.I)
 _STATUS = re.compile(r"(issue status|status of (my )?(issue|report)s?|my reports|وضعیت گزارش|گزارش(‌| )?های من|وضعیت مشکل)", re.I)
@@ -111,9 +117,9 @@ def classify(message: str) -> Intent:
     if _GREETING.match(n):
         return Intent("greeting")
     has_eng = bool(_ENGINEERING.search(n))
-    if _BUG_WORDS.search(n) and len(n) < 400 and not _ENGINEERING_VERB.search(n):
+    if len(n) < 400 and (_NAMED_CODES.search(n) or ((_BUG_WORDS.search(n) or _ERROR_CODES.search(n)) and not _ENGINEERING_VERB.search(n))):
         # a complaint about the product (not an engineering request that happens to contain "error")
-        # a problem the user describes: explain the likely cause and OFFER to file it (never file silently)
+        # a problem the user describes: the helper explains the likely cause and (for real errors) files it automatically
         return Intent("diagnose", raw)
     if _HOWTO.match(n) and len(n) < 200:
         return Intent("platform_help")

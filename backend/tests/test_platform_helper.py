@@ -169,7 +169,7 @@ def test_post_back_validates_status_and_stores_draft_fix() -> None:
 @pytest.mark.parametrize("text,intent", [
     ("سلام", "greeting"), ("hello", "greeting"),
     ("گزارش مشکل: دکمه تایید کار نمی‌کند", "bug_report"),
-    ("Approve button is not working", "diagnose"),  # explain + offer to file; never files silently
+    ("Approve button is not working", "diagnose"),  # explained, then auto-filed as a real error
     ("وضعیت گزارش‌ها", "issue_status"),
     ("how do I run optimization?", "platform_help"),
     ("صفحه تایید پروژه چیست؟", "platform_help"),

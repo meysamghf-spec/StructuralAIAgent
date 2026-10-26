@@ -48,6 +48,9 @@ class HelperSettings:
     webhook_url: str = ""
     webhook_secret: str = ""
     webhook_retries: int = 3
+    auto_report: bool = True  # file diagnosed platform errors automatically (DB always; webhook only when configured)
+    auto_max_per_hour: int = 6  # per user, new auto-filed reports
+    auto_dedupe_seconds: int = 600  # identical report from the same user inside this window is not filed again
     admin_token: str = ""
     admin_accounts: frozenset[str] = frozenset()
     max_history: int = 10
@@ -123,6 +126,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> HelperSettings:
         webhook_url=(env.get("PLATFORM_ISSUE_WEBHOOK_URL") or "").strip(),
         webhook_secret=(env.get("PLATFORM_ISSUE_WEBHOOK_SECRET") or "").strip(),
         webhook_retries=int(env.get("PLATFORM_ISSUE_WEBHOOK_RETRIES") or 3),
+        auto_report=(env.get("PLATFORM_ISSUE_AUTO_REPORT") or "1").strip().lower() not in ("0", "false", "off", "no"),
+        auto_max_per_hour=max(1, int(env.get("PLATFORM_ISSUE_AUTO_MAX_PER_HOUR") or 6)),
+        auto_dedupe_seconds=max(0, int(env.get("PLATFORM_ISSUE_AUTO_DEDUPE_SECONDS") or 600)),
         admin_token=(env.get("PLATFORM_ISSUE_ADMIN_TOKEN") or "").strip(),
         admin_accounts=frozenset(
             x.strip().lower() for x in ((env.get("PLATFORM_ADMIN_ACCOUNTS") or "") + "," + (env.get("BILLING_COMPLIMENTARY_ACCOUNTS") or "")).split(",") if x.strip()

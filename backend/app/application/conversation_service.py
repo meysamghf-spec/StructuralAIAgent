@@ -377,6 +377,12 @@ class ConversationService:
                     reason = exc.message
                 else:
                     reason = "The agent could not complete this engineering step."
+                    from app.application.platform_helper_factory import report_engine_failure
+
+                    if not stop.is_set() and report_engine_failure(exc, account_id=str(account.account_id),
+                                                                   conversation_id=str(conversation_id), user_message=content):
+                        reason += (" این خطا خودکار گزارش شد." if any("\u0600" <= ch <= "\u06ff" for ch in content)
+                                   else " This error was reported automatically.")
                 emit_progress(
                     _QueueSink(),
                     EVENT_FAILED,
