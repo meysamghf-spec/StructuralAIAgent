@@ -4,13 +4,15 @@ import { useAuth } from "@/hooks/useAuth";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 
-const PUBLIC_PATHS = new Set(["/", "/login", "/register"]);
+import { PUBLIC_PATHS as LEGAL_PATHS } from "@/lib/legal-content";
+
+const PUBLIC_PATHS = new Set<string>(["/", "/login", "/register", ...LEGAL_PATHS]);
 
 export function AuthGate({ children }: { children: ReactNode }) {
   const { isAuthenticated, loading } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
-  const isPublic = PUBLIC_PATHS.has(pathname);
+  const isPublic = PUBLIC_PATHS.has(pathname.length > 1 ? pathname.replace(/\/$/, "") : pathname);
 
   useEffect(() => {
     if (loading || isPublic || isAuthenticated) {
