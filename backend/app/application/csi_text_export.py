@@ -106,14 +106,14 @@ def build_e2k(inp, raw: dict[str, Any], design: dict[str, Any] | None = None) ->
     L: list[str] = []
     add = L.append
     from datetime import datetime as _dt
-    add(f"$ File C:\\SAAI\\model.e2k saved {_dt.now().strftime('%m/%d/%Y %I:%M:%S %p')}")
+    add(f"$ File C:\\SAIA\\model.e2k saved {_dt.now().strftime('%m/%d/%Y %I:%M:%S %p')}")
     add("")
     add("$ PROGRAM INFORMATION")
     add('  PROGRAM  "ETABS"  VERSION "16.2.1"  ')
     add("")
     add("$ CONTROLS")
     add('  UNITS  "KN"  "M"  "C"  ')
-    add('  TITLE1  "SAAI"  ')
+    add('  TITLE1  "SAIA"  ')
     add(f'  TITLE2  "{ns}-storey RC frame {inp.bays_x}x{inp.bays_y} bays"  ')
     add("  PREFERENCE  MERGETOL 0.001")
     add("")
@@ -233,7 +233,7 @@ def build_e2k(inp, raw: dict[str, Any], design: dict[str, Any] | None = None) ->
             add(f'  COMBO "{cname}"  LOADCASE "{pat}"  SF {_g(sf)} ')
     add("")
     add("$ PROJECT INFORMATION")
-    add('  PROJECTINFO    COMPANYNAME "SAAI"    MODELNAME "chat-frame3d"  ')
+    add('  PROJECTINFO    COMPANYNAME "SAIA"    MODELNAME "chat-frame3d"  ')
     add("")
     add("  END")
     add("$ END OF MODEL FILE")
@@ -315,7 +315,7 @@ def build_f2k(inp, raw: dict[str, Any]) -> str:
     pats = {"D": "DEAD", "L": "LIVE", "Ex": "EX", "Ey": "EY"}
     T: list[str] = []
     add = T.append
-    add('File "foundation.f2k" exported by SAAI (column reactions of the chat 3D frame; units kN, m)')
+    add('File "foundation.f2k" exported by SAIA (column reactions of the chat 3D frame; units kN, m)')
     add(" ")
     add('TABLE:  "PROGRAM CONTROL"')
     add('   ProgramName="SAFE 2014"   Version=14.0.0   ProgLevel="Post Tensioning"   CurrUnits="KN, m, C"   ModelDatum=0')

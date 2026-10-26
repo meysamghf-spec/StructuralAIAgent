@@ -78,7 +78,7 @@ def get_job(jid: str, account: Annotated[AuthenticatedAccount, Depends(get_curre
 
 @router.get("/jobs/{jid}/drawing.dxf")
 def download(jid: str, account: Annotated[AuthenticatedAccount, Depends(get_current_account)]):
-    return FileResponse(_dir(jid, account) / "drawing.dxf", media_type="application/dxf", filename=f"saai-{jid[:8]}.dxf")
+    return FileResponse(_dir(jid, account) / "drawing.dxf", media_type="application/dxf", filename=f"saia-{jid[:8]}.dxf")
 
 
 @router.get("/jobs/{jid}/preview.svg")

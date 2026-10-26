@@ -52,7 +52,7 @@ def build_s2k(inp, raw: dict[str, Any], design: dict[str, Any] | None = None) ->
 
     T: list[str] = []
     add = T.append
-    add('File "model.s2k" exported by SAAI (chat 3D frame) - units KN, m, C')
+    add('File "model.s2k" exported by SAIA (chat 3D frame) - units KN, m, C')
     add(" ")
     add('TABLE:  "PROGRAM CONTROL"')
     add(_row(ProgramName="SAP2000", Version="14.0.0", CurrUnits="KN, m, C", SteelCode="AISC360-05/IBC2006",

@@ -139,7 +139,7 @@ def _traced(entities: list[str], primitive: DrawingPrimitive) -> list[str]:
     if not entities or not primitive.source_element_ids:
         return entities
     tail = [
-        "1001\nSAAI",
+        "1001\nSAIA",
         f"1000\nsource_element_kind={primitive.source_element_kind.value}",
         f"1000\nsource_element_ids={','.join(primitive.source_element_ids)}",
     ]

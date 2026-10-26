@@ -497,7 +497,7 @@ def test_dxf_geometry_differs_between_structural_sheets(demo) -> None:
 def test_dxf_retains_source_element_ids(demo) -> None:
     pem, drawing_set = demo
     content = render_sheet_dxf(_sheet(drawing_set, "S-101")).content
-    assert "1001\nSAAI" in content
+    assert "1001\nSAIA" in content
     assert "1000\nsource_element_kind=FOOTING" in content
     traced: set[str] = set()
     for group in re.findall(r"1000\nsource_element_ids=([^\n]+)", content):

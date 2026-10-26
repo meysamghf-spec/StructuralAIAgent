@@ -130,8 +130,8 @@ export function ChatComposer({
           rows={isProminent ? 3 : 1}
           placeholder={
             isProminent
-              ? "Tell SAAI what you want to accomplish…"
-              : "Ask SAAI…"
+              ? "Tell SAIA what you want to accomplish…"
+              : "Ask SAIA…"
           }
           value={content}
           onChange={(event) => onContentChange(event.target.value)}
