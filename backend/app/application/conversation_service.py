@@ -445,6 +445,11 @@ class ConversationService:
         assistant: str | None = None,
         progress_sink: AgentRunProgressSink | None = None,
     ) -> tuple[str, dict]:
+        if not attachments:
+            acted = self._maybe_chat_action(conversation, account, user_content)
+            if acted is not None:
+                acted[1]["selected_mode"] = mode or "auto"
+                return acted
         agent_type = _assistant_chat.normalize_assistant(assistant)
         if agent_type is not None:
             reply = self._assistant_reply(conversation, account, agent_type, user_content, attachments)
@@ -479,20 +484,105 @@ class ConversationService:
                        if fa else exc.message)
                 return msg, {"mode": "rule_based", "intent": "frame_optimization", "quota_exceeded": exc.details}
         if conversation.project_id is not None:
-            return self._run_project_orchestration(
-                conversation=conversation,
-                account=account,
-                user_request=enriched_request,
-                attachments=attachments,
-                attachment_context=attachment_context,
-                actor_id=actor_id,
-                mode=mode,
-                progress_sink=progress_sink,
-            )
+            from app.application.agent_intent_routing import frame_context
+
+            with frame_context(self._latest_frame_inputs(conversation, account) is not None):
+                return self._run_project_orchestration(
+                    conversation=conversation,
+                    account=account,
+                    user_request=enriched_request,
+                    attachments=attachments,
+                    attachment_context=attachment_context,
+                    actor_id=actor_id,
+                    mode=mode,
+                    progress_sink=progress_sink,
+                )
 
         content, metadata = self._run_general_chat(enriched_request, history, account=account, progress_sink=progress_sink)
         metadata["selected_mode"] = mode or "auto"
         return content, metadata
+
+    def _latest_frame_inputs(self, conversation, account) -> dict | None:
+        from app.application.chat_runs import extract_runs
+
+        runs = extract_runs(conversation, self._repo.list_messages(conversation.id))
+        if conversation.project_id is not None:
+            runs += self.list_project_chat_runs(account, conversation.project_id)
+        runs.sort(key=lambda r: r["created_at"], reverse=True)
+        return next((r["inputs"] for r in runs if r.get("kind") == "frame3d_analysis" and r.get("inputs")), None)
+
+    def _maybe_chat_action(self, conversation, account: AuthenticatedAccount, text: str) -> tuple[str, dict] | None:
+        """Chat-first commands for what the UI can do besides engineering edits: downloads, projects, assistants, approvals."""
+        from app.application import chat_actions as ca
+
+        try:
+            fa = ca.is_fa(text)
+            spec = ca.parse_download(text)
+            if spec is not None:
+                inputs = self._latest_frame_inputs(conversation, account)
+                assumed: list[str] = []
+                if inputs is None:
+                    inputs, assumed = ca.default_frame_inputs()
+                if fa:
+                    inputs = {**inputs, "lang": "fa"}
+                return ca.downloads_reply(spec, inputs, fa=fa, assumed=assumed,
+                                          project_id=str(conversation.project_id) if conversation.project_id else None)
+            cmd = ca.parse_project_command(text)
+            if cmd is not None:
+                return self._run_project_command(conversation, account, cmd, fa)
+            agent = ca.parse_assistant_switch(text)
+            if agent is not None:
+                title = _assistant_chat.assistant_title(agent, fa)
+                starters = _assistant_chat.starters(agent, fa)
+                body = (f"دستیار فعال شد: **{title}**. هر چه می‌خواهید همین‌جا بنویسید." if fa
+                        else f"Switched to **{title}**. Just tell it what you need here in the chat.")
+                return body, {"mode": "rule_based", "intent": "switch_assistant", "switch_assistant": agent, "starters": starters}
+            appr = ca.parse_approval_command(text)
+            if appr is not None:
+                return ca.run_approval(appr, project_id=conversation.project_id, account_id=account.account_id, fa=fa)
+        except Exception:  # noqa: BLE001 - a chat command must never break the conversation; fall through to the engines
+            logger.exception("chat action failed")
+        return None
+
+    def _run_project_command(self, conversation, account: AuthenticatedAccount, cmd: dict, fa: bool) -> tuple[str, dict]:
+        from app.application.service_factory import build_project_service
+
+        projects = self._project_access.list_accessible_projects(account)
+        meta: dict = {"mode": "rule_based", "intent": "projects"}
+        if cmd["kind"] == "list":
+            lines = ["پروژه‌های شما:" if fa else "Your projects:", ""] + [f"- {p.name}" for p in projects] if projects else []
+            if not projects:
+                lines = ["هنوز پروژه‌ای ندارید. بنویسید «یک پروژه جدید به نام … بساز»." if fa else "You have no projects yet. Say “create a new project called …”."]
+            return "\n".join(lines), meta
+        if cmd["kind"] == "open":
+            q = cmd["name"].strip().lower()
+            hit = next((p for p in projects if p.name.strip().lower() == q), None) or next(
+                (p for p in projects if q in p.name.lower()), None)
+            if hit is None:
+                names = "، ".join(p.name for p in projects[:8]) or ("—" )
+                return (f"پروژه‌ای با نام «{cmd['name']}» پیدا نشد. پروژه‌های شما: {names}" if fa else
+                        f"No project matches “{cmd['name']}”. Your projects: {names}"), meta
+            self._repo.set_project(conversation.id, hit.id)
+            meta["project_switch"] = {"id": str(hit.id), "name": hit.name}
+            return (f"پروژه «{hit.name}» باز شد؛ از این به بعد گفتگو در این پروژه انجام می‌شود." if fa else
+                    f"Opened project “{hit.name}”. This chat now works inside it."), meta
+        # create
+        from app.application.billing import service as billing
+
+        name = cmd["name"] or ("پروژه جدید" if fa else "New project")
+        owned = sum(1 for p in projects if str(getattr(p, "owner_account_id", "")) == str(account.account_id))
+        try:
+            billing.require_count(account.account_id, "projects", owned)
+        except billing.QuotaExceededError as exc:
+            return (("سقف تعداد پروژه در پلن فعلی پر شده است؛ از صفحه Upgrades ارتقا دهید." if fa else exc.message),
+                    {**meta, "quota_exceeded": exc.details})
+        result = build_project_service().create_project(name=name, description=None, created_by=account.account_id,
+                                                        owner_account_id=account.account_id)
+        self._repo.set_project(conversation.id, result.project.id)
+        meta["project_switch"] = {"id": str(result.project.id), "name": result.project.name}
+        note = "" if cmd["name"] else (" (نام را ننوشته بودید، «پروژه جدید» گذاشتم؛ بعداً می‌توانید بگویید «نام پروژه را … کن».)" if fa else
+                                      " (you gave no name, so I called it “New project”.)")
+        return (f"پروژه «{name}» ساخته و باز شد.{note}" if fa else f"Created and opened project “{name}”.{note}"), meta
 
     def _helper_reply(self, conversation, account: AuthenticatedAccount, user_content: str, history,
                       attachments, progress_sink) -> tuple[str, dict] | None:

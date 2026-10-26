@@ -345,7 +345,9 @@ class PromptGenerationService:
                 missing.append("Approved model or reference drawings")
 
         normalized = user_request.lower()
-        if any(term in normalized for term in ("file", "upload", "pdf", "dwg", "dxf", "فایل")) and not files:
+        from app.application.frame3d_chat_analysis import is_export_request
+
+        if any(term in normalized for term in ("file", "upload", "pdf", "dwg", "dxf", "فایل")) and not files and not is_export_request(user_request):
             missing.append("Referenced project files")
 
         if agent_type in {

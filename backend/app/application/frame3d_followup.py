@@ -104,6 +104,18 @@ def model_edits(text: str) -> dict[str, Any]:
         m = _last(rf"(?:{words}){_TO}{_N}", t)
         if m and lo <= float(m.group(1)) <= hi:
             e[key] = float(m.group(1))
+    # --- material grades: "concrete C30", «بتن C30», «فولاد 400», S400 / AIII
+    m = _last(r"(?:concrete|beton|bet[o]?n|بتن)[^\d\n]{0,14}\bc\s*(\d{2})\b", t) or _last(r"(?<![a-z0-9])c\s*(\d{2})(?![\d.]*\s*(?:x|m\b|cm|kn))[^\n]{0,10}(?:concrete|بتن)", t) \
+        or _last(r"(?:بتن|concrete(?:\s*grade)?|beton)\s*(?:را\s*)?(?:=|:|to|به)?\s*(\d{2})\s*(?:مگا|mpa|کن|بشه|باشه|بگیر|$)", t)
+    if m and 15 <= float(m.group(1)) <= 80:
+        e["fc_mpa"] = float(m.group(1))
+    m = _last(r"(?:rebar|steel|reinforcement|فولاد|میلگرد|آرماتور)[^\d\n]{0,24}?(?:\bs|\bgrade\s*)?(240|300|340|400|420|500)\b", t)
+    if m:
+        e["fy_mpa"] = float(m.group(1))
+    elif re.search(r"(?:rebar|steel|فولاد|میلگرد|آرماتور)[^\n]{0,24}\b(?:a\s*iii|aiii|a3|آ\s*3)\b|\b(?:aiii|a3)\b", t):
+        e["fy_mpa"] = 400.0
+    elif re.search(r"(?:rebar|steel|فولاد|میلگرد|آرماتور)[^\n]{0,24}\b(?:a\s*ii|aii|a2)\b", t):
+        e["fy_mpa"] = 300.0
     # --- codes
     if re.search(r"iran(?:ian)?\s*codes?|آیین\s*نامه\s*(?:های\s*)?ایران|ayin\s*name\s*(?:ye\s*)?iran|mabhas|مبحث|\b2800\b", t):
         e["seismic_code"] = "IRAN_2800"; e["design_code"] = "MABHAS9"
@@ -123,7 +135,25 @@ def is_geometry_edit(text: str) -> bool:
 
 def is_model_edit(text: str) -> bool:
     e = {k: v for k, v in model_edits(text).items() if not k.startswith("_")}
-    return bool(e) and bool(_EDIT_VERB.search(norm(text)))
+    if not e:
+        return False
+    if _EDIT_VERB.search(norm(text)):
+        return True
+    # short verb-less edits on an existing model: "column section 60x60", "live load 4 kN/m2", «بتن C30»
+    return len(norm(text)) <= 60 and bool(set(e) - set(GEOMETRY_KEYS))
+
+
+PARAM_KEYS = ("zone", "soil", "system", "seismic_c", "importance", "behaviour_r", "allowable_bearing_kpa")
+
+
+def is_param_edit(text: str) -> bool:
+    """Short seismic / soil parameter change on an existing model: "zone high", «خاک نوع ۳», "R=6", "C=0.17"."""
+    from app.application import frame3d_chat_analysis as f3
+
+    t = norm(text)
+    if len(t) > 80 or f3.is_frame3d_request(text) or not _EDIT_VERB.search(t) and not re.search(r"=|:|\b(?:zone|soil|importance)\b|زون|پهنه|خاک|ضریب", t):
+        return False
+    return bool(set(f3.parse_frame3d_request(text).parsed) & set(PARAM_KEYS))
 
 
 def is_frame_followup(text: str) -> bool:

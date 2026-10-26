@@ -39,7 +39,7 @@ DRAWINGS = {"dxf_plans": "Plans (.dxf)", "dxf_3d": "3D wireframe (.dxf)", "dxf_r
 
 def catalog() -> dict[str, Any]:
     return {"tables": TABLES, "figures": FIGURES, "models": MODELS, "drawings": DRAWINGS,
-            "report": {"report_md": "Calculation report (.md)", "report_json": "Raw results (.json)"},
+            "report": {"report_pdf": "Calculation report (.pdf)", "report_md": "Calculation report (.md)", "report_json": "Raw results (.json)"},
             "formats": {"tables": ["xlsx", "csv"], "figures": ["png", "svg"], "drawings": ["dxf", "pdf"]}}
 
 
@@ -309,6 +309,9 @@ def item(kind: str, name: str, fmt: str, inputs: dict[str, Any], optimization: d
         if name == "report_json":
             return "results.json", json.dumps({"inputs": inputs, "raw": {k: v for k, v in raw.items() if k != "viewer"}, "design": design},
                                               default=str, ensure_ascii=False, indent=1).encode("utf-8"), "application/json"
+        if name == "report_pdf":
+            from app.application.report_pdf import markdown_to_pdf
+            return "report.pdf", markdown_to_pdf(report_md(inputs, optimization), rtl=str(inputs.get("lang") or "") == "fa"), "application/pdf"
         return "report.md", report_md(inputs, optimization).encode("utf-8"), "text/markdown"
     raise KeyError(kind)
 
@@ -367,6 +370,8 @@ def build_zip(inputs: dict[str, Any], optimization: dict[str, Any] | None = None
                 errors.append(f"structural set: {exc}")
         try:
             put("report/report.md", report_md(inputs, optimization).encode("utf-8"))
+            from app.application.report_pdf import markdown_to_pdf
+            put("report/report.pdf", markdown_to_pdf(report_md(inputs, optimization), rtl=str(inputs.get("lang") or "") == "fa"))
         except Exception as exc:  # noqa: BLE001
             errors.append(f"report: {exc}")
         put("inputs.json", json.dumps(inputs, ensure_ascii=False, indent=1, default=str).encode("utf-8"))

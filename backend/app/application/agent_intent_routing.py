@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import re
+import contextvars
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 from app.domain.models.agent import EngineeringAgentType
@@ -18,6 +20,29 @@ from app.application.frame3d_followup import is_strong_frame_followup as _is_str
 
 def _is_assumption_cmd(text: str) -> bool:
     return _is_show_assumptions(text) or _is_assumption_update(text) or _requested_mode_shape(text) is not None or _requested_foundation_view(text)
+
+_FRAME_CONTEXT: contextvars.ContextVar[bool] = contextvars.ContextVar("saia_frame_context", default=False)
+
+
+@contextmanager
+def frame_context(active: bool):
+    """While active the project already has a 3D frame: short input edits ("column 60x60", "zone high", «بتن C30») re-run it."""
+    token = _FRAME_CONTEXT.set(bool(active))
+    try:
+        yield
+    finally:
+        _FRAME_CONTEXT.reset(token)
+
+
+def _is_contextual_frame_edit(text: str) -> bool:
+    if not _FRAME_CONTEXT.get() or len(text or "") > 80:
+        return False
+    from app.application import frame3d_followup as fu
+
+    if re.match(r"\s*(?:please\s+)?(?:design|check|calculate|verify|size)\b|\s*(?:طراحی|محاسبه|کنترل)\b", fu.norm(text), re.I):
+        return False
+    return fu.is_model_edit(text) or fu.is_param_edit(text)
+
 
 ATTACHMENT_CONTEXT_MARKERS: tuple[str, ...] = (
     "Attached files (engineering context):",
@@ -224,7 +249,7 @@ def score_agent_intents(text: str) -> list[AgentIntentScore]:
                 matched_keywords=hit_keywords,
             )
         )
-    if _is_frame3d_request(text or "") or _is_frame3d_export(text or "") or _is_strong_frame_followup(text or "") or (not matches and (_is_assumption_cmd(text or "") or _is_frame_followup(text or ""))):
+    if _is_frame3d_request(text or "") or _is_frame3d_export(text or "") or _is_strong_frame_followup(text or "") or _is_contextual_frame_edit(text or "") or (not matches and (_is_assumption_cmd(text or "") or _is_frame_followup(text or ""))):
         # A described multi-storey frame is an analysis request even if it mentions loads/seismic/concrete.
         boosted = [m for m in matches if m.agent_type == EngineeringAgentType.ANALYSIS_AGENT]
         base_score = max((m.score for m in matches), default=0.0) + 10.0
