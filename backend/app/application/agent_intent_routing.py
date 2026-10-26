@@ -12,6 +12,8 @@ from app.application.frame3d_chat_analysis import requested_mode_shape as _reque
 from app.application.frame3d_chat_analysis import requested_foundation_view as _requested_foundation_view
 from app.application.detailing_assumptions import is_assumption_update as _is_assumption_update
 from app.application.detailing_assumptions import is_show_assumptions as _is_show_assumptions
+from app.application.frame3d_followup import is_frame_followup as _is_frame_followup
+from app.application.frame3d_followup import is_strong_frame_followup as _is_strong_frame_followup
 
 
 def _is_assumption_cmd(text: str) -> bool:
@@ -222,7 +224,7 @@ def score_agent_intents(text: str) -> list[AgentIntentScore]:
                 matched_keywords=hit_keywords,
             )
         )
-    if _is_frame3d_request(text or "") or _is_frame3d_export(text or "") or (not matches and _is_assumption_cmd(text or "")):
+    if _is_frame3d_request(text or "") or _is_frame3d_export(text or "") or _is_strong_frame_followup(text or "") or (not matches and (_is_assumption_cmd(text or "") or _is_frame_followup(text or ""))):
         # A described multi-storey frame is an analysis request even if it mentions loads/seismic/concrete.
         boosted = [m for m in matches if m.agent_type == EngineeringAgentType.ANALYSIS_AGENT]
         base_score = max((m.score for m in matches), default=0.0) + 10.0

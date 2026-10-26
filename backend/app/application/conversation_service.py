@@ -610,6 +610,10 @@ class ConversationService:
         assert conversation.project_id is not None
         history = self._repo.list_messages(conversation.id, limit=_MAX_HISTORY_MESSAGES)
         resume_context = _find_resumable_workflow_context(history)
+        from app.application import frame3d_followup as _fu
+
+        user_request = _fu.merge_with_pending(
+            user_request, [m.content for m in reversed(history) if m.role == MessageRole.USER])
         parameters: dict = {
             "conversation_id": str(conversation.id),
             "attachment_file_ids": [str(item.file_id) for item in attachments],
@@ -705,9 +709,14 @@ class ConversationService:
                 logger.exception("frame optimizer failed")
 
         try:
-            if is_frame3d_request(user_content):
-                payload = build_frame3d_payload(user_content, None)
-                return frame3d_markdown(payload), {"mode": "rule_based", "engineering_results": payload}
+            from app.application import frame3d_followup as _fu
+
+            merged = _fu.merge_with_pending(user_content, [m.content for m in reversed(history) if m.role == MessageRole.USER])
+            if is_frame3d_request(merged) or _fu.is_frame_followup(merged):
+                payload = build_frame3d_payload(merged, fopt.prior_spec_from_texts(
+                    [m.content for m in reversed(history) if m.role == MessageRole.USER]))
+                if payload is not None:
+                    return frame3d_markdown(payload), {"mode": "rule_based", "engineering_results": payload}
             beam = gbe.analyze_beam_prompt(user_content)
             if beam is not None:
                 return beam["markdown"], {"mode": "rule_based", "engineering_results": beam["payload"]}
