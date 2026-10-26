@@ -1,10 +1,10 @@
 "use client";
 
 import { useAuth } from "@/hooks/useAuth";
-import { approveAgentRequest, rejectAgentRequest } from "@/lib/api";
+import { approveAgentRequest, getApprovalRequest, rejectAgentRequest } from "@/lib/api";
 import { getApprovalReviewPath } from "@/lib/agent-workspace";
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 
 export function ApprovalReviewPanel({
   projectId,
@@ -20,6 +20,32 @@ export function ApprovalReviewPanel({
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resolvedStatus, setResolvedStatus] = useState<string | null>(null);
+
+  // A chat message can outlive the decision (or be clicked twice): always check the real state first.
+  const syncStatus = useCallback(async () => {
+    try {
+      const current = await getApprovalRequest(projectId, approvalRequestId);
+      setResolvedStatus(current.status !== "PENDING" ? current.status : null);
+      return current.status;
+    } catch {
+      return null;
+    }
+  }, [projectId, approvalRequestId]);
+
+  useEffect(() => {
+    void syncStatus();
+  }, [syncStatus]);
+
+  async function recoverFromConflict(err: unknown, fallback: string) {
+    const status = await syncStatus();
+    if (status && status !== "PENDING") {
+      setError(null);
+      onResolved();
+      return;
+    }
+    setError(err instanceof Error ? err.message : fallback);
+  }
 
   async function handleApprove(event: FormEvent) {
     event.preventDefault();
@@ -29,7 +55,7 @@ export function ApprovalReviewPanel({
       await approveAgentRequest(projectId, approvalRequestId, note || undefined);
       onResolved();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Approval failed");
+      await recoverFromConflict(err, "Approval failed");
     } finally {
       setBusy(false);
     }
@@ -47,10 +73,25 @@ export function ApprovalReviewPanel({
       const res = await rejectAgentRequest(projectId, approvalRequestId, reason.trim());
       onResolved(res?.revision_message ?? undefined);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Rejection failed");
+      await recoverFromConflict(err, "Rejection failed");
     } finally {
       setBusy(false);
     }
+  }
+
+  if (resolvedStatus) {
+    const label = resolvedStatus.charAt(0) + resolvedStatus.slice(1).toLowerCase();
+    return (
+      <section className="approval-panel approval-panel-resolved" data-testid="approval-resolved">
+        <strong>Decision recorded: {label}</strong>
+        <p className="muted">
+          This item was already {label.toLowerCase()}, so no further action is needed.{" "}
+          <Link className="text-link" href={getApprovalReviewPath(projectId, approvalRequestId)}>
+            Open in Approvals
+          </Link>
+        </p>
+      </section>
+    );
   }
 
   return (

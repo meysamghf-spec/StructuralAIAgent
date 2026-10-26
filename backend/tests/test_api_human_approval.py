@@ -128,3 +128,38 @@ def test_api_approval_not_found(api_client: TestClient) -> None:
     )
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "APPROVAL_NOT_FOUND"
+
+
+def _mk(api_client: TestClient, project_id: str, summary: str) -> str:
+    return api_client.post(
+        "/api/v1/approvals",
+        json={"project_id": project_id, "requester": "e", "target_type": "DESIGN_DECISION",
+              "target_action": "engineering_run", "summary": summary},
+    ).json()["id"]
+
+
+def test_double_approve_is_idempotent_and_conflicts_are_explained(api_client: TestClient) -> None:
+    project_id = api_client.post("/api/v1/projects", json={"name": "Idem"}).json()["project"]["id"]
+    rid = _mk(api_client, project_id, "Run 1")
+    url = f"/api/v1/approvals/{rid}/approve"
+    first = api_client.post(url, params={"project_id": project_id}, json={"approver": "r1"})
+    second = api_client.post(url, params={"project_id": project_id}, json={"approver": "r1"})
+    assert first.status_code == 200 and second.status_code == 200
+    assert second.json()["status"] == "APPROVED"
+    # rejecting an already approved item is a real conflict with a clear bilingual message
+    rej = api_client.post(f"/api/v1/approvals/{rid}/reject", params={"project_id": project_id},
+                          json={"approver": "r1", "rejection_reason": "drift too high"})
+    assert rej.status_code == 409
+    assert "already approved" in rej.json()["error"]["message"]
+
+
+def test_project_approval_summary_explains_blockers(api_client: TestClient) -> None:
+    project_id = api_client.post("/api/v1/projects", json={"name": "Sum"}).json()["project"]["id"]
+    empty = api_client.get("/api/v1/approvals/summary", params={"project_id": project_id}).json()
+    assert empty["project_approved"] is False and empty["blockers"][0]["code"] == "no_runs"
+    rid = _mk(api_client, project_id, "Run 1")
+    pending = api_client.get("/api/v1/approvals/summary", params={"project_id": project_id}).json()
+    assert pending["state"] == "pending" and pending["blockers"][0]["fa"]
+    api_client.post(f"/api/v1/approvals/{rid}/approve", params={"project_id": project_id}, json={"approver": "r1"})
+    done = api_client.get("/api/v1/approvals/summary", params={"project_id": project_id}).json()
+    assert done["project_approved"] is True and done["blockers"] == []

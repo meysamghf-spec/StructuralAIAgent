@@ -37,6 +37,7 @@ import { listCadDrawings, type CadDrawing } from "@/lib/cad";
 import { RequestPlanPanel } from "@/components/agents/RequestPlanPanel";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { ProjectApprovalCard } from "@/components/agents/ProjectApprovalCard";
 import { useSearchParams } from "next/navigation";
 
 export default function AgentsWorkspaceClient() {
@@ -318,7 +319,7 @@ export default function AgentsWorkspaceClient() {
               [
                 ["Project", selectedProject?.name ?? "None"],
                 ["Agent", "Structural Engineering Agent"],
-                ["Agent version", selectedExecution ? String(selectedExecution.agent_version) : "—"],
+                ["Agent version", selectedExecution ? String(selectedExecution.agent_version) : "Latest (selected automatically)"],
                 ["PEM version", pem ? String(pem.version) : "—"],
                 ["Model", workflowGlance?.model ?? "Not run"],
                 ["Analysis", workflowGlance?.analysis ?? "Not run"],
@@ -335,7 +336,7 @@ export default function AgentsWorkspaceClient() {
           </dl>
         </details>
         <p className="muted">{workflowGlance?.message ?? "No structural workflow has been run for this project."}</p>
-        <p className="muted">Approval: {workflowGlance?.approval ?? "Not approved"}</p>
+        <ProjectApprovalCard projectId={selectedProjectId} refreshKey={executions.length} />
         <div className="button-row">
           {(
             [

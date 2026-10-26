@@ -1,6 +1,7 @@
 "use client";
 
 import { ApprovalReviewPanel } from "@/components/agents/ApprovalReviewPanel";
+import { ProjectApprovalCard } from "@/components/agents/ProjectApprovalCard";
 import { ProjectScopePanel } from "@/components/workspace/ProjectScopePanel";
 import { useProjectScope } from "@/hooks/useProjectScope";
 import { listApprovals, listPendingApprovals, revisionChains, type ApprovalSummary, type RevisionChange } from "@/lib/api";
@@ -70,6 +71,8 @@ export default function ApprovalsWorkspaceClient() {
 
       {error ? <div className="alert error">{error}</div> : null}
       {notice ? <div className="alert" role="status">{notice}</div> : null}
+
+      {selectedProjectId ? <ProjectApprovalCard projectId={selectedProjectId} showPending={false} refreshKey={all.length + pending.length} /> : null}
 
       <section className="card">
         <h3>Waiting for your review</h3>
