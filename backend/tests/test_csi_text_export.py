@@ -95,7 +95,52 @@ def test_f2k_point_loads_equal_column_reactions(model):
     combos = {r["Combo"] for r in tables["LOAD COMBINATIONS"]}
     assert "SERV1" in combos and "COMB2" in combos
     assert tables["SLAB PROPERTIES 01 - GENERAL"][0]["Slab"].startswith("FTG_H")  # footings replace the placeholder mat
-    assert len(tables["OBJECT GEOMETRY - AREAS 01 - GENERAL"]) == 9
+    assert sum(a["Area"].startswith("FTG") for a in tables["OBJECT GEOMETRY - AREAS 01 - GENERAL"]) == 9
+
+
+REQUIRED_F2K = ["PROGRAM CONTROL", "AUTOMATIC SLAB MESH OPTIONS", "GRID LINES", "MATERIAL PROPERTIES 01 - GENERAL",
+                "MATERIAL PROPERTIES 03 - CONCRETE", "MATERIAL PROPERTIES 04 - REBAR", "SLAB PROPERTIES 01 - GENERAL",
+                "SLAB PROPERTIES 02 - SOLID SLABS", "SOIL PROPERTIES", "OBJECT GEOMETRY - POINT COORDINATES",
+                "OBJECT GEOMETRY - AREAS 01 - GENERAL", "SLAB PROPERTY ASSIGNMENTS", "SOIL PROPERTY ASSIGNMENTS", "LOAD PATTERNS",
+                "LOAD CASES 01 - GENERAL", "LOAD CASES 02 - STATIC", "LOAD CASES 06 - LOADS APPLIED", "LOAD COMBINATIONS",
+                "LOAD ASSIGNMENTS - POINT LOADS", "PUNCHING SHEAR DESIGN OVERWRITES 01 - GENERAL"]
+
+
+def test_f2k_matches_safe_file_structure(model):
+    inp, raw = model
+    raw = {**raw, "foundation_design": None}  # mat case
+    text = cte.build_f2k(inp, raw)
+    assert text.endswith("END TABLE DATA\r\n") and "\n" not in text.replace("\r\n", "")
+    text.encode("ascii")
+    assert "BASIC MECHANICAL" not in text and "SAFE 2014" not in text
+    t = cte.parse_f2k(text)
+    for name in REQUIRED_F2K:
+        assert t.get(name), name
+    assert t["PROGRAM CONTROL"][0]["ProgramName"] == "SAFE 2016"
+    conc = t["MATERIAL PROPERTIES 03 - CONCRETE"][0]
+    assert float(conc["E"]) > 1e7 and float(conc["Fc"]) == 30000
+    solid = {r["Slab"]: r for r in t["SLAB PROPERTIES 02 - SOLID SLABS"]}
+    gen = {r["Slab"]: r for r in t["SLAB PROPERTIES 01 - GENERAL"]}
+    assert set(solid) == set(gen) == {"MAT", "COLSTIFF"}
+    assert solid["MAT"]["Type"] == "Mat" and float(solid["MAT"]["Thickness"]) >= 0.6 and solid["COLSTIFF"]["Type"] == "Stiff"
+    assert "Thickness" not in gen["MAT"]
+    defined = {r["Point"] for r in t["OBJECT GEOMETRY - POINT COORDINATES"]}
+    areas = t["OBJECT GEOMETRY - AREAS 01 - GENERAL"]
+    for a in areas:
+        assert {a[f"Point{k}"] for k in range(1, int(a["NumPoints"]) + 1)} <= defined
+    assert sum(a["Area"].startswith("STF") for a in areas) == 9 and any(a["Area"] == "MAT1" for a in areas)
+    assert all(r["OpeningType"] == "None" for r in t["SLAB PROPERTY ASSIGNMENTS"])
+    assert [r["Area"] for r in t["SOIL PROPERTY ASSIGNMENTS"]] == ["MAT1"] and float(t["SOIL PROPERTIES"][0]["Subgrade"]) > 0
+    pats = {r["LoadPat"] for r in t["LOAD PATTERNS"]}
+    assert pats == {"DEAD", "LIVE", "EX", "EY"}
+    loads = t["LOAD ASSIGNMENTS - POINT LOADS"]
+    for p in pats:
+        assert len([r for r in loads if r["LoadPat"] == p]) == 9
+    assert {r["LoadCase"] for r in t["LOAD CASES 02 - STATIC"]} == pats
+    combos = {r["Combo"] for r in t["LOAD COMBINATIONS"]}
+    assert all("+" not in c for c in combos) and {"SERV1", "COMB1"} <= combos
+    assert {r["Load"] for r in t["LOAD COMBINATIONS"]} <= pats
+    assert len(t["PUNCHING SHEAR DESIGN OVERWRITES 01 - GENERAL"]) == 9
 
 
 def test_dxf_plans_and_3d(model2800):
