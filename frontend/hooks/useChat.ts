@@ -33,6 +33,7 @@ import { attachExistingProjectFile } from "@/lib/project-files";
 import type { ProjectFileSummary } from "@/lib/api";
 import { STREAMING_CAPABILITIES, type AgentChatMode, type ExecutionPhase } from "@/lib/chat-types";
 import { mapBackendMessage } from "@/lib/chat-mappers";
+import { parseChatActionMeta, runChatDownloads } from "@/lib/chat-actions";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type UseChatOptions = {
@@ -41,6 +42,8 @@ type UseChatOptions = {
   selectedProjectId: string;
   setSelectedProjectId: (projectId: string) => void;
   assistant?: string | null;
+  /** Chat commands that change UI state ("switch to the seismic assistant", "open project …"). */
+  onChatAction?: (action: { switchAssistant: string | null; projectSwitch: { id: string; name: string } | null }) => void;
 };
 
 export function useChat({
@@ -49,6 +52,7 @@ export function useChat({
   selectedProjectId,
   setSelectedProjectId,
   assistant,
+  onChatAction,
 }: UseChatOptions) {
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -223,6 +227,15 @@ export function useChat({
         ),
       );
       setRetryRequest(null);
+      const action = parseChatActionMeta(response.assistant_message.metadata);
+      if (action.switchAssistant || action.projectSwitch) {
+        if (action.projectSwitch) setSelectedProjectId(action.projectSwitch.id);
+        onChatAction?.({ switchAssistant: action.switchAssistant, projectSwitch: action.projectSwitch });
+      }
+      if (action.downloads && (action.downloads.zip || action.downloads.items.length <= 3)) {
+        // "download the outputs": start the real download now; the card keeps working buttons as a fallback.
+        void runChatDownloads(action.downloads).catch(() => undefined);
+      }
       await refreshConversations();
     } catch (err) {
       if (stoppedRef.current) {

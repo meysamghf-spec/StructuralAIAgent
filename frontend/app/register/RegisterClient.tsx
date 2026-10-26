@@ -76,7 +76,7 @@ export default function RegisterClient() {
         <p className="eyebrow">{REGISTER_PAGE.eyebrow}</p>
         <h2>{REGISTER_PAGE.heading}</h2>
         <p className="subtitle">
-          Register to manage projects, engineering workflows, and workspace tools.
+          Create an account to chat with your structural AI — analysis, design, validation, approval and memory.
         </p>
       </header>
 

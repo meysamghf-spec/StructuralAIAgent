@@ -49,7 +49,7 @@ export function SaiaLogo({ size = "md", tagline = true, className = "" }: { size
       <SaiaMark size={px} />
       <span className="saia-logo-text">
         <span className="saia-wordmark">SAIA</span>
-        {tagline ? <span className="saia-tagline" dir="auto">{t("AI for structural engineering")}</span> : null}
+        {tagline ? <span className="saia-tagline" dir="auto">{t("Chat with your structural AI")}</span> : null}
       </span>
     </span>
   );

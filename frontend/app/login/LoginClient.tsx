@@ -65,7 +65,7 @@ export default function LoginClient() {
       <header className="page-header">
         <p className="eyebrow">Sign in</p>
         <h2>Welcome back</h2>
-        <p className="subtitle">Sign in to access your structural engineering workspace.</p>
+        <p className="subtitle">Sign in to chat with your structural AI.</p>
       </header>
 
       <form className="card auth-form" onSubmit={handleSubmit}>

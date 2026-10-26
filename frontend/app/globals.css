@@ -3059,3 +3059,9 @@ a.button,
   .auth-brand { margin-bottom: 1.25rem; }
 }
 .auth-shell .auth-brand { margin-top: 1.5rem; }
+
+/* chat-first download buttons */
+.chat-downloads { margin-top: 10px; }
+.chat-downloads-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.chat-downloads-buttons .btn { max-width: 100%; white-space: normal; text-align: start; }
+.chat-downloads-error { color: var(--danger, #c0392b); margin: 6px 0 0; font-size: 0.85rem; }
