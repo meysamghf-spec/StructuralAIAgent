@@ -21,7 +21,7 @@ const cache = new Map<string, Promise<ChatRun[]>>();
 export function listProjectChatRuns(projectId: string, fresh = false): Promise<ChatRun[]> {
   if (fresh || !cache.has(projectId)) {
     const p = apiFetch<{ runs: ChatRun[] }>(`/api/v1/conversations/project-runs/${encodeURIComponent(projectId)}`)
-      .then((r) => r.runs ?? [])
+      .then((r) => (Array.isArray(r?.runs) ? r.runs.filter((x) => x && typeof x === "object") : []))
       .catch((e) => {
         cache.delete(projectId);
         throw e;

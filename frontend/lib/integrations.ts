@@ -28,7 +28,8 @@ export type IntegrationExecution = {
 };
 
 export async function listSolverCapabilities(): Promise<SoftwareCapability[]> {
-  return apiFetch<SoftwareCapability[]>("/api/v1/integrations/capabilities");
+  const data = await apiFetch<SoftwareCapability[] | null>("/api/v1/integrations/capabilities");
+  return Array.isArray(data) ? data : [];
 }
 
 export async function listIntegrationExecutions(
@@ -36,7 +37,8 @@ export async function listIntegrationExecutions(
   software?: string,
 ): Promise<IntegrationExecution[]> {
   const query = software ? `?software=${software}` : "";
-  return apiFetch<IntegrationExecution[]>(`/api/v1/integrations/${projectId}/executions${query}`);
+  const data = await apiFetch<IntegrationExecution[] | null>(`/api/v1/integrations/${projectId}/executions${query}`);
+  return Array.isArray(data) ? data : [];
 }
 
 export async function connectSolver(projectId: string, software: string): Promise<IntegrationExecution> {

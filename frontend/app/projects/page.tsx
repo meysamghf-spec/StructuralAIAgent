@@ -15,7 +15,7 @@ export default function ProjectsPage() {
     setError(null);
     try {
       const response = await apiFetch<ProjectListResponse>("/api/v1/projects");
-      setProjects(response.projects);
+      setProjects(Array.isArray(response?.projects) ? response.projects : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load projects");
     } finally {

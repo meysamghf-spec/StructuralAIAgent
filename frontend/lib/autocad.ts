@@ -95,7 +95,8 @@ export type ArchSetMeta = {
 export async function listArchSets(projectId?: string | null): Promise<ArchSetMeta[]> {
   const q = projectId ? `?project_id=${encodeURIComponent(projectId)}` : "";
   const res = await ok(await fetch(`${base()}/arch-sets${q}`, { headers: getAuthHeaders() }));
-  return ((await res.json()) as { sets: ArchSetMeta[] }).sets;
+  const raw = ((await res.json()) as { sets?: unknown } | null)?.sets;
+  return (Array.isArray(raw) ? (raw as ArchSetMeta[]) : []).map((s) => ({ ...s, sheets: Array.isArray(s?.sheets) ? s.sheets : [] }));
 }
 
 export async function fetchArchFile(setId: string, name: string): Promise<Blob> {

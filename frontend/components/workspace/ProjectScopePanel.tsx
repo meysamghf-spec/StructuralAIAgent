@@ -14,7 +14,7 @@ export function ProjectScopePanel({
   loading?: boolean;
   description?: string;
 }) {
-  const selected = projects.find((project) => project.id === selectedProjectId);
+  const selected = (projects ?? []).find((project) => project.id === selectedProjectId);
 
   return (
     <section className="card">

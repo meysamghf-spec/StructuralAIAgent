@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 
+import { SectionErrorBoundary } from "@/components/common/SectionErrorBoundary";
 import { useUiLang } from "@/hooks/useUiLang";
-import { DOWNLOADS, download, downloadAll, fetchDownload, type DownloadGroup, type DownloadItem } from "@/lib/frame3d-downloads";
+import { DOWNLOADS, download, downloadAll, fetchDownload, type DownloadGroup, type ZipProgress, type DownloadItem } from "@/lib/frame3d-downloads";
 
 type Props = {
   inputs: Record<string, unknown> | null | undefined;
@@ -21,6 +22,10 @@ const FA: Record<string, string> = {
   "Also save to project Files": "ذخیره در فایل‌های پروژه",
   "Preparing ZIP…": "در حال آماده‌سازی ZIP…",
   "files in the ZIP": "فایل در ZIP",
+  "Building all files on the server": "ساخت همهٔ فایل‌ها روی سرور",
+  "usually 30–90 s": "معمولاً ۳۰ تا ۹۰ ثانیه",
+  "Downloading ZIP…": "در حال دانلود ZIP…",
+  "Try again": "تلاش دوباره",
   "saved to Files": "در فایل‌ها ذخیره شد",
   "Run an analysis first to enable downloads.": "برای دانلود، ابتدا تحلیل را اجرا کنید.",
   "Tables": "جداول", "Design": "طراحی", "Foundation": "فونداسیون", "Optimization": "بهینه‌سازی", "Figures": "شکل‌ها",
@@ -31,11 +36,42 @@ const GROUP_LABEL: Record<DownloadGroup, string> = {
   drawings: "Drawings", models: "Model exports", reports: "Reports",
 };
 
-export function DownloadsPanel({ inputs, projectId, optimization, groups, title, collapsed }: Props) {
+const REQUIRED = ["storeys", "bays_x", "bays_y"] as const;
+
+/** Required geometry keys that are present but empty (a run that stopped at "missing required input"). */
+export function missingInputs(inputs: Record<string, unknown> | null | undefined): string[] {
+  if (!inputs || typeof inputs !== "object") return [];
+  return REQUIRED.filter((k) => k in inputs && (inputs[k] === null || inputs[k] === "" || inputs[k] === undefined));
+}
+
+export function IncompleteInputsNote({ missing, lang }: { missing: string[]; lang?: string }) {
+  const fa = lang === "fa";
+  return (
+    <p className="alert" role="note" data-testid="incomplete-inputs-note" dir={fa ? "rtl" : "ltr"}>
+      {fa
+        ? `ورودی‌های این اجرا کامل نیست${missing.length ? ` (${missing.join("، ")})` : ""}. لطفاً ورودی‌ها را در چت کامل کنید تا دانلودها فعال شوند.`
+        : `This run's inputs are incomplete${missing.length ? ` (${missing.join(", ")})` : ""}. Complete the inputs in chat to enable downloads.`}
+    </p>
+  );
+}
+
+export function DownloadsPanel(props: Props) {
+  const { lang } = useUiLang();
+  const missing = missingInputs(props.inputs);
+  if (missing.length) return <IncompleteInputsNote missing={missing} lang={lang} />;
+  return (
+    <SectionErrorBoundary label="Downloads">
+      <DownloadsPanelInner {...props} />
+    </SectionErrorBoundary>
+  );
+}
+
+function DownloadsPanelInner({ inputs, projectId, optimization, groups, title, collapsed }: Props) {
   const { lang } = useUiLang();
   const tr = (s: string) => (lang === "fa" ? FA[s] ?? s : s);
   const [open, setOpen] = useState(!collapsed);
   const [busy, setBusy] = useState<string | null>(null);
+  const [zip, setZip] = useState<ZipProgress | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [toFiles, setToFiles] = useState(true);
@@ -75,26 +111,30 @@ export function DownloadsPanel({ inputs, projectId, optimization, groups, title,
     }
   }
   async function all() {
-    setBusy("zip");
+    if (zip) return;
+    setZip({ state: "starting", elapsedS: 0 });
     setErr(null);
     setMsg(null);
     try {
-      const r = await downloadAll(ctx);
+      const r = await downloadAll(ctx, setZip);
       setMsg(`${r.files} ${tr("files in the ZIP")}${r.saved ? ` · ${tr("saved to Files")}` : ""}`);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
-      setBusy(null);
+      setZip(null);
     }
   }
+  const zipLabel = !zip
+    ? err ? tr("Try again") + " — " + tr("Download all (ZIP)") : tr("Download all (ZIP)")
+    : zip.state === "downloading" ? tr("Downloading ZIP…") : `${tr("Preparing ZIP…")} ${zip.elapsedS}s`;
 
   return (
     <section className="downloads-panel" data-testid="downloads-panel" dir={lang === "fa" ? "rtl" : "ltr"}>
       <div className="downloads-head">
         <h3>{title ?? tr("Downloads")}</h3>
         <div className="downloads-actions">
-          <button className="button" type="button" disabled={!inputs || busy !== null} onClick={() => void all()}>
-            {busy === "zip" ? tr("Preparing ZIP…") : tr("Download all (ZIP)")}
+          <button className="button" type="button" disabled={!inputs || zip !== null} onClick={() => void all()} data-testid="zip-btn">
+            {zipLabel}
           </button>
           {collapsed !== undefined ? (
             <button className="button secondary" type="button" aria-expanded={open} onClick={() => setOpen(!open)}>
@@ -109,6 +149,12 @@ export function DownloadsPanel({ inputs, projectId, optimization, groups, title,
         </label>
       ) : null}
       {!inputs ? <p className="muted">{tr("Run an analysis first to enable downloads.")}</p> : null}
+      {zip && zip.state !== "downloading" ? (
+        <p className="muted" role="status">
+          {tr("Building all files on the server")} ({tr("usually 30–90 s")}) — {zip.elapsedS}s
+          <progress style={{ display: "block", width: "100%" }} max={90} value={Math.min(zip.elapsedS, 88)} />
+        </p>
+      ) : null}
       {msg ? <p className="muted" role="status">{msg}</p> : null}
       {err ? <p className="alert error">{err}</p> : null}
       {open && inputs

@@ -101,13 +101,13 @@ export default function AgentBuilderClient() {
       try {
         const projectResponse = await apiFetch<ProjectListResponse>("/api/v1/projects");
         const capabilityResponse = await listAgentCapabilities();
-        setProjects(projectResponse.projects);
-        setCapabilities(capabilityResponse.map((item) => ({ key: item.key, name: item.name })));
-        const projectId = projectResponse.projects[0]?.id ?? "";
+        setProjects(Array.isArray(projectResponse?.projects) ? projectResponse.projects : []);
+        setCapabilities((Array.isArray(capabilityResponse) ? capabilityResponse : []).map((item) => ({ key: item.key, name: item.name })));
+        const projectId = (Array.isArray(projectResponse?.projects) ? projectResponse.projects : [])[0]?.id ?? "";
         setSelectedProjectId(projectId);
         if (projectId) {
           const agentResponse = await listProjectAgents(projectId);
-          setAgents(agentResponse.agents);
+          setAgents(Array.isArray(agentResponse?.agents) ? agentResponse.agents : []);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load assistant builder");
@@ -124,7 +124,7 @@ export default function AgentBuilderClient() {
     setDetail(null);
     try {
       const agentResponse = await listProjectAgents(projectId);
-      setAgents(agentResponse.agents);
+      setAgents(Array.isArray(agentResponse?.agents) ? agentResponse.agents : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load project assistants");
     }
@@ -160,7 +160,7 @@ export default function AgentBuilderClient() {
       setDetail(created);
       setSelectedAgentId(created.agent.id);
       const agentResponse = await listProjectAgents(selectedProjectId);
-      setAgents(agentResponse.agents);
+      setAgents(Array.isArray(agentResponse?.agents) ? agentResponse.agents : []);
       setMessage("Draft assistant created.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create assistant");
@@ -340,7 +340,7 @@ export default function AgentBuilderClient() {
       setDetail(created);
       setSelectedAgentId(created.agent.id);
       const agentResponse = await listProjectAgents(selectedProjectId);
-      setAgents(agentResponse.agents);
+      setAgents(Array.isArray(agentResponse?.agents) ? agentResponse.agents : []);
       setMessage("Duplicate saved as a new draft.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to duplicate assistant");
@@ -358,7 +358,7 @@ export default function AgentBuilderClient() {
     try {
       await disableBuilderAgent(detail.agent.id, selectedProjectId);
       const agentResponse = await listProjectAgents(selectedProjectId);
-      setAgents(agentResponse.agents);
+      setAgents(Array.isArray(agentResponse?.agents) ? agentResponse.agents : []);
       setMessage("Assistant disabled. Existing runs remain available.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to disable assistant");

@@ -39,7 +39,7 @@ export default function LearningWorkspaceClient() {
       return;
     }
     const response = await listLearningRecords(projectId);
-    setRecords(response.records);
+    setRecords(Array.isArray(response?.records) ? response.records : []);
   }, []);
 
   useEffect(() => {
@@ -82,7 +82,7 @@ export default function LearningWorkspaceClient() {
     setUseMessage(null);
     try {
       const response = await getLearningUsedByTask(selectedProjectId, taskId.trim());
-      setUses(response.uses);
+      setUses(Array.isArray(response?.uses) ? response.uses : []);
       if (response.uses.length === 0) {
         setUseMessage("No approved learning was applied to this task.");
       }

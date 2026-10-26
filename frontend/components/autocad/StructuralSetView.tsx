@@ -5,7 +5,12 @@ import { downloadStructuralSetPdf, type StructuralSet } from "@/lib/structural-s
 import { useState } from "react";
 
 /** One structural drawing set: sheet list + per-sheet preview (pan/zoom) + DXF downloads + combined PDF. */
-export function StructuralSetView({ set, compact = false }: { set: StructuralSet; compact?: boolean }) {
+export function StructuralSetView({ set: rawSet, compact = false }: { set: StructuralSet; compact?: boolean }) {
+  const set: StructuralSet = {
+    ...rawSet,
+    sheets: Array.isArray(rawSet?.sheets) ? rawSet.sheets : [],
+    notes: Array.isArray(rawSet?.notes) ? rawSet.notes : [],
+  };
   const [open, setOpen] = useState<string | null>(compact ? null : set.sheets[0]?.job_id ?? null);
   const [err, setErr] = useState("");
   const current = set.sheets.find((s) => s.job_id === open);

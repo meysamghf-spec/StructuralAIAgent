@@ -100,6 +100,9 @@ export async function fetchDownload(item: Pick<DownloadItem, "kind" | "name">, f
     headers: { "Content-Type": "application/json", ...getAuthHeaders() },
     body: requestBody(ctx, { kind: item.kind, name: item.name, format }),
     cache: "no-store",
+    signal: AbortSignal.timeout?.(240_000),
+  }).catch((e) => {
+    throw new Error(e?.name === "TimeoutError" ? "The server did not answer in time — please try again." : "Network error — please try again.");
   });
   if (!res.ok) await fail(res);
   return { blob: await res.blob(), filename: filenameFrom(res, `${item.name}.${format}`) };
@@ -110,16 +113,63 @@ export async function download(item: Pick<DownloadItem, "kind" | "name">, format
   save(blob, filename);
 }
 
-/** "Download all (ZIP)": every table, figure, drawing, model export and the report; also stored in project Files. */
-export async function downloadAll(ctx: DownloadContext): Promise<{ files: number; saved: number }> {
-  const res = await fetch(`${getApiBaseUrl()}/api/v1/frame3d/package`, {
+export type ZipProgress = { state: "starting" | "running" | "downloading" | "done"; elapsedS: number; files?: number };
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function jsonFetch(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: ctl.signal, cache: "no-store" });
+  } catch (e) {
+    if ((e as Error)?.name === "AbortError") throw new Error("The server did not answer in time — please try again.");
+    throw new Error("Network error — check your connection and try again.");
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/**
+ * "Download all (ZIP)": every table, figure, drawing, model export and the report; also stored in project Files.
+ * The server builds it in the background (30–120 s); we poll its status so the UI can show progress and never hangs.
+ */
+export async function downloadAll(
+  ctx: DownloadContext,
+  onProgress?: (p: ZipProgress) => void,
+): Promise<{ files: number; saved: number }> {
+  const base = `${getApiBaseUrl()}/api/v1/frame3d/package/jobs`;
+  const t0 = Date.now();
+  const el = () => Math.round((Date.now() - t0) / 1000);
+  onProgress?.({ state: "starting", elapsedS: 0 });
+  const res = await jsonFetch(base, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...getAuthHeaders() },
     body: requestBody({ ...ctx, saveToFiles: ctx.saveToFiles ?? true }),
-    cache: "no-store",
-  });
+  }, 60_000);
   if (!res.ok) await fail(res);
-  save(await res.blob(), filenameFrom(res, "frame-results.zip"));
-  const ids = (res.headers.get("x-file-ids") ?? "").split(",").filter(Boolean);
-  return { files: Number(res.headers.get("x-files") ?? 0), saved: ids.length };
+  let st = (await res.json()) as { job_id: string; state: string; error?: string | null; files?: number; file_ids?: string[] };
+  let netErrors = 0;
+  while (st.state === "running") {
+    if (Date.now() - t0 > 10 * 60_000) throw new Error("Building the ZIP took too long — please try again.");
+    onProgress?.({ state: "running", elapsedS: el() });
+    await sleep(2000);
+    try {
+      const r = await jsonFetch(`${base}/${st.job_id}`, { headers: { ...getAuthHeaders() } }, 20_000);
+      if (r.status === 404) throw new Error("The ZIP job was lost (server restarted) — please try again.");
+      if (!r.ok) throw new Error(`status ${r.status}`);
+      st = await r.json();
+      netErrors = 0;
+    } catch (e) {
+      if (String((e as Error).message).includes("lost")) throw e;
+      if (++netErrors > 15) throw new Error("Lost contact with the server while building the ZIP — please try again.");
+    }
+  }
+  if (st.state !== "done") throw new Error(st.error || "Building the ZIP failed — please try again.");
+  onProgress?.({ state: "downloading", elapsedS: el(), files: st.files });
+  const f = await jsonFetch(`${base}/${st.job_id}/file`, { headers: { ...getAuthHeaders() } }, 5 * 60_000);
+  if (!f.ok) await fail(f);
+  save(await f.blob(), filenameFrom(f, "frame-results.zip"));
+  onProgress?.({ state: "done", elapsedS: el(), files: st.files });
+  return { files: Number(st.files ?? 0), saved: (st.file_ids ?? []).length };
 }

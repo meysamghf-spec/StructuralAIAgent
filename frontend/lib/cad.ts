@@ -39,5 +39,5 @@ export async function listCadDrawings(projectId: string): Promise<CadDrawing[]> 
   const response = await apiFetch<{ project_id: string; drawings: CadDrawing[] }>(
     `/api/v1/cad/${projectId}/drawings`,
   );
-  return response.drawings;
+  return Array.isArray(response?.drawings) ? response.drawings : [];
 }

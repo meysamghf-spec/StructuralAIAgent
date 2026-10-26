@@ -28,7 +28,7 @@ export default function FilesWorkspaceClient() {
       return;
     }
     const response = await listProjectFiles(projectId);
-    setFiles(response.files);
+    setFiles(Array.isArray(response?.files) ? response.files : []);
   }, []);
 
   useEffect(() => {

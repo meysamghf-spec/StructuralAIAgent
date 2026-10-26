@@ -13,7 +13,7 @@ const FIELDS: Array<[FoundationField, string]> = [
 
 /** SAFE-like plan of the footings: contours, punching D/C, strip cut, extruded 3D and a properties panel. Generic layout. */
 export default function FoundationView({ data, qa, t }: { data: ViewerData; qa: number; t: T }) {
-  const fs = data.footings;
+  const fs = Array.isArray(data?.footings) ? data.footings : [];
   const [field, setField] = useState<FoundationField>("pressure");
   const [is3d, setIs3d] = useState(false);
   const [cutLine, setCutLine] = useState(0);

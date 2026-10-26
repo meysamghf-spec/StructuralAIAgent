@@ -22,7 +22,7 @@ export function useProjectFiles(projectId: string | null, refreshToken = 0) {
     listProjectFiles(projectId)
       .then((response) => {
         if (!cancelled) {
-          setFiles(response.files);
+          setFiles(Array.isArray(response?.files) ? response.files : []);
         }
       })
       .catch((err) => {

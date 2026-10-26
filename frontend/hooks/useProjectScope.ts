@@ -24,8 +24,9 @@ export function useProjectScope(initialProjectId?: string | null) {
 
   const refreshProjects = useCallback(async () => {
     const response = await apiFetch<ProjectListResponse>("/api/v1/projects");
-    setProjects(response.projects);
-    return response.projects;
+    const list = Array.isArray(response?.projects) ? response.projects : [];
+    setProjects(list);
+    return list;
   }, []);
 
   useEffect(() => {

@@ -49,7 +49,8 @@ export function mapStructuralSet(raw: unknown): StructuralSet | null {
 export async function listStructuralSets(projectId?: string | null): Promise<StructuralSet[]> {
   const q = projectId ? `?project_id=${encodeURIComponent(projectId)}` : "";
   const res = await ok(await fetch(`${base()}/structural-sets${q}`, { headers: getAuthHeaders() }));
-  return ((await res.json()) as { sets: StructuralSet[] }).sets;
+  const raw = ((await res.json()) as { sets?: unknown } | null)?.sets;
+  return Array.isArray(raw) ? (raw.map(mapStructuralSet).filter(Boolean) as StructuralSet[]) : [];
 }
 
 export async function generateStructuralSet(projectId: string | null): Promise<StructuralSet> {
