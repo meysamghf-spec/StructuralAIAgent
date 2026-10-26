@@ -130,6 +130,9 @@ class HumanApprovalService:
         approver: str,
         decision_note: str | None = None,
     ) -> HumanApprovalRequest:
+        existing = self.get_request(project_id, request_id)
+        if existing.status == ApprovalStatus.APPROVED:
+            return existing  # idempotent: a double click or stale panel must not error
         request = self._get_pending_request(project_id, request_id)
         resolved_at = datetime.now(UTC)
 
@@ -170,6 +173,9 @@ class HumanApprovalService:
         approver: str,
         rejection_reason: str,
     ) -> HumanApprovalRequest:
+        existing = self.get_request(project_id, request_id)
+        if existing.status == ApprovalStatus.REJECTED:
+            return existing
         request = self._get_pending_request(project_id, request_id)
         resolved_at = datetime.now(UTC)
 

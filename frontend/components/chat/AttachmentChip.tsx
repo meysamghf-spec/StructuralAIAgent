@@ -85,6 +85,7 @@ export function AttachmentChip({ attachment, onRemove }: AttachmentChipProps) {
 
         <p className="muted chat-attachment-meta">
 
+          {status === "Uploading…" ? <span className="chat-spinner small" aria-hidden="true" /> : null}
           {resolveType(attachment)} · {status}
 
         </p>
@@ -101,7 +102,12 @@ export function AttachmentChip({ attachment, onRemove }: AttachmentChipProps) {
 
       {onRemove ? (
 
-        <button type="button" className="chat-attachment-remove" onClick={onRemove}>
+        <button
+          type="button"
+          className="chat-attachment-remove"
+          onClick={onRemove}
+          aria-label={`Remove ${resolveFilename(attachment)}`}
+        >
 
           Remove
 

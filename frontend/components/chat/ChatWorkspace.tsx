@@ -3,6 +3,7 @@
 import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ChatContextPanel } from "@/components/chat/ChatContextPanel";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
+import { AssistantContextStrip } from "@/components/chat/AssistantContextStrip";
 import { ChatThread } from "@/components/chat/ChatThread";
 import { PromptExamples } from "@/components/chat/PromptExamples";
 import { useAuth } from "@/hooks/useAuth";
@@ -23,20 +24,35 @@ export default function ChatWorkspace() {
   const [contextOpen, setContextOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<ProjectFileSummary | null>(null);
   const [filesRefreshToken, setFilesRefreshToken] = useState(0);
+  const [assistant, setAssistant] = useState<string | null>(null);
+  const [urlProject, setUrlProject] = useState<string | null>(null);
+  const [urlPrompt, setUrlPrompt] = useState<string | null>(null);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setAssistant(params.get("assistant"));
+    setUrlProject(params.get("project"));
+    setUrlPrompt(params.get("prompt"));
+  }, []);
   const {
     projects,
     selectedProjectId,
     setSelectedProjectId,
     selectedProject,
     loading: projectsLoading,
-  } = useProjectScope();
+  } = useProjectScope(urlProject);
 
   const chat = useChat({
     isAuthenticated,
     authLoading,
     selectedProjectId,
     setSelectedProjectId,
+    assistant,
   });
+  const setChatContent = chat.setContent;
+  useEffect(() => {
+    // ?prompt=… (e.g. from the Optimization checklist) pre-fills the composer; the user still presses Send.
+    if (urlPrompt) setChatContent(urlPrompt.slice(0, 2000));
+  }, [urlPrompt, setChatContent]);
   const projectFiles = useProjectFiles(selectedProjectId || null, filesRefreshToken);
 
   useEffect(() => {
@@ -95,6 +111,7 @@ export default function ChatWorkspace() {
     onContentChange: chat.setContent,
     onModeChange: chat.setMode,
     onSend: () => void chat.handleSend(),
+    onStop: chat.handleStop,
     onPickFiles: (files: FileList | File[]) => {
       void chat.handlePickFiles(files).then(() => {
         setFilesRefreshToken((value) => value + 1);
@@ -186,6 +203,8 @@ export default function ChatWorkspace() {
         onNewChat={() => void chat.handleNewChat()}
         onSelectConversation={(id) => void chat.handleSelectConversation(id)}
         onDeleteConversation={(id) => void chat.handleDeleteConversation(id)}
+        onRenameConversation={(id, title) => void chat.handleRenameConversation(id, title)}
+        selectedProjectId={selectedProjectId || ""}
         userLabel={user?.display_name ?? user?.email ?? "User"}
         userEmail={user?.email ?? ""}
         onLogout={handleLogout}
@@ -291,6 +310,14 @@ export default function ChatWorkspace() {
 
         {showProminentPrompt ? (
           <div className="chat-hero">
+            {assistant ? (
+              <AssistantContextStrip
+                assistant={assistant}
+                onPick={handleExampleSelect}
+                onClear={() => setAssistant(null)}
+                disabled={chat.busy}
+              />
+            ) : null}
             <div className="chat-hero-intro">
               <p className="chat-hero-eyebrow">Structural Engineering AI</p>
               <h1 className="chat-hero-title">StructuralAIAgent</h1>
@@ -313,6 +340,14 @@ export default function ChatWorkspace() {
           </div>
         ) : (
           <div className="chat-conversation-panel">
+            {assistant ? (
+              <AssistantContextStrip
+                assistant={assistant}
+                onPick={handleExampleSelect}
+                onClear={() => setAssistant(null)}
+                disabled={chat.busy}
+              />
+            ) : null}
             <div className="chat-main-body">
               <ChatThread
                 messages={chat.messages}
@@ -323,6 +358,7 @@ export default function ChatWorkspace() {
                 projectId={selectedProjectId || null}
                 projectName={selectedProject?.name ?? null}
                 onApprovalResolved={() => void chat.handleApprovalResolved()}
+                onRegenerate={() => void chat.handleRegenerate()}
               />
             </div>
             <ChatComposer variant="default" {...composerProps} />

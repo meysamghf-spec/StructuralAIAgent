@@ -15,6 +15,7 @@ from app.application.agent_run_events import (
     EVENT_FAILED,
     EVENT_STARTED,
     EVENT_STEP,
+    EVENT_TOKEN,
     AgentRunProgressSink,
     emit_progress,
     safe_stream_error,
@@ -77,6 +78,8 @@ _AGENT_WORKSPACE_LINKS: dict[EngineeringAgentType, str] = {
     EngineeringAgentType.PROMPT_GENERATION_AGENT: "/workspace/agents",
     EngineeringAgentType.STRUCTURAL_ENGINEERING_AGENT: "/workspace/agents",
 }
+
+from app.application import assistant_chat as _assistant_chat  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +156,14 @@ class ConversationService:
         conversation = self._require_conversation(conversation_id, account)
         self._repo.delete(conversation.id)
 
+    def rename_conversation(self, conversation_id: UUID, account: AuthenticatedAccount, title: str) -> Conversation:
+        conversation = self._require_conversation(conversation_id, account)
+        clean = " ".join((title or "").split())[:120]
+        if not clean:
+            raise ValueError("Title must not be empty")
+        updated = self._repo.update_title(conversation.id, clean)
+        return updated or conversation
+
     def list_messages(
         self,
         conversation_id: UUID,
@@ -215,6 +226,7 @@ class ConversationService:
         attachment_file_ids: list[UUID] | None = None,
         actor_id: str,
         mode: str = "auto",
+        assistant: str | None = None,
         progress_sink: AgentRunProgressSink | None = None,
     ) -> tuple[ConversationMessage, ConversationMessage]:
         conversation = self._require_conversation(conversation_id, account)
@@ -296,6 +308,7 @@ class ConversationService:
             attachment_context=attachment_context_bundle,
             actor_id=actor_id,
             mode=mode,
+            assistant=assistant,
             progress_sink=progress_sink,
         )
 
@@ -333,6 +346,7 @@ class ConversationService:
         attachment_file_ids: list[UUID] | None = None,
         actor_id: str,
         mode: str = "auto",
+        assistant: str | None = None,
         cancelled: Event | None = None,
     ) -> Iterator[tuple[str, dict[str, Any]]]:
         events: Queue[tuple[str, dict[str, Any]] | None] = Queue()
@@ -353,6 +367,7 @@ class ConversationService:
                     attachment_file_ids=attachment_file_ids,
                     actor_id=actor_id,
                     mode=mode,
+                    assistant=assistant,
                     progress_sink=_QueueSink(),
                 )
             except Exception as exc:
@@ -427,13 +442,24 @@ class ConversationService:
         attachment_context: ChatAttachmentContextBundle | None,
         actor_id: str,
         mode: str = "auto",
+        assistant: str | None = None,
         progress_sink: AgentRunProgressSink | None = None,
     ) -> tuple[str, dict]:
+        agent_type = _assistant_chat.normalize_assistant(assistant)
+        if agent_type is not None:
+            reply = self._assistant_reply(conversation, account, agent_type, user_content, attachments)
+            if reply is not None:
+                reply[1]["selected_mode"] = mode or "auto"
+                return reply
         cad = self._maybe_run_autocad(conversation, account, user_content, attachments)
         if cad is not None:
             cad[1]["selected_mode"] = mode or "auto"
             return cad
         history = self._repo.list_messages(conversation.id, limit=_MAX_HISTORY_MESSAGES)
+        helper_reply = self._helper_reply(conversation, account, user_content, history, attachments, progress_sink)
+        if helper_reply is not None:
+            helper_reply[1]["selected_mode"] = mode or "auto"
+            return helper_reply
         enriched_request = enrich_user_request_with_attachments(
             user_content,
             attachments,
@@ -469,9 +495,36 @@ class ConversationService:
                 progress_sink=progress_sink,
             )
 
-        content, metadata = self._run_general_chat(enriched_request, history)
+        content, metadata = self._run_general_chat(enriched_request, history, account=account, progress_sink=progress_sink)
         metadata["selected_mode"] = mode or "auto"
         return content, metadata
+
+    def _helper_reply(self, conversation, account: AuthenticatedAccount, user_content: str, history,
+                      attachments, progress_sink) -> tuple[str, dict] | None:
+        """Platform helper: greetings, 'how do I...' questions, bug reports and issue status. Engineering stays with the engines."""
+        if attachments:
+            return None
+        try:
+            from app.application.platform_helper_factory import get_helper_service
+
+            svc = get_helper_service()
+            if not svc.classify(user_content).handled_by_helper:
+                return None
+            pairs = [("user" if m.role == MessageRole.USER else "assistant", m.content)
+                     for m in history if m.role in (MessageRole.USER, MessageRole.ASSISTANT)]
+            if pairs and pairs[-1] == ("user", user_content):
+                pairs = pairs[:-1]
+            reply = svc.handle(
+                user_content, pairs, account_id=account.account_id,
+                project_id=str(conversation.project_id or ""), conversation_id=str(conversation.id),
+                context={"project_selected": "yes" if conversation.project_id else "no"},
+                on_token=(lambda d: emit_progress(progress_sink, EVENT_TOKEN, {"delta": d})) if progress_sink else None)
+            if reply is None:
+                return None
+            return reply.text, reply.to_metadata()
+        except Exception:  # noqa: BLE001 - the helper must never break the chat
+            logger.exception("platform helper failed")
+            return None
 
     def _maybe_run_autocad(self, conversation, account: AuthenticatedAccount, user_content: str,
                            attachments: list[MessageAttachment]) -> tuple[str, dict] | None:
@@ -595,6 +648,34 @@ class ConversationService:
                                   "structural_set": {"id": meta["id"], "sheets": meta["sheets"], "pdf": meta["pdf"],
                                                      "pdf_file_id": meta["pdf_file_id"], "notes": meta["notes"]}}
 
+    def _assistant_reply(self, conversation, account, agent_type: str, text: str, attachments):
+        """Answer from the selected assistant's summariser, or None to let the regular engines run."""
+        try:
+            history = self._repo.list_messages(conversation.id, limit=_MAX_HISTORY_MESSAGES)
+            prior = [m.content for m in reversed(history) if m.role == MessageRole.USER]
+            if _assistant_chat.wants_engine(text, has_attachments=bool(attachments), prior_user_texts=prior):
+                return None
+            payload = _assistant_chat.latest_payload_from_messages(self._repo.list_messages(conversation.id))
+            if payload is None and conversation.project_id is not None:
+                payload = self._project_frame_payload(account, conversation.project_id)
+            content, meta = _assistant_chat.assistant_reply(agent_type, text, payload)
+            if payload is not None and agent_type in ("ANALYSIS_AGENT", "LOAD_ASSESSMENT_AGENT", "SEISMIC_AGENT",
+                                                       "CONCRETE_DESIGN_AGENT", "VALIDATION_AGENT", "STRUCTURAL_MODELING_AGENT"):
+                pass  # summaries are text only; the full result card stays on the run that produced it
+            return content, meta
+        except Exception:  # noqa: BLE001 - never block the chat on a summariser problem
+            logger.exception("assistant summariser failed")
+            return None
+
+    def _project_frame_payload(self, account, project_id):
+        """Rebuild the newest frame3d payload of this project from its stored run inputs (deterministic)."""
+        from app.application.frame3d_chat_analysis import build_frame3d_payload, frame3d_spec, inputs_from_dict
+
+        for run in self.list_project_chat_runs(account, project_id):
+            if run.get("kind") == "frame3d_analysis" and isinstance(run.get("inputs"), dict):
+                return build_frame3d_payload(frame3d_spec(inputs_from_dict(run["inputs"])))
+        return None
+
     def _run_project_orchestration(
         self,
         *,
@@ -673,6 +754,9 @@ class ConversationService:
         self,
         user_content: str,
         history: list[ConversationMessage],
+        *,
+        account: AuthenticatedAccount | None = None,
+        progress_sink: AgentRunProgressSink | None = None,
     ) -> tuple[str, dict]:
         messages = [
             AIMessage(
@@ -695,16 +779,17 @@ class ConversationService:
 
         from app.application import frame_optimizer as fopt
 
-        if fopt.is_optimize_request(user_content):
+        opt_text = fopt.pending_optimize_text(user_content, [m.content for m in reversed(history) if m.role == MessageRole.USER])
+        if opt_text is not None:
             try:
                 prior = fopt.prior_spec_from_texts(
                     [m.content for m in reversed(history) if m.role == MessageRole.USER]
                 )
-                res = fopt.build_optimization_from_chat(user_content, prior, {"time_budget_s": 35})
+                res = fopt.build_optimization_from_chat(opt_text, prior, {"time_budget_s": 35})
                 if res is not None:
                     lang = "fa" if any("\u0600" <= ch <= "\u06ff" for ch in user_content) else "en"
                     return fopt.optimization_markdown(res, lang), {"mode": "rule_based", "intent": "frame_optimization", "engineering_results": res}
-                return fopt.missing_frame_message(user_content), {"mode": "rule_based", "intent": "frame_optimization"}
+                return fopt.missing_frame_checklist(opt_text), {"mode": "rule_based", "intent": "frame_optimization", "checklist": True}
             except Exception:  # noqa: BLE001
                 logger.exception("frame optimizer failed")
 
@@ -723,6 +808,22 @@ class ConversationService:
         except Exception:  # noqa: BLE001 - fall back to the chat model / help text
             logger.exception("rule-based chat engine failed")
 
+        try:
+            from app.application.platform_helper_factory import get_helper_service
+
+            svc = get_helper_service()
+            if svc.llm.configured:
+                pairs = [("user" if m.role == MessageRole.USER else "assistant", m.content)
+                         for m in history[-_MAX_HISTORY_MESSAGES:] if m.role in (MessageRole.USER, MessageRole.ASSISTANT)]
+                if pairs and pairs[-1] == ("user", user_content):
+                    pairs = pairs[:-1]
+                reply = svc.converse(
+                    user_content, pairs, intent="general_chat",
+                    on_token=(lambda d: emit_progress(progress_sink, EVENT_TOKEN, {"delta": d})) if progress_sink else None)
+                if reply.provider != "stub" and reply.text.strip():
+                    return reply.text, reply.to_metadata()
+        except Exception:  # noqa: BLE001
+            logger.exception("platform helper chat failed")
         try:
             response = self._ai_gateway.complete(
                 AICompletionRequest(model=_CHAT_MODEL, messages=messages)
@@ -992,6 +1093,10 @@ def _format_execution_response(record) -> tuple[str, dict]:
             sections.append(markdown)
         else:
             sections.append("### Structural analysis (Demo)\nDeterministic simply-supported beam results are available.")
+
+    _so = record.agent_result.structured_output if record.agent_result else None
+    if isinstance(_so, dict) and _so.get("checklist") and isinstance(_so.get("status_message"), str):
+        sections = [_so["status_message"]]  # prerequisites checklist replaces the generic "Completed" report
 
     if record.agent_result and record.agent_result.validation_information:
         warnings = record.agent_result.validation_information.get("warnings")
@@ -1278,6 +1383,9 @@ def _extract_engineering_results(record) -> dict | None:
     frame = output.get("frame3d_analysis")
     if isinstance(frame, dict):
         return frame
+    opt = output.get("frame_optimization")
+    if isinstance(opt, dict):
+        return opt
     aci = output.get("aci_rc_beam")
     return aci if isinstance(aci, dict) else None
 

@@ -4,6 +4,7 @@ import { ProjectScopePanel } from "@/components/workspace/ProjectScopePanel";
 import { useProjectScope } from "@/hooks/useProjectScope";
 import { runProjectValidation, type ValidationReportResponse } from "@/lib/api";
 import { getValidationStatusLabel } from "@/lib/workspace";
+import { downloadTextFile, validationReportToCsv, validationReportToJson, validationReportToMarkdown } from "@/lib/validation-export";
 import { useState } from "react";
 
 export default function ValidationWorkspaceClient() {
@@ -32,7 +33,7 @@ export default function ValidationWorkspaceClient() {
       <header className="page-header">
         <p className="eyebrow">Quality</p>
         <h2>Validation</h2>
-        <p className="subtitle">Check configuration and code setup before analysis.</p>
+        <p className="subtitle">Check configuration and code setup before analysis. The default profile is the Iranian national set (Mabhas 6/9/10 + Standard 2800).</p>
       </header>
 
       <ProjectScopePanel
@@ -63,6 +64,17 @@ export default function ValidationWorkspaceClient() {
               </li>
             ))}
           </ul>
+          <div className="button-row" aria-label="Download validation report">
+            <button className="button secondary" type="button" onClick={() => downloadTextFile("validation-report.csv", validationReportToCsv(report), "text/csv")}>
+              Download CSV
+            </button>
+            <button className="button secondary" type="button" onClick={() => downloadTextFile("validation-report.json", validationReportToJson(report), "application/json")}>
+              Download JSON
+            </button>
+            <button className="button secondary" type="button" onClick={() => downloadTextFile("validation-report.md", validationReportToMarkdown(report), "text/markdown")}>
+              Download report (.md)
+            </button>
+          </div>
         </section>
       ) : null}
     </section>

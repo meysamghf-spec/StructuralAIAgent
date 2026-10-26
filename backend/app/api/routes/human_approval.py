@@ -23,7 +23,7 @@ from app.api.schemas.human_approval import (
     ApprovalRejectRequest,
     HumanApprovalResponse,
 )
-from app.application import revision_workflow
+from app.application import approval_summary, revision_workflow
 from app.application.human_approval_service import HumanApprovalService
 from app.application.project_access_service import ProjectAccessService
 from app.domain.models.human_approval import ApprovalStatus
@@ -64,6 +64,15 @@ def list_approval_requests(
     return ApprovalListResponse(
         requests=[HumanApprovalResponse.from_domain(item) for item in requests]
     )
+
+
+@router.get("/summary")
+def get_project_approval_summary(
+    approval_service: Annotated[HumanApprovalService, Depends(get_human_approval_service)],
+    project: Annotated[Project, Depends(get_accessible_project_from_query)],
+) -> dict:
+    """Why a project is (not) approved: derived from the real approval items."""
+    return approval_summary.summarize(approval_service.list_requests(project.id))
 
 
 @router.get("/pending", response_model=ApprovalListResponse)
@@ -127,6 +136,7 @@ def reject_request(
     project: Annotated[Project, Depends(get_accessible_project_from_query)],
     account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
 ) -> HumanApprovalResponse:
+    already_rejected = approval_service.get_request(project.id, request_id).status.value == "REJECTED"
     request = approval_service.reject_request(
         project.id,
         request_id,
@@ -134,6 +144,8 @@ def reject_request(
         rejection_reason=body.rejection_reason,
     )
     response = HumanApprovalResponse.from_domain(request)
+    if already_rejected:
+        return response  # idempotent repeat: do not spawn another revision
     outcome = revision_workflow.handle_rejection(approval_service, project.id, request, body.rejection_reason, account.account_id)
     if outcome["outcome"] == "revised":
         changes = "; ".join(f"{c['key']}: {c['old']} → {c['new']}" for c in outcome["changes"])

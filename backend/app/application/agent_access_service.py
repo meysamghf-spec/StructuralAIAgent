@@ -54,6 +54,9 @@ class AgentAccessService:
         *,
         project_id: UUID | None = None,
     ) -> list[AgentDefinition]:
+        from app.application.platform_assistants import ensure_platform_assistants
+
+        ensure_platform_assistants(self._definitions)
         if project_id is not None:
             self._project_access.require_project(project_id, account)
             project_agents = self._definitions.list_for_project(project_id)

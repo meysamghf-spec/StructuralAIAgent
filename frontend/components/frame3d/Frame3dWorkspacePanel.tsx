@@ -33,12 +33,23 @@ const FoundationView = dynamic(() => import("@/components/frame3d/FoundationView
 
 type Mode = "model" | "analysis" | "results" | "design" | "foundation";
 
-export async function runFrame3d(inputs: Record<string, unknown>): Promise<unknown> {
+export async function runFrame3d(inputs: Record<string, unknown>, assumeDefaults = false): Promise<unknown> {
   const res = await apiFetch<{ frame3d_analysis: unknown }>("/api/v1/frame3d/run", {
     method: "POST",
-    body: JSON.stringify({ inputs }),
+    body: JSON.stringify({ inputs, assume_defaults: assumeDefaults }),
   });
   return res.frame3d_analysis;
+}
+
+export function isIncompleteFramePayload(payload: unknown): boolean {
+  const p = payload as { status?: string; missing_inputs?: unknown[] } | null;
+  return !!p && typeof p === "object" && p.status === "MISSING_REQUIRED_INPUT" && Array.isArray(p.missing_inputs) && p.missing_inputs.length > 0
+    && !p.missing_inputs.includes("frame_model");
+}
+
+export function incompleteInputs(payload: unknown): Record<string, unknown> | null {
+  const p = payload as { inputs?: Record<string, unknown> } | null;
+  return p && p.inputs && typeof p.inputs === "object" ? p.inputs : null;
 }
 
 export function Frame3dWorkspacePanel({ mode }: { mode: Mode }) {
@@ -77,12 +88,12 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
     };
   }, [mode]);
 
-  async function run(inputs: Record<string, unknown>) {
+  async function run(inputs: Record<string, unknown>, assumeDefaults = false) {
     setBusy(true);
     setError(null);
     setNote(null);
     try {
-      const p = await runFrame3d(inputs);
+      const p = await runFrame3d(inputs, assumeDefaults);
       saveFrame3dInputs(projectId, inputs);
       saveFrame3dPayload(projectId, p);
       setPayload(p);
@@ -101,6 +112,7 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, payload, projectId]);
 
+  const incomplete = isIncompleteFramePayload(payload);
   const results = payload ? mapFrame3dResults(payload) : null;
   const saved = loadFrame3dInputs(projectId);
   const groups = Array.from(new Set(FRAME_FORM_FIELDS.map((f) => f.group)));
@@ -111,6 +123,22 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
       <p className="muted">
         {t("Uses the built-in 3D frame solver, Standard 2800, Mabhas 9 design and isolated footings — same engine as the chat.")}
       </p>
+      {incomplete ? (
+        <div className="frame3d-repair" data-testid="frame3d-repair">
+          <strong>{t("This model is incomplete")}</strong>
+          <p className="muted" style={{ margin: "0.3rem 0" }}>
+            {t("Some required inputs are missing. I can complete them with typical values (4 storeys, 3×3 bays of 5 m, 3.2 m storey height, Iranian codes) and re-run; the assumptions are listed in the result.")}
+          </p>
+          <button
+            className="button"
+            type="button"
+            disabled={busy}
+            onClick={() => void run({ ...((incompleteInputs(payload) ?? {}) as Record<string, unknown>), lang }, true)}
+          >
+            {t("Complete with defaults and run")}
+          </button>
+        </div>
+      ) : null}
       {mode === "model" ? (
         <form
           className="frame3d-form"

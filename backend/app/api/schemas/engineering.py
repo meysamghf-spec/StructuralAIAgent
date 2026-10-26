@@ -293,7 +293,12 @@ class OptimizationReadinessResponse(BaseModel):
     usable_analysis_runs: int = 0
     available_design_runs: int = 0
     usable_design_runs: int = 0
+    checklist: dict[str, Any] = Field(default_factory=dict)
 
     @classmethod
     def from_domain(cls, report) -> OptimizationReadinessResponse:
-        return cls.model_validate(report.model_dump(mode="json"))
+        from app.application.optimization_checklist import checklist_for_readiness
+
+        data = report.model_dump(mode="json")
+        data["checklist"] = checklist_for_readiness(data, str(data.get("project_id")))
+        return cls.model_validate(data)

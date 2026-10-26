@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApprovalReviewPanel } from "@/components/agents/ApprovalReviewPanel";
 import type { ChatMessage as ApiChatMessage } from "@/lib/chat-api";
@@ -38,6 +38,7 @@ type ChatThreadProps = {
   projectId: string | null;
   projectName?: string | null;
   onApprovalResolved?: () => void;
+  onRegenerate?: () => void;
 };
 
 function toUiMessage(message: ApiChatMessage): UiChatMessage {
@@ -72,12 +73,63 @@ export function ChatThread({
   projectId,
   projectName,
   onApprovalResolved,
+  onRegenerate,
 }: ChatThreadProps) {
   const endRef = useRef<HTMLDivElement>(null);
+  const threadRef = useRef<HTMLDivElement>(null);
+  const stickRef = useRef(true);
+  const [showJump, setShowJump] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const scroller = useCallback(
+    () => (threadRef.current?.closest(".chat-main-body") as HTMLElement | null) ?? null,
+    [],
+  );
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = scroller();
+    if (!el) {
+      return;
+    }
+    const onScroll = () => {
+      const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+      stickRef.current = nearBottom;
+      setShowJump(!nearBottom);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [scroller, loadingMessages, messages.length === 0]);
+
+  const firstMessageId = messages[0]?.id;
+  useEffect(() => {
+    // A conversation was opened/loaded: jump straight to the newest message (no animation).
+    if (loadingMessages) {
+      return;
+    }
+    stickRef.current = true;
+    setShowJump(false);
+    endRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+  }, [loadingMessages, firstMessageId]);
+
+  useEffect(() => {
+    // Auto-scroll only while the reader is at the bottom (so streaming does not yank them away).
+    if (stickRef.current) {
+      endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    }
   }, [messages, busy, loadingMessages]);
+
+  function jumpToLatest() {
+    stickRef.current = true;
+    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    setShowJump(false);
+  }
+
+  function copyMessage(id: string, text: string) {
+    void navigator.clipboard?.writeText(text).then(() => {
+      setCopiedId(id);
+      setTimeout(() => setCopiedId((cur) => (cur === id ? null : cur)), 1500);
+    });
+  }
 
   if (loadingMessages) {
     return (
@@ -104,9 +156,12 @@ export function ChatThread({
   );
 
   return (
-    <div className="chat-thread">
-      {messages.map((rawMessage) => {
+    <div className="chat-thread" ref={threadRef}>
+      {messages.map((rawMessage, messageIndex) => {
         const message = toUiMessage(rawMessage);
+        const isLastAssistant =
+          message.role === "assistant" && messageIndex === messages.length - 1 && !busy;
+        const tokenStreaming = rawMessage.metadata?.token_streaming === true && rawMessage.metadata?.streaming === true;
         return (
           <article
             key={message.id}
@@ -114,6 +169,7 @@ export function ChatThread({
               message.role === "user" ? "chat-message chat-message-user" : "chat-message chat-message-assistant"
             }
           >
+            <div className="chat-message-avatar" aria-hidden="true">{message.role === "user" ? "You" : "AI"}</div>
             <p className="chat-message-role">{message.role === "user" ? "You" : "Agent"}</p>
             <div className="chat-message-body">
               {message.attachments.length > 0 ? (
@@ -123,7 +179,14 @@ export function ChatThread({
                   ))}
                 </div>
               ) : null}
+              {message.role === "assistant" && rawMessage.metadata?.streaming === true && !message.content.trim() ? (
+                <div className="chat-typing-indicator" aria-label="Assistant is responding"><span /><span /><span /></div>
+              ) : null}
               <MessageContent content={message.content} />
+              {tokenStreaming ? <span className="chat-stream-caret" aria-hidden="true" /> : null}
+              {message.role === "assistant" && rawMessage.metadata?.stopped === true ? (
+                <p className="muted chat-stopped-note">Stopped</p>
+              ) : null}
               {message.role === "assistant" && message.autocadResult ? (
                 <AutocadDrawingCard
                   jobId={message.autocadResult.jobId}
@@ -241,6 +304,23 @@ export function ChatThread({
                 </div>
               ) : null}
             </div>
+            {message.content.trim() && !rawMessage.metadata?.optimistic ? (
+              <div className="chat-message-tools">
+                <button
+                  type="button"
+                  className="chat-tool-button"
+                  aria-label="Copy message"
+                  onClick={() => copyMessage(message.id, message.content)}
+                >
+                  {copiedId === message.id ? "Copied ✓" : "Copy"}
+                </button>
+                {isLastAssistant && onRegenerate ? (
+                  <button type="button" className="chat-tool-button" aria-label="Regenerate response" onClick={onRegenerate}>
+                    Regenerate
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
           </article>
         );
       })}
@@ -261,6 +341,11 @@ export function ChatThread({
         </article>
       ) : null}
       <div ref={endRef} />
+      {showJump ? (
+        <button type="button" className="chat-jump-latest" onClick={jumpToLatest} aria-label="Scroll to latest message">
+          ↓ Latest
+        </button>
+      ) : null}
     </div>
   );
 }

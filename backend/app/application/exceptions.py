@@ -632,7 +632,8 @@ class ApprovalInvalidStateError(ApplicationError):
     ) -> None:
         super().__init__(
             "APPROVAL_INVALID_STATE",
-            "Approval request is not in a valid state for this operation",
+            f"Approval request is already {current_status.lower()} and can no longer be changed "
+            f"(درخواست تأیید قبلاً «{current_status.lower()}» شده و دیگر قابل تغییر نیست)",
             status_code=409,
             details={
                 "project_id": str(project_id),

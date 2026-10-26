@@ -65,6 +65,7 @@ export type EngineeringAgentType =
   | "REPORTING_AGENT"
   | "DOCUMENT_INTERPRETATION_AGENT"
   | "PROMPT_GENERATION_AGENT"
+  | "OPTIMIZATION_AGENT"
   | "STRUCTURAL_ENGINEERING_AGENT";
 
 export type AgentDefinitionSummary = {
@@ -298,6 +299,22 @@ export async function listApprovals(
     ? `/api/v1/approvals?project_id=${projectId}&status=${status}`
     : `/api/v1/approvals?project_id=${projectId}`;
   return apiFetch<ApprovalListResponse>(query);
+}
+
+export async function getApprovalRequest(projectId: string, approvalRequestId: string): Promise<ApprovalSummary> {
+  return apiFetch<ApprovalSummary>(`/api/v1/approvals/${approvalRequestId}?project_id=${projectId}`);
+}
+
+export type ProjectApprovalSummary = {
+  state: "approved" | "pending" | "needs_revision" | "no_runs";
+  project_approved: boolean;
+  counts: { pending: number; approved: number; rejected: number; cancelled: number; total: number; chains: number };
+  blockers: { code: string; en: string; fa: string }[];
+};
+
+/** Why a project is (not) approved, derived from the real approval items. */
+export async function getProjectApprovalSummary(projectId: string): Promise<ProjectApprovalSummary> {
+  return apiFetch<ProjectApprovalSummary>(`/api/v1/approvals/summary?project_id=${projectId}`);
 }
 
 export async function listPendingApprovals(projectId: string): Promise<ApprovalListResponse> {

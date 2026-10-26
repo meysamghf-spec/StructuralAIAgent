@@ -1068,7 +1068,15 @@ def _build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None 
         else:
             msg = ("Please specify: " + ", ".join(_LABELS[m] for m in missing)
                    + ". Example: `3-storey RC moment frame, 2x2 bays of 5 m, storey height 3.2 m, C=0.165`.")
-        return _loc({**common, "status": "MISSING_REQUIRED_INPUT", "missing_inputs": missing, "message": msg, "warnings": [msg]})
+        d = fu.DEFAULTS
+        if inp.lang == "fa":
+            msg += (f" یا بنویسید «**پیش‌فرض‌ها را فرض کن**» تا با مقادیر معمول ({d['storeys']} طبقه، {d['bays_x']}×{d['bays_y']} دهانه "
+                    f"{d['bay_x_m']:g} متری، ارتفاع طبقه {d['storey_height_m']:g} متر، آیین‌نامه‌های ایران) ادامه دهم؛ فرض‌ها را در نتیجه می‌بینید.")
+        else:
+            msg += (f" Or reply **assume defaults** and I will continue with typical values ({d['storeys']} storeys, {d['bays_x']}x{d['bays_y']} bays of "
+                    f"{d['bay_x_m']:g} m, storey height {d['storey_height_m']:g} m, Iranian codes); the assumptions are listed in the result.")
+        return _loc({**common, "status": "MISSING_REQUIRED_INPUT", "missing_inputs": missing, "message": msg, "warnings": [msg],
+                     "can_assume_defaults": True, "defaults_if_assumed": dict(d), "assume_command": {"en": "assume defaults", "fa": "پیش‌فرض‌ها را فرض کن"}})
     limits = []
     if inp.storeys > MAX_STOREYS: limits.append(f"at most {MAX_STOREYS} storeys")
     if max(inp.bays_x, inp.bays_y) > MAX_BAYS: limits.append(f"at most {MAX_BAYS} bays per direction")

@@ -3,6 +3,8 @@
 import { ProjectScopePanel } from "@/components/workspace/ProjectScopePanel";
 import { useProjectScope } from "@/hooks/useProjectScope";
 import { FrameDownloads } from "@/components/frame3d/FrameDownloads";
+import { OptimizationChecklist } from "@/components/optimization/OptimizationChecklist";
+import { isChecklist } from "@/lib/optimization-checklist";
 import { FrameOptimizerPanel } from "@/components/optimization/FrameOptimizerPanel";
 import {
   formatMemberOptimizationResults,
@@ -201,6 +203,9 @@ export default function OptimizationWorkspaceClient() {
                 {getOptimizationStatusLabel(readiness.readiness_status)}
               </p>
               <p className="muted">{readiness.summary}</p>
+              {isChecklist(readiness.checklist) ? (
+                <OptimizationChecklist checklist={readiness.checklist} projectId={selectedProjectId} />
+              ) : null}
               <details className="meta-summary">
                 <summary>Details</summary>
               <ul className="feature-list">

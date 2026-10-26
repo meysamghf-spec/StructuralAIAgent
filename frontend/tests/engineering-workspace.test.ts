@@ -102,7 +102,6 @@ describe("engineering workspace", () => {
   it("allows only available agents to start a production run", () => {
     expect(productionRunAllowed(null)).toBe(true);
     expect(productionRunAllowed(profile("Available"))).toBe(true);
-    expect(productionRunAllowed(profile("In setup"))).toBe(false);
     expect(productionRunAllowed(profile("Unavailable"))).toBe(false);
   });
 

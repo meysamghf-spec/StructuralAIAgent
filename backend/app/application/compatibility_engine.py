@@ -31,7 +31,13 @@ class CompatibilityEngine:
                 )
             )
 
-        if configuration.loading_edition != configuration.seismic_edition and configuration.seismic_edition:
+        same_family = (
+            configuration.seismic_standard is not None
+            and configuration.loading_standard.family == configuration.seismic_standard.family
+        )
+        # Different standards (e.g. Mabhas 6 loads vs Standard 2800 seismic) legitimately carry different
+        # editions; only a loading/seismic pair issued under the same standard family can be mismatched.
+        if same_family and configuration.loading_edition != configuration.seismic_edition and configuration.seismic_edition:
             conflicts.append(
                 CodeConflictReport(
                     conflict_type="EDITION_MISMATCH",

@@ -27,6 +27,7 @@ export const AGENT_RUN_SSE_EVENTS = {
   approvalRequired: "agent_run.approval_required",
   completed: "agent_run.completed",
   failed: "agent_run.failed",
+  token: "agent_run.token",
 } as const;
 
 export function emptyAgentRun(overrides: Partial<AgentRun> = {}): AgentRun {

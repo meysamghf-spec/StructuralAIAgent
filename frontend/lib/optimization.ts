@@ -59,6 +59,7 @@ export type OptimizationReadinessResponse = {
   usable_analysis_runs: number;
   available_design_runs: number;
   usable_design_runs: number;
+  checklist?: import("./optimization-checklist").OptimizationChecklist;
 };
 
 export type OptimizationRunListResponse = {

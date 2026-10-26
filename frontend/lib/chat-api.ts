@@ -84,6 +84,13 @@ export async function getConversation(conversationId: string): Promise<ChatConve
   return chatFetch<ChatConversation>(`/api/v1/conversations/${conversationId}`);
 }
 
+export async function renameConversation(conversationId: string, title: string): Promise<ChatConversation> {
+  return chatFetch<ChatConversation>(`/api/v1/conversations/${conversationId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ title }),
+  });
+}
+
 export async function deleteConversation(conversationId: string): Promise<void> {
   await chatFetch<void>(`/api/v1/conversations/${conversationId}`, { method: "DELETE" });
 }
@@ -117,6 +124,7 @@ export async function sendChatMessage(input: {
   project_id?: string;
   attachments?: string[];
   mode?: string;
+  assistant?: string;
 }): Promise<ChatSendResponse> {
   return chatFetch("/api/v1/chat", {
     method: "POST",
@@ -166,6 +174,7 @@ export async function streamChatMessage(
     project_id?: string;
     attachments?: string[];
     mode?: string;
+    assistant?: string;
   },
   options: {
     onEvent: (event: AgentRunSseEvent) => void;

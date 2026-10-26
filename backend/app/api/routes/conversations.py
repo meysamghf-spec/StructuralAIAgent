@@ -5,7 +5,8 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from pydantic import BaseModel, Field
 
 from app.api.deps import (
     get_accessible_project,
@@ -63,6 +64,24 @@ def get_conversation(
     account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
 ) -> ConversationResponse:
     conversation = service.get_conversation(conversation_id, account)
+    return ConversationResponse.from_domain(conversation)
+
+
+class RenameConversationRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+
+
+@router.patch("/{conversation_id}", response_model=ConversationResponse)
+def rename_conversation(
+    conversation_id: UUID,
+    body: RenameConversationRequest,
+    service: Annotated[ConversationService, Depends(get_conversation_service)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+) -> ConversationResponse:
+    try:
+        conversation = service.rename_conversation(conversation_id, account, body.title)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return ConversationResponse.from_domain(conversation)
 
 

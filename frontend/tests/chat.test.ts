@@ -13,6 +13,8 @@ import {
   buildSendPayload,
 
   canSendMessage,
+  sendBlockReason,
+  ATTACHMENT_ONLY_INSTRUCTION,
 
   createOptimisticMessageId,
 
@@ -1019,5 +1021,61 @@ describe("shared navigation", () => {
       expect(src).toContain("<MainNav");
       expect(src).not.toContain("nav-link");
     }
+  });
+});
+
+
+describe("composer attach send state", () => {
+  const ready = (name: string, type: string) => ({
+    localId: name,
+    file: new File(["x"], name),
+    uploaded: {
+      file_id: `id-${name}`,
+      filename: name,
+      file_type: type,
+      content_type: "application/octet-stream",
+      status: "ready",
+      parsing_status: "COMPLETE",
+      extraction_status: "COMPLETE",
+    },
+  });
+
+  it.each([
+    ["spec.pdf", "PDF"],
+    ["loads.xlsx", "SPREADSHEET"],
+    ["plan.dxf", "UNKNOWN"],
+    ["photo.png", "IMAGE"],
+  ])("enables Send for an attachment-only message with %s", (name, type) => {
+    const attachments = [ready(name, type)] as never;
+    expect(canSendMessage("", attachments)).toBe(true);
+    expect(sendBlockReason("", attachments)).toBeNull();
+    const payload = buildSendPayload("", attachments);
+    expect(payload.content).toBe(ATTACHMENT_ONLY_INSTRUCTION);
+    expect(payload.attachment_file_ids).toEqual([`id-${name}`]);
+  });
+
+  it("keeps user text when sending with an attachment", () => {
+    const payload = buildSendPayload("  check drift ", [ready("a.pdf", "PDF")] as never);
+    expect(payload.content).toBe("check drift");
+  });
+
+  it("disables Send only while uploading, then re-enables", () => {
+    const uploading = [{ localId: "1", file: new File(["x"], "a.pdf"), uploading: true }] as never;
+    expect(canSendMessage("", uploading)).toBe(false);
+    expect(canSendMessage("hello", uploading)).toBe(false);
+    expect(sendBlockReason("", uploading)).toBe("uploading");
+    expect(canSendMessage("", [ready("a.pdf", "PDF")] as never)).toBe(true);
+  });
+
+  it("explains a failed upload and still allows text-only send", () => {
+    const failed = [{ localId: "1", file: new File(["x"], "a.pdf"), error: "Upload failed (413)" }] as never;
+    expect(canSendMessage("", failed)).toBe(false);
+    expect(sendBlockReason("", failed)).toBe("upload_failed");
+    expect(canSendMessage("hello", failed)).toBe(true);
+    expect(buildSendPayload("hello", failed).attachment_file_ids).toEqual([]);
+  });
+
+  it("does not send an empty message", () => {
+    expect(sendBlockReason("   ", [])).toBe("empty");
   });
 });

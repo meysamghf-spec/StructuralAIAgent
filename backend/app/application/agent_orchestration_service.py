@@ -825,15 +825,15 @@ class AgentOrchestrationService:
 
     def _resolve_agent_by_type(self, agent_type: EngineeringAgentType) -> AgentDefinition:
         definition = self._definitions.get_by_agent_type(agent_type)
-        if definition is not None:
+        if (
+            definition is not None
+            and (definition.project_id is not None or definition.status == AgentDefinitionStatus.ACTIVE)
+            and not definition.configuration.get("auto_provisioned")
+        ):
             return definition
-        return self._definitions.create(
-            key=f"{agent_type.value.lower()}",
-            name=agent_type.value.replace("_", " ").title(),
-            description=f"Auto-provisioned handler for {agent_type.value}",
-            agent_type=agent_type,
-            configuration={"auto_provisioned": True},
-        )
+        from app.application.platform_assistants import provision_platform_assistant
+
+        return provision_platform_assistant(self._definitions, agent_type)
 
     def _resolve_executable_version(
         self,
