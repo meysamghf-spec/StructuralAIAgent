@@ -205,6 +205,9 @@ def build_e2k(inp, raw: dict[str, Any], design: dict[str, Any] | None = None) ->
     add("")
     add("$ ANALYSIS OPTIONS")
     add('  ACTIVEDOF "UX UY UZ RX RY RZ"  ')
+    if ex.get("p_delta_applied"):
+        add("$ NOTE: the SAIA analysis included P-Delta (second-order K + K_G); this file leaves the ETABS P-Delta option unset")
+        add("$ (METHOD NONE), so ETABS drifts and forces will be first-order. Set P-Delta in ETABS to compare.")
     add('  PDELTA  METHOD "NONE"  ')
     add("")
     add("$ MASS SOURCE")

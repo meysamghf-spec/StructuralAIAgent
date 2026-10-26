@@ -140,6 +140,26 @@ def _load_assessment(p: dict, fa: bool) -> str:
     return "\n".join(lines)
 
 
+def _stability_note(pd: dict | None, fa: bool) -> str:
+    """Honest P-Δ / stability line from the analysis payload (``p_delta``)."""
+    pd = pd or {}
+    th = pd.get("theta_max") or {}
+    if not th:
+        return ("> پایداری: برای این تحلیل ضریب پایداری θ محاسبه نشده؛ اثر P-Δ باید جداگانه کنترل شود." if fa
+                else "> Stability: no stability index θ was computed for this analysis; check P-Δ separately.")
+    txt_th = f"θ(X) = {_f(th.get('X'), 3)}, θ(Y) = {_f(th.get('Y'), 3)}"
+    if pd.get("applied"):
+        lam = _f(pd.get("lambda_cr"), 2)
+        return (f"> پایداری: تحلیل مرتبهٔ دوم (P-Δ) انجام شده است ({txt_th}، حد صرف‌نظر ۰٫۱ و حد بیشینه {_f(pd.get('theta_limit'), 3)} طبق بند ۳-۶ استاندارد ۲۸۰۰؛ ضریب بار بحرانی λcr = {lam}). لاغری موضعی عضو (P-δ) در طراحی کنترل نمی‌شود." if fa
+                else f"> Stability: second-order (P-Δ) analysis is included ({txt_th}; ignore-limit 0.1 and maximum {_f(pd.get('theta_limit'), 3)} per Standard 2800 §3-6; elastic critical load factor λcr = {lam}). Local member slenderness (P-δ) is not checked in the design.")
+    status = pd.get("status")
+    if fa:
+        why = {"OFF": "خاموش شده است", "UNSTABLE": "ناموفق بود (ناپایدار)"}.get(status, "لازم نبود یا اعمال نشد")
+        return f"> پایداری: اثر P-Δ در این تحلیل لحاظ نشده ({why}). {txt_th}؛ اگر θ > ۰٫۱ باشد استاندارد ۲۸۰۰ لحاظ P-Δ را الزامی می‌داند."
+    why = {"OFF": "switched off", "UNSTABLE": "failed: unstable"}.get(status, "not required or not applied")
+    return f"> Stability: P-Δ is not included in this analysis ({why}). {txt_th}; Standard 2800 requires P-Δ when θ > 0.1."
+
+
 def _analysis(p: dict, fa: bool) -> str:
     r = p.get("results") or {}
     s = p.get("seismic") or {}
@@ -157,7 +177,7 @@ def _analysis(p: dict, fa: bool) -> str:
             f"- پریود اصلی (مودال) T1 = {_f(modal.get('T_fundamental_s'), 3)} s، تجربی {_f(s.get('T_empirical_s'), 3)} s",
             f"- بیشینه لنگر تیر {_f(r.get('beam_max_M_neg_kn_m'), 1)} kN·m، برش تیر {_f(r.get('beam_max_V_kn'), 1)} kN",
             f"- بیشینه نیروی محوری ستون {_f(r.get('column_max_P_kn'), 1)} kN، لنگر ستون {_f(r.get('column_max_M_kn_m'), 1)} kN·m",
-            "", "> پایداری: تحلیل خطی ارتجاعی است و اثر P-Δ در آن لحاظ نشده؛ ضریب پایداری و اثرات مرتبه دوم باید جداگانه کنترل شود."])
+            "", _stability_note(p.get("p_delta"), True)])
     return "\n".join([
         "### Analysis review", f"- Equilibrium: force-sum error {_f(eq, 6)} kN ({'✅ acceptable' if eq is not None and abs(float(eq)) < 1 else '⚠️ check'})",
         f"- Max amplified drift {_f(drift, 2)}% at storey {r.get('max_drift_storey', '—')} direction {r.get('max_drift_direction', '—')} — limit {_f(lim, 2)}% {'✅' if ok else '❌'}",
@@ -165,7 +185,7 @@ def _analysis(p: dict, fa: bool) -> str:
         f"- Fundamental period (modal) T1 = {_f(modal.get('T_fundamental_s'), 3)} s, empirical {_f(s.get('T_empirical_s'), 3)} s",
         f"- Max beam moment {_f(r.get('beam_max_M_neg_kn_m'), 1)} kN·m, beam shear {_f(r.get('beam_max_V_kn'), 1)} kN",
         f"- Max column axial {_f(r.get('column_max_P_kn'), 1)} kN, column moment {_f(r.get('column_max_M_kn_m'), 1)} kN·m",
-        "", "> Stability: the analysis is linear-elastic without P-Δ; the stability index and second-order effects must be checked separately."])
+        "", _stability_note(p.get("p_delta"), False)])
 
 
 def _model(p: dict, fa: bool) -> str:

@@ -55,6 +55,11 @@ the platform's own engineering engines and help users report problems. You are N
 - Free-form questions use a free shared language model; it can be slow or temporarily rate-limited.
 - Optimization has a ~35 s time budget in chat.
 - Results are decision support, not a stamped design.
+- Analysis scope of the 3D frame in chat: linear-elastic static analysis, equivalent static load (Standard 2800),
+  modal analysis and a response-spectrum analysis (Standard 2800 design spectrum, CQC, 5% accidental torsion, base shear scaled to 85%/90% of static),
+  and a second-order P-Δ analysis (geometric stiffness; applied automatically for Standard 2800 projects when the stability index θ > 0.1, or on request).
+  Local member slenderness (P-δ) is not checked.
+- NOT available: time-history (direct integration) analysis, pushover, and nonlinear (material/geometric/hinge) analysis. Do not claim them.
 
 ## Troubleshooting
 - "Approve returns 409": the item already has the opposite decision; open Approvals and read the message.

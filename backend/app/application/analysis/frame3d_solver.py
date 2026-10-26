@@ -18,6 +18,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
+import numpy as np
+
 from app.application.analysis.linear_algebra import SingularMatrixError, factor_linear_system
 
 DOF_PER_NODE = 6
@@ -217,13 +219,14 @@ def assemble_space_system(model: SpaceFrameModel) -> dict:
         raise SpaceFrameSolverError("No free degrees of freedom remain", status="UNSTABLE")
 
     k_red = [[0.0] * reduced_count for _ in range(reduced_count)]
+    all_terms = [_terms(mapping, couplings, i) for i in range(n_full)]
     for i in range(n_full):
-        i_terms = _terms(mapping, couplings, i)
+        i_terms = all_terms[i]
         if not i_terms:
             continue
         row = stiffness[i]
         for j in range(n_full):
-            j_terms = _terms(mapping, couplings, j)
+            j_terms = all_terms[j]
             if not j_terms:
                 continue
             kij = row[j]
@@ -251,6 +254,7 @@ def assemble_space_system(model: SpaceFrameModel) -> dict:
         "couplings": couplings,
         "reduced_count": reduced_count,
         "factor": factor,
+        "k_red": k_red,
         "element_cache": element_cache,
         "restrained": restrained,
     }
@@ -301,6 +305,10 @@ def recover_space_result(
         max_disp = max(max_disp, abs(values[0]), abs(values[1]), abs(values[2]))
 
     ku = _matvec(prepared["stiffness"], u_full)
+    for g_dofs, g_global in prepared.get("geometric", ()):  # second-order (P-Δ): + K_G·u
+        u_e = [u_full[d] for d in g_dofs]
+        for a, d in enumerate(g_dofs):
+            ku[d] += sum(g_global[a][b] * u_e[b] for b in range(12))
     reactions: dict[str, tuple[float, float, float, float, float, float]] = {}
     for support in model.supports:
         base = node_index[support.node_id] * DOF_PER_NODE
@@ -601,3 +609,157 @@ def _cross(a: tuple[float, float, float], b: tuple[float, float, float]) -> tupl
         a[2] * b[0] - a[0] * b[2],
         a[0] * b[1] - a[1] * b[0],
     )
+
+
+# --------------------------------------------------------------------------- second order (P-Δ)
+def geometric_stiffness_local(element: SpaceElement, length: float, compression: float) -> list[list[float]]:
+    """12×12 linear geometric (initial-stress) stiffness of a prismatic beam-column.
+
+    ``compression`` is the axial force (positive = compression). Standard consistent
+    matrix for cubic (Hermite) bending shape functions, axial/torsion terms:
+
+        v1-v1 = 6N/5L,  v1-θz1 = N/10,  θz1-θz1 = 2NL/15,  θz1-θz2 = -NL/30,  ...
+        θx-θx = N·(Iy+Iz)/(A·L)
+
+    with N = -compression (tension positive). Signs follow ``_local_stiffness``.
+    """
+    n_t = -compression
+    k = [[0.0] * 12 for _ in range(12)]
+    a = 6.0 * n_t / (5.0 * length)
+    b = n_t / 10.0
+    c = 2.0 * n_t * length / 15.0
+    d = -n_t * length / 30.0
+    # plane x-y: v1(1) θz1(5) v2(7) θz2(11)
+    for (i, j), val in {
+        (1, 1): a, (1, 5): b, (1, 7): -a, (1, 11): b,
+        (5, 5): c, (5, 7): -b, (5, 11): d,
+        (7, 7): a, (7, 11): -b,
+        (11, 11): c,
+    }.items():
+        k[i][j] = k[j][i] = val
+    # plane x-z: w1(2) θy1(4) w2(8) θy2(10) — coupling signs mirror the elastic matrix
+    for (i, j), val in {
+        (2, 2): a, (2, 4): -b, (2, 8): -a, (2, 10): -b,
+        (4, 4): c, (4, 8): b, (4, 10): d,
+        (8, 8): a, (8, 10): b,
+        (10, 10): c,
+    }.items():
+        k[i][j] = k[j][i] = val
+    polar = (element.iy + element.iz) / element.area if element.area > 0 else 0.0
+    tors = n_t * polar / length
+    k[3][3] = k[9][9] = tors
+    k[3][9] = k[9][3] = -tors
+    return k
+
+
+def reduction_matrix(prepared: dict) -> np.ndarray:
+    """Dense (n_full × n_reduced) matrix T with u_full = T·u_reduced (supports and diaphragm slaves included)."""
+    cached = prepared.get("_tmat")
+    if cached is not None:
+        return cached
+    n_full, n_red = prepared["n_full"], prepared["reduced_count"]
+    t = np.zeros((n_full, n_red))
+    for dof in range(n_full):
+        for ri, coef in _terms(prepared["mapping"], prepared["couplings"], dof):
+            t[dof, ri] += coef
+    prepared["_tmat"] = t
+    return t
+
+
+class DenseCholeskyFactor:
+    """Cholesky factor (numpy) of a symmetric positive-definite reduced matrix."""
+
+    def __init__(self, matrix: np.ndarray) -> None:
+        self.matrix = matrix
+        try:
+            self.chol = np.linalg.cholesky(matrix)
+        except np.linalg.LinAlgError as exc:
+            raise SingularMatrixError(-1) from exc
+        self.linv = np.linalg.inv(self.chol)
+
+    def solve(self, rhs) -> list[float]:
+        return (self.linv.T @ (self.linv @ np.asarray(rhs, dtype=float))).tolist()
+
+    def solve_many(self, rhs: np.ndarray) -> np.ndarray:
+        return self.linv.T @ (self.linv @ rhs)
+
+
+def solve_space_many(prepared: dict, load_vectors: list[list[float]]) -> np.ndarray:
+    """Solve several full-DOF load vectors at once (numpy). Returns u_full as an (n_full × m) array.
+
+    Uses the reduced elastic (or second-order) matrix of ``prepared``; numerically equal to repeated
+    ``recover_space_result`` solves (≈1e-10 relative) but ~50× faster for tens of load cases.
+    """
+    t = reduction_matrix(prepared)
+    f_full = np.asarray(load_vectors, dtype=float).T  # n_full × m
+    f_red = t.T @ f_full
+    factor = prepared.get("dense_factor")
+    if factor is None:
+        factor = prepared["dense_factor"] = _dense_factor_of(prepared)
+    return t @ factor.solve_many(f_red)
+
+
+def _dense_factor_of(prepared: dict) -> DenseCholeskyFactor:
+    k = np.asarray(prepared["k_red"], dtype=float)
+    if "k_geo_red" in prepared:
+        k = k + prepared["k_geo_red"]
+    return DenseCholeskyFactor(0.5 * (k + k.T))
+
+
+def prepare_second_order(
+    model: SpaceFrameModel,
+    prepared: dict,
+    compression: dict[str, float],
+    *,
+    min_load_factor: float = 1.0,
+) -> dict:
+    """Return a new ``prepared`` dict for the second-order system (K + K_G) with frozen member axial forces.
+
+    ``compression`` maps element id -> axial force (positive = compression) from a gravity combination.
+    The returned dict carries ``second_order`` info: elastic critical load factor λcr of that
+    gravity pattern (K φ = λ·(-K_G) φ) — the P-Δ solution exists only for λcr > 1.
+    Raises ``SpaceFrameSolverError(status="UNSTABLE")`` otherwise.
+    Member end forces recovered with the elastic ``local_k`` (internal bending actions); the
+    reactions include K_G so global equilibrium in the deformed geometry is exact.
+    """
+    n_full = prepared["n_full"]
+    kg_full = np.zeros((n_full, n_full))
+    geometric: list[tuple[list[int], list[list[float]]]] = []
+    by_id = {e.id: e for e in model.elements}
+    for eid, (_lk, _fl, dofs, length, transform) in prepared["element_cache"].items():
+        p = compression.get(eid, 0.0)
+        if p == 0.0:
+            continue
+        kg_local = geometric_stiffness_local(by_id[eid], length, p)
+        kg_global = _triple(transform, kg_local)
+        geometric.append((dofs, kg_global))
+        idx = np.asarray(dofs)
+        kg_full[np.ix_(idx, idx)] += np.asarray(kg_global)
+    t = reduction_matrix(prepared)
+    kg_red = t.T @ kg_full @ t
+    kg_red = 0.5 * (kg_red + kg_red.T)
+    k_el = np.asarray(prepared["k_red"], dtype=float)
+    k_el = 0.5 * (k_el + k_el.T)
+    try:
+        el = DenseCholeskyFactor(k_el)
+        a = el.linv @ (-kg_red) @ el.linv.T
+        mu = float(np.linalg.eigvalsh(0.5 * (a + a.T)).max())
+    except SingularMatrixError as exc:
+        raise SpaceFrameSolverError("Elastic stiffness is not positive definite", status="SINGULAR") from exc
+    lam = (1.0 / mu) if mu > 1e-12 else math.inf
+    if lam <= min_load_factor:
+        raise SpaceFrameSolverError(
+            f"Gravity load pattern exceeds the elastic critical load (λcr = {lam:.3f} ≤ {min_load_factor:g}); "
+            "the second-order (P-Δ) solution does not exist — the structure is unstable.",
+            status="UNSTABLE", details={"lambda_cr": lam},
+        )
+    try:
+        factor = DenseCholeskyFactor(0.5 * (k_el + kg_red + (k_el + kg_red).T))
+    except SingularMatrixError as exc:
+        raise SpaceFrameSolverError("Second-order stiffness is not positive definite (unstable)", status="UNSTABLE",
+                                    details={"lambda_cr": lam}) from exc
+    second = dict(prepared)
+    second.pop("dense_factor", None)
+    second.update({"factor": factor, "geometric": geometric, "k_geo_red": kg_red,
+                   "second_order": {"lambda_cr": lam, "method": "geometric stiffness K_G, frozen axial forces"}})
+    return second

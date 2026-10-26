@@ -121,6 +121,9 @@ def model_edits(text: str) -> dict[str, Any]:
         e["seismic_code"] = "IRAN_2800"; e["design_code"] = "MABHAS9"
     elif re.search(r"\baci\b|\basce\b|\bus\s*codes?\b|american\s*codes?|آمریکا", t):
         e["_unsupported"] = "us_codes"
+    pd_req = p_delta_request(t)
+    if pd_req:
+        e["p_delta"] = pd_req
     if re.search(r"\b(?:units?|vahed)\b|واحد", t):
         e["_units"] = "imperial" if re.search(r"imperial|kip|\bft\b|feet|foot|inch|اینچ|فوت|us customary", t) else "si"
     return e
@@ -230,9 +233,22 @@ _LABELS = {
     "fc_mpa": ("f'c", "f'c", "{} MPa"), "fy_mpa": ("fy", "fy", "{} MPa"),
     "seismic_code": ("seismic code", "آیین‌نامه زلزله", "{}"), "design_code": ("design code", "آیین‌نامه طراحی", "{}"),
     "zone": ("hazard zone", "پهنه خطر", "{}"), "soil": ("soil type", "نوع خاک", "{}"),
+    "p_delta": ("P-Δ", "اثر P-Δ", "{}"),
 }
 _CODE_FA = {"IRAN_2800": "استاندارد ۲۸۰۰ (ویرایش ۴)", "MABHAS9": "مبحث ۹", "ASSUMED_C": "ضریب C کاربر", "NONE": "بدون طراحی"}
 _CODE_EN = {"IRAN_2800": "Standard 2800 (4th ed.)", "MABHAS9": "Mabhas 9", "ASSUMED_C": "user C", "NONE": "none"}
+
+
+_PD = r"p[\s\-_]?(?:delta|Δ|دلتا)"
+
+
+def p_delta_request(t: str) -> str | None:
+    """'off' / 'on' when the text switches the second-order (P-Δ) analysis, else None (auto)."""
+    if re.search(rf"(?:without|no|disable|ignore|skip|turn\s*off|switch\s*off|بدون|حذف|خاموش)\s*(?:the\s*|اثر\s*)?{_PD}|{_PD}\s*(?:off|disabled|ignored)", t, re.I):
+        return "off"
+    if re.search(rf"(?:with|include|including|consider|enable|turn\s*on|add|با|لحاظ)\s*(?:the\s*|اثر\s*)?{_PD}|{_PD}\s*(?:on|enabled|effects?)|اثر\s*{_PD}", t, re.I):
+        return "on"
+    return None
 
 
 def describe(keys: list[str], inp: Any, fa: bool) -> str:
