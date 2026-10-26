@@ -222,11 +222,55 @@ def create_us_customary_unit_configuration() -> UnitConfiguration:
     )
 
 
-def create_initial_pem(project_id: UUID, name: str, description: str | None = None) -> ProjectEngineeringModel:
-    """Build an initial PEM with software-default code and unit configurations."""
+def create_iran_default_code_configuration() -> CodeConfiguration:
+    """Iranian National Building Regulations profile (platform default for new projects)."""
+    m6 = StandardReference(family="Mabhas 6", edition="Mabhas 6 (1398)",
+                           full_designation="Iranian National Building Code Part 6 - Loads on Buildings")
+    s2800 = StandardReference(family="Standard 2800", edition="Standard 2800 (4th ed.)",
+                              full_designation="Iranian Code of Practice for Seismic Resistant Design of Buildings, 4th edition")
+    return CodeConfiguration(
+        profile_type=ProfileType.SOFTWARE_DEFAULT,
+        jurisdiction=Jurisdiction.IRAN,
+        project_location="Iran",
+        governing_building_code=StandardReference(family="Iranian National Building Code", edition="INBC (Mabahes Melli)",
+                                                  full_designation="Iranian National Building Regulations (Mabahes-e Melli-e Sakhteman)"),
+        governing_code_edition="INBC",
+        loading_standard=m6,
+        loading_edition=m6.edition,
+        seismic_standard=s2800,
+        seismic_edition=s2800.edition,
+        concrete_standard=StandardReference(family="Mabhas 9", edition="Mabhas 9 (1399)",
+                                            full_designation="Iranian National Building Code Part 9 - Design and Construction of RC Buildings"),
+        concrete_edition="Mabhas 9 (1399)",
+        steel_standard=StandardReference(family="Mabhas 10", edition="Mabhas 10 (1401)",
+                                         full_designation="Iranian National Building Code Part 10 - Design and Construction of Steel Buildings"),
+        steel_edition="Mabhas 10 (1401)",
+        status=CodeConfigurationStatus.SOFTWARE_DEFAULT,
+        metadata=ParameterMetadata(name="iran_default_code_profile", source="SOFTWARE_DEFAULT",
+                                   derivation="Platform default Iranian code profile (Mabhas 6/9/10, Standard 2800 4th ed.)"),
+    )
+
+
+def create_si_unit_configuration() -> UnitConfiguration:
+    """SI unit system (kN, m, MPa)."""
+    return UnitConfiguration(
+        system=UnitSystem.SI_METRIC, length_unit="m", force_unit="kN", moment_unit="kN-m", stress_unit="MPa",
+        area_unit="mm2", volume_unit="m3",
+        metadata=ParameterMetadata(name="default_unit_system", source="SOFTWARE_DEFAULT", derivation="Platform default SI units"),
+    )
+
+
+def create_default_code_configuration(jurisdiction: Jurisdiction = Jurisdiction.IRAN) -> CodeConfiguration:
+    return create_software_default_code_configuration() if jurisdiction == Jurisdiction.US else create_iran_default_code_configuration()
+
+
+def create_initial_pem(project_id: UUID, name: str, description: str | None = None,
+                       jurisdiction: Jurisdiction = Jurisdiction.IRAN) -> ProjectEngineeringModel:
+    """Build an initial PEM; new projects default to Iran (Mabhas 6/9/10 + 2800) in SI. US stays selectable."""
+    us = jurisdiction == Jurisdiction.US
     return ProjectEngineeringModel(
         project_id=project_id,
         metadata=ProjectMetadata(name=name, description=description),
-        code_configuration=create_software_default_code_configuration(),
-        unit_configuration=create_us_customary_unit_configuration(),
+        code_configuration=create_default_code_configuration(jurisdiction),
+        unit_configuration=create_us_customary_unit_configuration() if us else create_si_unit_configuration(),
     )

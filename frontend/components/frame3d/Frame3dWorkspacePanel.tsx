@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 
 import { Frame3dResultCard } from "@/components/chat/Frame3dResultCard";
+import { DownloadsPanel } from "@/components/frame3d/DownloadsPanel";
 import { makeT } from "@/lib/frame3d-i18n";
 import { projectChatHref } from "@/lib/current-project";
 import { apiFetch } from "@/lib/api";
@@ -177,7 +178,22 @@ export function Frame3dWorkspacePanel({ mode }: { mode: Mode }) {
         <FoundationView data={results.viewer} qa={results.foundation?.qaKpa ?? 150} t={makeT(results.lang)} />
       ) : null}
       {results ? (
-        <Frame3dResultCard results={results} />
+        <DownloadsPanel
+          inputs={(results.inputs as Record<string, unknown> | null) ?? saved}
+          projectId={projectId}
+          groups={
+            mode === "analysis"
+              ? ["analysis", "figures", "models"]
+              : mode === "design"
+                ? ["design", "foundation", "drawings"]
+                : mode === "model"
+                  ? ["models", "figures"]
+                  : undefined
+          }
+        />
+      ) : null}
+      {results ? (
+        <Frame3dResultCard results={results} downloads={false} />
       ) : mode !== "model" ? (
         <EmptyHint projectId={projectId} />
       ) : null}

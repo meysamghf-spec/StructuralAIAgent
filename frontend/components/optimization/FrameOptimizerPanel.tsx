@@ -1,5 +1,8 @@
 "use client";
 
+import { DownloadsPanel } from "@/components/frame3d/DownloadsPanel";
+import { getCurrentProjectId } from "@/lib/current-project";
+
 import {
   convergenceSeries,
   formatObjective,
@@ -171,6 +174,13 @@ export function FrameOptimizerPanel() {
               {res.limits.map((l) => <li key={l}>{l}</li>)}
             </ul>
           </details>
+          <DownloadsPanel
+            inputs={(res as unknown as { frame?: Record<string, unknown> }).frame ?? null}
+            projectId={getCurrentProjectId()}
+            optimization={res}
+            groups={["optimization", "analysis", "design", "figures"]}
+            title="Optimization downloads"
+          />
         </div>
       ) : null}
     </section>

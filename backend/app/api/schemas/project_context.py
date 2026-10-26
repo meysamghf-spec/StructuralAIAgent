@@ -39,6 +39,7 @@ class CodeConfigurationSummaryResponse(BaseModel):
     loading_standard: str
     concrete_standard: str
     steel_standard: str
+    seismic_standard: str | None = None
     compatibility_status: str
     status: str
 
@@ -51,6 +52,7 @@ class CodeConfigurationSummaryResponse(BaseModel):
             loading_standard=config.loading_standard.edition,
             concrete_standard=config.concrete_standard.edition,
             steel_standard=config.steel_standard.edition,
+            seismic_standard=config.seismic_standard.edition if config.seismic_standard else None,
             compatibility_status=config.compatibility_status.value,
             status=config.status.value,
         )

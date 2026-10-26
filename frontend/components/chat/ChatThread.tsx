@@ -23,6 +23,8 @@ import { AciRcBeamResultCard } from "./AciRcBeamResultCard";
 import { EngineeringResultCard } from "./EngineeringResultCard";
 import { Frame3dResultCard } from "./Frame3dResultCard";
 import { AutocadDrawingCard } from "@/components/autocad/AutocadDrawingCard";
+import { ArchitecturalSetViewer } from "@/components/autocad/ArchitecturalSetViewer";
+import { StructuralSetView } from "@/components/autocad/StructuralSetView";
 import { MessageContent } from "./MessageContent";
 import { ToolExecutionCard } from "./ToolExecutionCard";
 
@@ -131,6 +133,14 @@ export function ChatThread({
                   review={message.autocadResult.review}
                   savedToProject={!!message.autocadResult.projectFileId}
                 />
+              ) : null}
+              {message.role === "assistant" && message.archSet ? (
+                <div className="chat-arch-set">
+                  <ArchitecturalSetViewer set={message.archSet} compact />
+                </div>
+              ) : null}
+              {message.role === "assistant" && message.structuralSet ? (
+                <StructuralSetView set={message.structuralSet} compact />
               ) : null}
               {message.role === "assistant" && message.engineeringResult ? (
                 <div className="chat-message-meta">

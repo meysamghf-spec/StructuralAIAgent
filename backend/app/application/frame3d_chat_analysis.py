@@ -244,10 +244,46 @@ def _section(t: str, words: str, inp: Frame3dInputs, b: str, h: str) -> None:
     inp.parsed += [b, h]
 
 
+_FA_NUM_WORDS = {"یک": 1, "یه": 1, "دو": 2, "سه": 3, "چهار": 4, "پنج": 5, "شش": 6, "شیش": 6, "هفت": 7, "هشت": 8, "نه": 9,
+                 "ده": 10, "یازده": 11, "دوازده": 12, "سیزده": 13, "چهارده": 14, "پانزده": 15, "پونزده": 15, "شانزده": 16,
+                 "هفده": 17, "هجده": 18, "نوزده": 19, "بیست": 20}
+_FA_WORD_RE = re.compile(r"(?<![\u0600-\u06FF])(" + "|".join(sorted(_FA_NUM_WORDS, key=len, reverse=True)) + r")(?=\s*(?:دهانه|طبقه|متر|عدد|تا\b|ستون|bays?|stor))")
+
+
+def _fa_numbers(t: str) -> str:
+    """«سه دهانه» -> «3 دهانه»; Persian decimal comma / slash between digits -> '.'; ZWNJ -> space; x/y lookalikes."""
+    t = t.replace("\u200c", " ")
+    t = re.sub(r"(?<=\d)[/،,](?=\d)", ".", t)
+    t = _FA_WORD_RE.sub(lambda m: str(_FA_NUM_WORDS[m.group(1)]), t)
+    return t.replace("ایکس", "x").replace("وای", "y")
+
+
+def _parse_fa_bays(t: str, inp: "Frame3dInputs") -> None:
+    """«۳ دهانه ۵ متری در جهت x» / «در جهت x، ۳ دهانه به طول ۵ متر» / «طبقات به ارتفاع ۳.۲ متر»."""
+    dirs = r"(?:در\s*)?(?:جهت|راستای|راستا|امتداد|محور|سمت)\s*([xy])"
+    span = rf"(?:\s*(?:به\s*)?(?:طول|عرض|دهانه)?\s*{_NUM}\s*(?:m\b|متر(?:ی)?))?"
+    for m in re.finditer(rf"(\d+)\s*(?:تا\s*)?دهانه(?:\s*ی)?{span}\s*(?:،|,)?\s*{dirs}{span}", t, re.I):
+        _set_bay(inp, m.group(3).lower(), int(m.group(1)), m.group(2) or m.group(4))
+    for m in re.finditer(rf"{dirs}\s*(?:،|,|:)?\s*(\d+)\s*(?:تا\s*)?دهانه(?:\s*ی)?{span}", t, re.I):
+        _set_bay(inp, m.group(1).lower(), int(m.group(2)), m.group(3))
+    if "storey_height_m" not in inp.parsed:
+        m = re.search(rf"ارتفاع(?:\s*(?:هر|طبقات|طبقه|طبقه\s*ها))?[^\d]{{0,15}}{_NUM}\s*(?:m\b|متر)", t) or re.search(
+            rf"طبقه(?:\s*ها|ات)?[^\d]{{0,12}}(?:به\s*)?ارتفاع[^\d]{{0,6}}{_NUM}", t)
+        if m and 1.5 <= float(m.group(1)) <= 8:
+            inp.storey_height_m = float(m.group(1)); inp.parsed.append("storey_height_m")
+
+
+def _set_bay(inp: "Frame3dInputs", d: str, n: int, span: str | None) -> None:
+    if f"bays_{d}" not in inp.parsed:
+        setattr(inp, f"bays_{d}", n); inp.parsed.append(f"bays_{d}")
+    if span and f"bay_{d}_m" not in inp.parsed[-3:]:
+        setattr(inp, f"bay_{d}_m", float(span)); inp.parsed.append(f"bay_{d}_m")
+
+
 def parse_frame3d_request(user_request: str) -> Frame3dInputs:
-    t = _norm(user_request)
+    t = _fa_numbers(_norm(user_request))
     inp = Frame3dInputs()
-    m = re.search(r"(\d+)\s*-?\s*(?:stor(?:e)?y|stories|storeys|floors?|طبقه)", t, re.I)
+    m = re.search(r"(\d+)\s*-?\s*(?:stor(?:e)?y|stories|storeys|floors?|طبقه)", t, re.I) or re.search(r"طبقات\s*[:=]?\s*(\d+)", t)
     if m:
         inp.storeys = int(m.group(1)); inp.parsed.append("storeys")
     m = re.search(r"(\d+)\s*x\s*(\d+)\s*(?:bays?|دهانه)", t, re.I) or re.search(
@@ -259,8 +295,9 @@ def parse_frame3d_request(user_request: str) -> Frame3dInputs:
         my = re.search(r"(\d+)\s*bays?\s*(?:in|along)\s*y", t, re.I)
         if mx: inp.bays_x = int(mx.group(1)); inp.parsed.append("bays_x")
         if my: inp.bays_y = int(my.group(1)); inp.parsed.append("bays_y")
+        _parse_fa_bays(t, inp)
     m = re.search(rf"bays?\s*(?:of|=|:)?\s*{_NUM}\s*m\b", t, re.I) or re.search(rf"دهانه[^\d]{{0,10}}{_NUM}\s*(?:m|متر)", t)
-    if m:
+    if m and not ({"bay_x_m", "bay_y_m"} & set(inp.parsed)):
         inp.bay_x_m = inp.bay_y_m = float(m.group(1)); inp.parsed += ["bay_x_m", "bay_y_m"]
     _f(t, (rf"bay\s*(?:width|length|span)?\s*(?:in\s*)?x\s*[:=]?\s*{_NUM}\s*m",), inp, "bay_x_m")
     _f(t, (rf"bay\s*(?:width|length|span)?\s*(?:in\s*)?y\s*[:=]?\s*{_NUM}\s*m",), inp, "bay_y_m")
@@ -963,8 +1000,13 @@ def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None =
     }
     missing = missing_inputs(inp)
     if missing:
-        msg = ("Please specify: " + ", ".join(_LABELS[m] for m in missing)
-               + ". Example: `3-storey RC moment frame, 2x2 bays of 5 m, storey height 3.2 m, C=0.165`.")
+        if inp.lang == "fa":
+            fa_l = {"storeys": "تعداد طبقات", "bays_x": "تعداد دهانه در جهت x", "bays_y": "تعداد دهانه در جهت y"}
+            msg = ("لطفاً مشخص کنید: " + "، ".join(fa_l.get(m, m) for m in missing)
+                   + ". مثال: «۳ دهانه ۵ متری در جهت x و ۲ دهانه ۴ متری در جهت y، ۴ طبقه با ارتفاع ۳.۲ متر».")
+        else:
+            msg = ("Please specify: " + ", ".join(_LABELS[m] for m in missing)
+                   + ". Example: `3-storey RC moment frame, 2x2 bays of 5 m, storey height 3.2 m, C=0.165`.")
         return _loc({**common, "status": "MISSING_REQUIRED_INPUT", "missing_inputs": missing, "message": msg, "warnings": [msg]})
     limits = []
     if inp.storeys > MAX_STOREYS: limits.append(f"at most {MAX_STOREYS} storeys")

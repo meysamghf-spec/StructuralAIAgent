@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { AutocadDrawingCard } from "@/components/autocad/AutocadDrawingCard";
+import { DownloadsPanel } from "@/components/frame3d/DownloadsPanel";
 import { listProjectChatRuns, type ChatRun } from "@/lib/chat-runs";
 import { getCurrentProjectId, PROJECT_EVENT, projectChatHref } from "@/lib/current-project";
 
@@ -20,6 +22,7 @@ export function ChatRunsSection({ kinds, title = "Runs from chat" }: { kinds?: s
   const [projectId, setProjectId] = useState<string | null>(null);
   const [runs, setRuns] = useState<ChatRun[] | null>(null);
   const [error, setError] = useState("");
+  const [open, setOpen] = useState<string | null>(null);
 
   useEffect(() => {
     const sync = () => {
@@ -66,17 +69,33 @@ export function ChatRunsSection({ kinds, title = "Runs from chat" }: { kinds?: s
               <Link className="button secondary chat-action-link" href={projectChatHref(projectId!)}>
                 Open chat
               </Link>
-              {r.kind === "frame3d_analysis" ? (
-                <Link className="button secondary chat-action-link" href="/workspace/model">
-                  3D model
-                </Link>
-              ) : null}
-              {r.kind === "autocad" ? (
-                <Link className="button secondary chat-action-link" href="/workspace/cad">
-                  CAD
-                </Link>
+              {r.inputs || (r.kind === "autocad" && r.job_id) ? (
+                <button
+                  className="button chat-action-link"
+                  type="button"
+                  aria-expanded={open === r.message_id + r.kind}
+                  onClick={() => setOpen(open === r.message_id + r.kind ? null : r.message_id + r.kind)}
+                >
+                  {open === r.message_id + r.kind ? "Hide results" : r.kind === "autocad" ? "Open drawing" : "Results & downloads"}
+                </button>
               ) : null}
             </div>
+            {open === r.message_id + r.kind ? (
+              <div className="inline-panel" data-testid="chat-run-inline">
+                {r.kind === "autocad" && r.job_id ? (
+                  <AutocadDrawingCard
+                    jobId={r.job_id}
+                    kind="prompt"
+                    title={r.label}
+                    filename={r.filename || `autocad-${r.job_id.slice(0, 8)}.dxf`}
+                    layers={[]}
+                    review={{ status: r.status, note: "" }}
+                  />
+                ) : (
+                  <DownloadsPanel inputs={r.inputs} projectId={projectId} optimization={r.optimization} />
+                )}
+              </div>
+            ) : null}
           </li>
         ))}
       </ul>

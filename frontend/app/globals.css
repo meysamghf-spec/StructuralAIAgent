@@ -2803,3 +2803,49 @@ a.button,
   .v3d-tabs .v3d-btn { flex: 1 1 calc(50% - 4px); }
   .v3d-table { display: block; overflow-x: auto; }
 }
+
+/* ---- architectural sets ---- */
+.arch-set { display: flex; flex-direction: column; gap: 8px; min-width: 0; max-width: 100%; }
+.arch-tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch; max-width: 100%; }
+.arch-tab { flex: 0 0 auto; border: 1px solid var(--border, #d0d7de); background: transparent; border-radius: 8px; padding: 4px 8px; font-size: 12px; cursor: pointer; color: inherit; white-space: nowrap; }
+.arch-tab.active { background: var(--accent, #2563eb); border-color: var(--accent, #2563eb); color: #fff; }
+.arch-tab span { opacity: .8; }
+.arch-toolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: space-between; min-width: 0; }
+.arch-title { font-size: 13px; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.arch-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.button.small { padding: 4px 10px; font-size: 12px; min-height: 0; }
+.arch-canvas { position: relative; overflow: hidden; height: min(70vh, 640px); background: #fff; border: 1px solid var(--border, #d0d7de); border-radius: 8px; touch-action: none; cursor: grab; }
+.arch-canvas img { width: 100%; height: 100%; object-fit: contain; transform-origin: center; user-select: none; display: block; }
+.arch-set-item { border-top: 1px solid var(--border, #e5e7eb); padding-top: 8px; margin-top: 8px; min-width: 0; }
+.arch-set-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; width: 100%; background: none; border: 0; padding: 4px 0; cursor: pointer; color: inherit; font-weight: 600; text-align: start; }
+.arch-checks { font-size: 12px; margin: 4px 0 0; padding-inline-start: 16px; }
+@media (max-width: 600px) { .arch-canvas { height: 56vh; } .arch-tab span { display: none; } }
+.chat-arch-set { margin-top: 8px; min-width: 0; max-width: 100%; }
+/* structural drawing set (CAD page + chat) */
+.structural-set { border: 1px solid var(--border, #d9dee7); border-radius: 12px; padding: 12px; margin-top: 10px; max-width: 100%; min-width: 0; }
+.structural-set-head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; align-items: baseline; }
+.structural-set-meta { margin: 4px 0 8px; font-size: 13px; overflow-wrap: anywhere; }
+.structural-sheet-list { list-style: none; padding: 0; margin: 8px 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 6px; }
+.structural-sheet-btn { width: 100%; display: flex; gap: 8px; align-items: center; text-align: start; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border, #d9dee7); background: transparent; color: inherit; cursor: pointer; min-width: 0; }
+.structural-sheet-btn.active { border-color: var(--accent, #0284c7); background: rgba(2, 132, 199, 0.08); }
+.structural-sheet-no { font-weight: 700; flex: none; }
+.structural-sheet-title { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
+.structural-sheet-scale { flex: none; font-size: 12px; }
+.structural-set-notes { margin: 4px 0; padding-inline-start: 18px; font-size: 13px; }
+
+/* ---- downloads panel (per-item + ZIP) ---- */
+.downloads-panel { border: 1px solid var(--border, #d9dee7); border-radius: 10px; padding: 12px; margin: 12px 0; max-width: 100%; box-sizing: border-box; overflow: hidden; }
+.downloads-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+.downloads-head h3 { margin: 0; }
+.downloads-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.downloads-save { display: flex; gap: 6px; align-items: center; font-size: 0.9em; margin: 6px 0; }
+.downloads-group h4 { margin: 12px 0 4px; font-size: 0.95em; }
+.downloads-group ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 4px 16px; }
+.downloads-group li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; padding: 4px 0; border-bottom: 1px dashed var(--border, #e3e7ee); min-width: 0; }
+.downloads-label { min-width: 0; overflow-wrap: anywhere; flex: 1 1 140px; }
+.downloads-btns { display: flex; flex-wrap: wrap; gap: 4px; }
+.button.small { padding: 3px 8px; font-size: 0.8em; min-height: 0; }
+.downloads-preview { flex-basis: 100%; max-width: 100%; height: auto; border: 1px solid var(--border, #e3e7ee); border-radius: 6px; background: #fff; }
+.inline-panel { margin-top: 10px; max-width: 100%; overflow: hidden; }
+.solver-preview { max-height: 280px; overflow: auto; font-size: 0.75em; background: #f6f8fa; border-radius: 6px; padding: 8px; white-space: pre; max-width: 100%; }
+.card-wide { grid-column: 1 / -1; min-width: 0; }
