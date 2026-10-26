@@ -534,6 +534,7 @@ export default function AgentsWorkspaceClient() {
           <AgentOverviewGrid
             assistants={assistants}
             selectedAgentType={selectedAgentType || null}
+            projectId={selectedProjectId || null}
             onSelect={(agentType) => {
               if (agentType) {
                 setSelectedAgentType(agentType);

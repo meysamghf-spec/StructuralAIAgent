@@ -39,6 +39,7 @@ type UseChatOptions = {
   authLoading: boolean;
   selectedProjectId: string;
   setSelectedProjectId: (projectId: string) => void;
+  assistant?: string | null;
 };
 
 export function useChat({
@@ -46,6 +47,7 @@ export function useChat({
   authLoading,
   selectedProjectId,
   setSelectedProjectId,
+  assistant,
 }: UseChatOptions) {
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -154,6 +156,7 @@ export function useChat({
         project_id: request.project_id,
         attachments: request.attachments,
         mode: request.mode ?? mode,
+        ...(assistant ? { assistant } : {}),
       };
       const assistantOptimisticId = optimisticAssistantId(request.optimisticMessageId);
       let response;

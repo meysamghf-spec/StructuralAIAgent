@@ -117,6 +117,7 @@ export async function sendChatMessage(input: {
   project_id?: string;
   attachments?: string[];
   mode?: string;
+  assistant?: string;
 }): Promise<ChatSendResponse> {
   return chatFetch("/api/v1/chat", {
     method: "POST",
@@ -166,6 +167,7 @@ export async function streamChatMessage(
     project_id?: string;
     attachments?: string[];
     mode?: string;
+    assistant?: string;
   },
   options: {
     onEvent: (event: AgentRunSseEvent) => void;

@@ -15,7 +15,7 @@ export type AssistantProfile = {
   title: string;
   description: string;
   capabilities: string[];
-  status: "Available" | "In setup" | "Unavailable";
+  status: "Available" | "Unavailable";
   agentType: EngineeringAgentType | null;
 };
 
@@ -72,6 +72,11 @@ const ASSISTANT_CATALOG: Record<
     title: "Document Interpretation Assistant",
     description: "Interpret specifications, PDFs, and uploaded documents into actionable engineering context.",
     capabilities: ["Spec review", "Document extraction", "Requirement capture"],
+  },
+  OPTIMIZATION_AGENT: {
+    title: "Optimization Assistant",
+    description: "Optimize frame member sections for cost and explain which prerequisites are still missing.",
+    capabilities: ["Section optimization", "Prerequisite checklist", "Cost comparison"],
   },
   PROMPT_GENERATION_AGENT: {
     title: "Request Planning Assistant",
@@ -155,6 +160,14 @@ export function getTerminalStepLabel(progress: AgentExecutionUserView["progress"
   return getProgressLabel(progress);
 }
 
+export function assistantChatHref(agentType: string, projectId?: string | null): string {
+  const params = new URLSearchParams({ assistant: agentType });
+  if (projectId) {
+    params.set("project", projectId);
+  }
+  return `/?${params.toString()}`;
+}
+
 export function buildAssistantProfiles(agents: AgentDefinitionSummary[]): AssistantProfile[] {
   const registeredByType = new Map(
     agents
@@ -169,18 +182,22 @@ export function buildAssistantProfiles(agents: AgentDefinitionSummary[]): Assist
     .map((type) => {
       const catalog = ASSISTANT_CATALOG[type];
       const registered = registeredByType.get(type);
-      const status = registered
-        ? registered.status === "ACTIVE"
-          ? "Available"
-          : registered.status === "DRAFT"
-            ? "In setup"
-            : "Unavailable"
-        : "Available";
+      // Platform assistants are always usable: the backend provisions them ACTIVE with real handlers.
+      // Only an explicitly retired/disabled registration is shown as unavailable.
+      const status: AssistantProfile["status"] =
+        registered && /^(DISABLED|DEPRECATED|ARCHIVED|RETIRED|INACTIVE)$/i.test(registered.status)
+          ? "Unavailable"
+          : "Available";
+      const registeredDescription = registered?.description?.trim();
+      const description =
+        registeredDescription && !/auto-provisioned/i.test(registeredDescription)
+          ? registeredDescription
+          : catalog.description;
 
       return {
         id: registered?.id ?? type,
         title: catalog.title,
-        description: registered?.description ?? catalog.description,
+        description,
         capabilities: catalog.capabilities,
         status,
         agentType: type,

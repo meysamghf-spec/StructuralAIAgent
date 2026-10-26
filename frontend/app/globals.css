@@ -2879,3 +2879,10 @@ a.button,
 .chat-composer-status.error {
   color: #f87171;
 }
+
+/* Assistant context strip */
+.assistant-strip { margin: 0.75rem auto; max-width: 52rem; padding: 0.75rem 1rem; border: 1px solid var(--border, #334155); border-radius: 0.75rem; background: rgba(56, 189, 248, 0.06); }
+.assistant-strip-head { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.assistant-strip-badge { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.1rem 0.5rem; border-radius: 999px; background: #0369a1; color: #fff; }
+.assistant-strip-starters { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.6rem; }
+.assistant-starter { font-size: 0.85rem; text-align: start; white-space: normal; }

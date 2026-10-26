@@ -1,12 +1,16 @@
-import type { AssistantProfile } from "@/lib/agent-workspace";
+import Link from "next/link";
+
+import { assistantChatHref, type AssistantProfile } from "@/lib/agent-workspace";
 
 export function AgentOverviewGrid({
   assistants,
   selectedAgentType,
+  projectId,
   onSelect,
 }: {
   assistants: AssistantProfile[];
   selectedAgentType?: string | null;
+  projectId?: string | null;
   onSelect?: (agentType: AssistantProfile["agentType"]) => void;
 }) {
   return (
@@ -28,10 +32,20 @@ export function AgentOverviewGrid({
               <li key={capability}>{capability}</li>
             ))}
           </ul>
-          {onSelect && assistant.agentType ? (
-            <button className="button secondary" type="button" onClick={() => onSelect(assistant.agentType)}>
-              {assistant.status === "Available" ? "Use this assistant" : assistant.status}
-            </button>
+          {assistant.agentType ? (
+            assistant.status === "Available" ? (
+              <Link
+                className="button secondary"
+                href={assistantChatHref(assistant.agentType, projectId)}
+                onClick={() => onSelect?.(assistant.agentType)}
+              >
+                Use this assistant
+              </Link>
+            ) : (
+              <button className="button secondary" type="button" disabled>
+                Unavailable
+              </button>
+            )
           ) : null}
         </article>
       ))}

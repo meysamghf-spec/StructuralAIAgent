@@ -3,6 +3,7 @@
 import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ChatContextPanel } from "@/components/chat/ChatContextPanel";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
+import { AssistantContextStrip } from "@/components/chat/AssistantContextStrip";
 import { ChatThread } from "@/components/chat/ChatThread";
 import { PromptExamples } from "@/components/chat/PromptExamples";
 import { useAuth } from "@/hooks/useAuth";
@@ -23,19 +24,27 @@ export default function ChatWorkspace() {
   const [contextOpen, setContextOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<ProjectFileSummary | null>(null);
   const [filesRefreshToken, setFilesRefreshToken] = useState(0);
+  const [assistant, setAssistant] = useState<string | null>(null);
+  const [urlProject, setUrlProject] = useState<string | null>(null);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setAssistant(params.get("assistant"));
+    setUrlProject(params.get("project"));
+  }, []);
   const {
     projects,
     selectedProjectId,
     setSelectedProjectId,
     selectedProject,
     loading: projectsLoading,
-  } = useProjectScope();
+  } = useProjectScope(urlProject);
 
   const chat = useChat({
     isAuthenticated,
     authLoading,
     selectedProjectId,
     setSelectedProjectId,
+    assistant,
   });
   const projectFiles = useProjectFiles(selectedProjectId || null, filesRefreshToken);
 
@@ -291,6 +300,14 @@ export default function ChatWorkspace() {
 
         {showProminentPrompt ? (
           <div className="chat-hero">
+            {assistant ? (
+              <AssistantContextStrip
+                assistant={assistant}
+                onPick={handleExampleSelect}
+                onClear={() => setAssistant(null)}
+                disabled={chat.busy}
+              />
+            ) : null}
             <div className="chat-hero-intro">
               <p className="chat-hero-eyebrow">Structural Engineering AI</p>
               <h1 className="chat-hero-title">StructuralAIAgent</h1>
@@ -313,6 +330,14 @@ export default function ChatWorkspace() {
           </div>
         ) : (
           <div className="chat-conversation-panel">
+            {assistant ? (
+              <AssistantContextStrip
+                assistant={assistant}
+                onPick={handleExampleSelect}
+                onClear={() => setAssistant(null)}
+                disabled={chat.busy}
+              />
+            ) : null}
             <div className="chat-main-body">
               <ChatThread
                 messages={chat.messages}

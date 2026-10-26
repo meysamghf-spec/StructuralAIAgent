@@ -65,6 +65,7 @@ export type EngineeringAgentType =
   | "REPORTING_AGENT"
   | "DOCUMENT_INTERPRETATION_AGENT"
   | "PROMPT_GENERATION_AGENT"
+  | "OPTIMIZATION_AGENT"
   | "STRUCTURAL_ENGINEERING_AGENT";
 
 export type AgentDefinitionSummary = {
