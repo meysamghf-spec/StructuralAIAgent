@@ -35,6 +35,9 @@ PRESETS: dict[str, tuple[str, str, bool]] = {
 }
 
 
+AUTO_ORDER = ["gemini", "groq", "openrouter", "nvidia", "sambanova", "mistral", "cloudflare", "cerebras", "openai", "pollinations"]
+
+
 @dataclass
 class HelperSettings:
     providers: list[ProviderConfig] = field(default_factory=list)
@@ -91,7 +94,13 @@ def load_settings(env: Mapping[str, str] | None = None) -> HelperSettings:
         elif base and model and (key or mode == "custom_keyless"):
             providers.append(ProviderConfig(name="primary", base_url=base, model=model, api_key=key,
                                             keyless=not key, **kw))
-        for name in [x.strip().lower() for x in (env.get("LLM_FALLBACKS") or "").split(",") if x.strip()]:
+        names = [x.strip().lower() for x in (env.get("LLM_FALLBACKS") or "").split(",") if x.strip()]
+        if mode == "auto":
+            # Any preset that has its own key configured is used (best first), then the key-less fallback last.
+            names += [n for n in AUTO_ORDER if n != "pollinations" and env.get(f"LLM_{n.upper()}_API_KEY")]
+            if (env.get("LLM_KEYLESS_FALLBACK") or "1").strip().lower() not in ("0", "false", "no", "off"):
+                names.append("pollinations")
+        for name in names:
             if any(p.name == name for p in providers):
                 continue
             p = _provider_from_preset(name, env, **kw)

@@ -15,6 +15,7 @@ from app.application.agent_run_events import (
     EVENT_FAILED,
     EVENT_STARTED,
     EVENT_STEP,
+    EVENT_TOKEN,
     AgentRunProgressSink,
     emit_progress,
     safe_stream_error,
@@ -154,6 +155,14 @@ class ConversationService:
     ) -> None:
         conversation = self._require_conversation(conversation_id, account)
         self._repo.delete(conversation.id)
+
+    def rename_conversation(self, conversation_id: UUID, account: AuthenticatedAccount, title: str) -> Conversation:
+        conversation = self._require_conversation(conversation_id, account)
+        clean = " ".join((title or "").split())[:120]
+        if not clean:
+            raise ValueError("Title must not be empty")
+        updated = self._repo.update_title(conversation.id, clean)
+        return updated or conversation
 
     def list_messages(
         self,
@@ -447,6 +456,10 @@ class ConversationService:
             cad[1]["selected_mode"] = mode or "auto"
             return cad
         history = self._repo.list_messages(conversation.id, limit=_MAX_HISTORY_MESSAGES)
+        helper_reply = self._helper_reply(conversation, account, user_content, history, attachments, progress_sink)
+        if helper_reply is not None:
+            helper_reply[1]["selected_mode"] = mode or "auto"
+            return helper_reply
         enriched_request = enrich_user_request_with_attachments(
             user_content,
             attachments,
@@ -477,9 +490,36 @@ class ConversationService:
                 progress_sink=progress_sink,
             )
 
-        content, metadata = self._run_general_chat(enriched_request, history)
+        content, metadata = self._run_general_chat(enriched_request, history, account=account, progress_sink=progress_sink)
         metadata["selected_mode"] = mode or "auto"
         return content, metadata
+
+    def _helper_reply(self, conversation, account: AuthenticatedAccount, user_content: str, history,
+                      attachments, progress_sink) -> tuple[str, dict] | None:
+        """Platform helper: greetings, 'how do I...' questions, bug reports and issue status. Engineering stays with the engines."""
+        if attachments:
+            return None
+        try:
+            from app.application.platform_helper_factory import get_helper_service
+
+            svc = get_helper_service()
+            if not svc.classify(user_content).handled_by_helper:
+                return None
+            pairs = [("user" if m.role == MessageRole.USER else "assistant", m.content)
+                     for m in history if m.role in (MessageRole.USER, MessageRole.ASSISTANT)]
+            if pairs and pairs[-1] == ("user", user_content):
+                pairs = pairs[:-1]
+            reply = svc.handle(
+                user_content, pairs, account_id=account.account_id,
+                project_id=str(conversation.project_id or ""), conversation_id=str(conversation.id),
+                context={"project_selected": "yes" if conversation.project_id else "no"},
+                on_token=(lambda d: emit_progress(progress_sink, EVENT_TOKEN, {"delta": d})) if progress_sink else None)
+            if reply is None:
+                return None
+            return reply.text, reply.to_metadata()
+        except Exception:  # noqa: BLE001 - the helper must never break the chat
+            logger.exception("platform helper failed")
+            return None
 
     def _maybe_run_autocad(self, conversation, account: AuthenticatedAccount, user_content: str,
                            attachments: list[MessageAttachment]) -> tuple[str, dict] | None:
@@ -676,6 +716,9 @@ class ConversationService:
         self,
         user_content: str,
         history: list[ConversationMessage],
+        *,
+        account: AuthenticatedAccount | None = None,
+        progress_sink: AgentRunProgressSink | None = None,
     ) -> tuple[str, dict]:
         messages = [
             AIMessage(
@@ -727,6 +770,22 @@ class ConversationService:
         except Exception:  # noqa: BLE001 - fall back to the chat model / help text
             logger.exception("rule-based chat engine failed")
 
+        try:
+            from app.application.platform_helper_factory import get_helper_service
+
+            svc = get_helper_service()
+            if svc.llm.configured:
+                pairs = [("user" if m.role == MessageRole.USER else "assistant", m.content)
+                         for m in history[-_MAX_HISTORY_MESSAGES:] if m.role in (MessageRole.USER, MessageRole.ASSISTANT)]
+                if pairs and pairs[-1] == ("user", user_content):
+                    pairs = pairs[:-1]
+                reply = svc.converse(
+                    user_content, pairs, intent="general_chat",
+                    on_token=(lambda d: emit_progress(progress_sink, EVENT_TOKEN, {"delta": d})) if progress_sink else None)
+                if reply.provider != "stub" and reply.text.strip():
+                    return reply.text, reply.to_metadata()
+        except Exception:  # noqa: BLE001
+            logger.exception("platform helper chat failed")
         try:
             response = self._ai_gateway.complete(
                 AICompletionRequest(model=_CHAT_MODEL, messages=messages)

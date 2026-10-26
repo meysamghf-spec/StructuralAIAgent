@@ -146,3 +146,17 @@ def file_storage_root(tmp_path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("FILE_STORAGE_ROOT", str(storage_root))
     get_settings.cache_clear()
     return storage_root
+
+
+@pytest.fixture(autouse=True)
+def _helper_llm_offline(monkeypatch: pytest.MonkeyPatch):
+    """Never reach a real LLM from tests: helper runs with the stub unless a test injects its own service."""
+    from app.application import platform_helper_factory
+
+    for name in list(os.environ):
+        if name.startswith("LLM_") or name.startswith("PLATFORM_ISSUE_"):
+            monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("LLM_PROVIDER", "stub")
+    platform_helper_factory.reset_helper_service(None)
+    yield
+    platform_helper_factory.reset_helper_service(None)

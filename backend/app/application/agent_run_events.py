@@ -17,6 +17,7 @@ EVENT_VALIDATION = "agent_run.validation"
 EVENT_APPROVAL_REQUIRED = "agent_run.approval_required"
 EVENT_COMPLETED = "agent_run.completed"
 EVENT_FAILED = "agent_run.failed"
+EVENT_TOKEN = "agent_run.token"  # token-by-token text delta of a conversational (helper) reply: {"delta": "..."}
 
 TERMINAL_EVENTS = frozenset({EVENT_COMPLETED, EVENT_FAILED, EVENT_APPROVAL_REQUIRED})
 
