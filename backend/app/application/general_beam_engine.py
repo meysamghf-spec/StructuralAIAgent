@@ -133,13 +133,97 @@ def analyze_beam_prompt(text: str) -> dict[str, Any] | None:
     return {"payload": payload, "markdown": "\n".join(lines)}
 
 
-CAPABILITIES_MESSAGE = (
-    "I couldn't match that to one of my built-in calculators, and no AI language model is configured on this server, "
-    "so I can't answer free-form questions right now.\n\n"
+def _is_fa(text: str) -> bool:
+    return any("\u0600" <= ch <= "\u06ff" for ch in (text or ""))
+
+
+_CAPABILITIES_EN = (
     "What I can do without a project:\n"
     "- Beams: simply supported, cantilever, or two-span continuous with uniform (kN/m) or point (kN) loads -> reactions, Mmax, Vmax, deflection, diagrams\n"
     "- Reinforced concrete beam design to Mabhas 9 (mention \"reinforced concrete\")\n"
-    "- 3D frame analysis (e.g. \"3D frame 3 stories, 2x2 bays\")\n\n"
-    "Example: \"Analyze a simply supported reinforced concrete beam with a 6 m span and uniform load of 20 kN/m.\"\n"
+    "- 3D frame analysis (e.g. \"3D frame 3 stories, 2x2 bays\")\n"
+    "- Optimization, 2800 seismic, rebar detailing, ETABS/SAFE/SAP2000 export and DXF drawings once a model exists\n\n"
+    "Example: \"Analyze a simply supported reinforced concrete beam with a 6 m span and uniform load of 20 kN/m.\""
+)
+_CAPABILITIES_FA = (
+    "کارهایی که بدون پروژه از من برمی‌آید:\n"
+    "- تیر: ساده، کنسول یا دو دهانه پیوسته با بار گسترده (kN/m) یا متمرکز (kN) ← عکس‌العمل، Mmax، Vmax، تغییرشکل و نمودارها\n"
+    "- طراحی تیر بتن مسلح طبق مبحث ۹ (عبارت «بتن مسلح» را بنویسید)\n"
+    "- تحلیل قاب سه‌بعدی (مثلاً «قاب سه‌بعدی ۳ طبقه، ۲×۲ دهانه»)\n"
+    "- بهینه‌سازی، زلزله ۲۸۰۰، جزئیات آرماتور، خروجی ETABS/SAFE/SAP2000 و نقشه DXF پس از ساخت مدل\n\n"
     "مثال: «تیر ساده بتن مسلح با دهانه ۶ متر و بار گسترده ۲۰ کیلونیوتن بر متر را تحلیل کن»"
 )
+
+# Back-compat constant (English + Persian example); new code should call capabilities_message(text).
+CAPABILITIES_MESSAGE = (
+    "I couldn't match that to one of my built-in calculators, and the SAIA AI helper is not available right now, "
+    "so I can't answer free-form questions at the moment.\n\n" + _CAPABILITIES_EN + "\n"
+    "مثال: «تیر ساده بتن مسلح با دهانه ۶ متر و بار گسترده ۲۰ کیلونیوتن بر متر را تحلیل کن»"
+)
+
+
+def capabilities_message(text: str = "") -> str:
+    """Fallback when no calculator matches and no LLM answered — in the user's language, as SAIA."""
+    if _is_fa(text):
+        return ("نتوانستم این درخواست را با یکی از محاسبه‌گرهای داخلی SAIA تطبیق دهم و دستیار هوش مصنوعی SAIA "
+                "اکنون در دسترس نیست؛ پس فعلاً نمی‌توانم به پرسش‌های آزاد پاسخ دهم. کمی بعد دوباره امتحان کنید.\n\n" + _CAPABILITIES_FA)
+    return ("I couldn't match that to one of SAIA's built-in calculators, and the SAIA AI helper is not available right now, "
+            "so I can't answer free-form questions at the moment. Please try again shortly.\n\n" + _CAPABILITIES_EN)
+
+
+_GREET_RE = re.compile(
+    r"^(?:hi+|hello+|hey+|hola|yo|howdy|good\s+(?:morning|afternoon|evening)|greetings|salam|slm|"
+    r"سلام|درود|وقت\s*بخیر|صبح\s*بخیر|ظهر\s*بخیر|عصر\s*بخیر|شب\s*بخیر|روز\s*بخیر|هلو|های|سلام\s*علیکم)"
+    r"(?:\s+(?:there|saia|everyone|team|SAIA|ساییا|دوست\s*من|عزیز|جان))?$",
+    re.IGNORECASE,
+)
+_HOWAREYOU_RE = re.compile(
+    r"^(?:(?:hi|hello|hey|salam|سلام|درود)[\s,،]*)?(?:how\s+are\s+you|how'?s\s+it\s+going|what'?s\s+up|sup|"
+    r"حالت\s*چطوره|حال\s*شما\s*چطور\s*است|چطوری|خوبی|حالت\s*خوبه|احوال\s*شما|چه\s*خبر)$",
+    re.IGNORECASE,
+)
+_THANKS_RE = re.compile(r"^(?:thanks?|thank\s+you|thx|ty|مرسی|ممنون|سپاس|دستت\s*درد\s*نکنه|متشکرم|خیلی\s*ممنون)$", re.IGNORECASE)
+_BYE_RE = re.compile(r"^(?:bye|goodbye|see\s+you|خداحافظ|خدانگهدار|فعلا|فعلاً|بای)$", re.IGNORECASE)
+_WHO_RE = re.compile(r"^(?:who\s+are\s+you|what\s+are\s+you|what\s+can\s+you\s+do|help|کمک|راهنما|تو\s+کی\s+هستی|شما\s+کی\s+هستید|چه\s+کاری\s+می ?تونی\s+بکنی|چه\s+کارهایی\s+می ?توانی\s+بکنی|چه\s+کاری\s+از\s+تو\s+برمیاد)$", re.IGNORECASE)
+
+
+def _norm_small_talk(text: str) -> str:
+    t = (text or "").strip().lower().replace("\u200c", " ")
+    t = re.sub(r"[!.؟?؛,،~:;…\-_*]+", " ", t)
+    t = t.replace("ي", "ی").replace("ك", "ک")
+    t = re.sub(r"سلا+م", "سلام", t)
+    t = re.sub(r"(.)\1{2,}", r"\1\1", t)
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def small_talk_kind(text: str) -> str | None:
+    """'greeting' | 'howareyou' | 'thanks' | 'bye' | 'who' for pure small talk, else None (never matches engineering requests)."""
+    t = _norm_small_talk(text)
+    if not t or len(t) > 48:
+        return None
+    for kind, rx in (("greeting", _GREET_RE), ("howareyou", _HOWAREYOU_RE), ("thanks", _THANKS_RE),
+                     ("bye", _BYE_RE), ("who", _WHO_RE)):
+        if rx.match(t):
+            return kind
+    return None
+
+
+def small_talk_reply(text: str) -> str | None:
+    """Deterministic, number-free reply (no LLM) in the user's language; None when the text is not small talk."""
+    kind = small_talk_kind(text)
+    if kind is None:
+        return None
+    fa = _is_fa(text)
+    if kind == "thanks":
+        return "خواهش می‌کنم! اگر محاسبه یا پروژه‌ی دیگری دارید، بنویسید." if fa else "You're welcome! Tell me if you have another calculation or project."
+    if kind == "bye":
+        return "موفق باشید! هر وقت خواستید، SAIA اینجاست." if fa else "Goodbye! SAIA is here whenever you need it."
+    if fa:
+        head = {"greeting": "سلام! من SAIA هستم، دستیار مهندسی سازه‌ی شما. 👋",
+                "howareyou": "سلام، ممنون! من SAIA هستم، دستیار مهندسی سازه‌ی شما و آماده‌ی کمک. 👋",
+                "who": "من SAIA هستم، دستیار هوش مصنوعی مهندسی سازه. محاسبه‌ها را با موتورهای قطعی انجام می‌دهم و مدل زبانی هرگز عدد مهندسی تولید نمی‌کند."}[kind]
+        return head + "\n\n" + _CAPABILITIES_FA
+    head = {"greeting": "Hello! I'm SAIA, your structural engineering assistant. 👋",
+            "howareyou": "Hi, I'm doing well, thanks! I'm SAIA, your structural engineering assistant, ready to help. 👋",
+            "who": "I'm SAIA, an AI structural engineering assistant. Calculations are done by deterministic engines; the language model never produces engineering numbers."}[kind]
+    return head + "\n\n" + _CAPABILITIES_EN
