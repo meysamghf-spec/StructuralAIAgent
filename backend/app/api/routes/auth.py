@@ -133,11 +133,24 @@ def get_current_user_features(
 _GOOGLE_COOKIE = "sa_google_nonce"
 
 
-def google_config() -> dict:
+def _ip_host(request: Request) -> bool:
+    """True when the app is reached by a bare IP (no Google sign-in there: the redirect URI is the domain)."""
+    import ipaddress
+
+    host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").split(",")[0].strip()
+    host = host.rsplit(":", 1)[0] if not host.startswith("[") else host.split("]")[0].lstrip("[")
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        return False
+
+
+def google_config(request: Request) -> dict:
     from app.application.google_oauth import google_enabled
     from app.infrastructure.config import get_settings
 
-    return {"enabled": google_enabled(get_settings())}
+    return {"enabled": google_enabled(get_settings()) and not _ip_host(request)}
 
 
 def google_start(request: Request, next: str = "/") -> RedirectResponse:
@@ -146,7 +159,7 @@ def google_start(request: Request, next: str = "/") -> RedirectResponse:
     from app.infrastructure.config import get_settings
 
     settings = get_settings()
-    if not g.google_enabled(settings):
+    if not g.google_enabled(settings) or _ip_host(request):
         raise AuthenticationError("Google sign-in is not configured")
     if not next.startswith("/") or next.startswith("//"):
         next = "/"

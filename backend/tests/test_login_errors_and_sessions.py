@@ -204,3 +204,16 @@ def test_google_claim_validation():
     for patch in ({"aud": "other"}, {"iss": "evil.com"}, {"exp": 1}, {"nonce": "zzz"}, {"email_verified": "false"}):
         with pytest.raises(AuthenticationError):
             validate_claims(s, {**good, **patch}, "n")
+
+
+def test_google_is_not_offered_on_bare_ip_access(api_client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "cid.apps.googleusercontent.com")
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "s3cret")
+    get_settings.cache_clear()
+    try:
+        assert api_client.get("/api/v1/auth/google/config", headers={"Host": "structuralai.ir"}).json() == {"enabled": True}
+        assert api_client.get("/api/auth/google/config", headers={"Host": "194.5.207.71"}).json() == {"enabled": False}
+        assert api_client.get("/api/v1/auth/google/start", headers={"Host": "194.5.207.71"}, follow_redirects=False).status_code == 401
+        assert api_client.get("/api/v1/auth/google/start", headers={"Host": "structuralai.ir"}, follow_redirects=False).status_code == 302
+    finally:
+        get_settings.cache_clear()
