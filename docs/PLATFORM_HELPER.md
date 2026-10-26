@@ -30,6 +30,17 @@ Engineering numbers are **never** produced by the LLM — rule-based engines run
 
 **Recommendation:** get one free key (Gemini or Groq, plus OpenRouter) and keep Pollinations as the key-less safety net. Pollinations is anonymous, has no SLA, and prompts are sent to a third party — do not rely on it for confidential data.
 
+### Generated platform knowledge (no hand-maintained page/plan/export lists)
+
+The product facts the assistant answers from are **generated at runtime** by `backend/app/application/platform_knowledge.py` and injected next to the hand-written rules in `knowledge/structuralai.md` (the `HelperService(knowledge_provider=…, faq_provider=…)` hooks wired in `platform_helper_factory.knowledge_hooks()`; the `platform_helper` package itself stays product-agnostic):
+
+- pages (checked against `frontend/lib/nav.ts` by a test), plans/limits/durations (`billing/plans.json`), crypto payment (`billing/crypto.py`), export kinds and plan gates (`chat_actions`), the agent capability catalog, and Validation / Approval / Memory (from their enums);
+- the **live per-user context** (plan + limits, project selected, model exists) is added to the system prompt every turn;
+- when the LLM is unreachable, platform questions get a **static FAQ built from the same knowledge** (`provider: "faq"`) instead of the generic stub;
+- "how do I / چطور / چیست / explain" questions are answered (with an offer to run the action) and never executed; direct commands still run as before;
+- `tests/test_platform_knowledge.py` fails if a page, plan or export kind is missing;
+- optional: `PLATFORM_HELP_LLM_PROVIDER` (+ `PLATFORM_HELP_LLM_MODEL`) pins a stronger provider first for the helper; it is ignored when that provider has no key, defaults unchanged.
+
 ### Safety design
 * Issues are **records only**. A proposed fix is a stored *draft* (diff or PR text) and is never applied.
 * `approve-fix` needs a signed-in **human** admin (`PLATFORM_ADMIN_ACCOUNTS`); the machine token gets 403. Even approval does not merge or deploy — a person does that in GitHub.

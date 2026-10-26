@@ -20,6 +20,8 @@ from app.platform_helper.prompt import build_system_prompt
 logger = logging.getLogger(__name__)
 
 TokenSink = Callable[[str], None]
+KnowledgeProvider = Callable[[bool], str]  # (fa) -> generated knowledge markdown
+FaqProvider = Callable[[str, bool, "dict[str, str] | None", bool], "str | None"]  # (message, fa, context, allow_overview)
 
 _STUB_HELP_FA = (
     "من دستیار پلتفرم هستم. فعلاً مدل زبانی در دسترس نیست، اما این کارها را همین الان می‌توانم انجام دهم:\n"
@@ -58,7 +60,8 @@ class HelperReply:
 class HelperService:
     def __init__(self, settings: HelperSettings | None = None, *, llm: LLMClient | None = None,
                  store: IssueStore | None = None, notifier: IssueNotifier | None = None,
-                 knowledge_path: str | None = None, product: str = "structuralai") -> None:
+                 knowledge_path: str | None = None, product: str = "structuralai",
+                 knowledge_provider: KnowledgeProvider | None = None, faq_provider: FaqProvider | None = None) -> None:
         self.settings = settings or load_settings()
         self.llm = llm or LLMClient(self.settings.providers)
         self.store = store or InMemoryIssueStore()
@@ -66,6 +69,10 @@ class HelperService:
                                                    self.settings.webhook_retries, product=product)
         self.issues = IssueService(self.store, self.notifier)
         self.knowledge_path = knowledge_path
+        # Product-specific hooks (the helper package stays product-agnostic): generated knowledge for the prompt and a
+        # static FAQ used when the LLM is unavailable.
+        self.knowledge_provider = knowledge_provider
+        self.faq_provider = faq_provider
 
     # ------------------------------------------------------------- public
     def classify(self, message: str) -> Intent:
@@ -89,14 +96,20 @@ class HelperService:
     def converse(self, message: str, history: Iterable[tuple[str, str]] = (), *, intent: str = "platform_help",
                  context: dict[str, str] | None = None, fa: bool | None = None, on_token: TokenSink | None = None) -> HelperReply:
         fa = is_persian(message) if fa is None else fa
+        extra = ""
+        if self.knowledge_provider is not None:
+            try:
+                extra = self.knowledge_provider(fa)
+            except Exception:  # noqa: BLE001 - never let the knowledge block break a reply
+                logger.exception("knowledge provider failed")
         msgs: list[dict[str, str]] = [{"role": "system", "content": build_system_prompt(
-            knowledge_path=self.knowledge_path, context=context, lang="fa" if fa else "en")}]
+            knowledge_path=self.knowledge_path, context=context, lang="fa" if fa else "en", extra_knowledge=extra)}]
         for role, content in list(history)[-self.settings.max_history:]:
             if role in ("user", "assistant") and content:
                 msgs.append({"role": role, "content": content[:2500]})
         msgs.append({"role": "user", "content": message})
         if not self.llm.configured:
-            return self._stub(intent, fa, on_token)
+            return self._stub(intent, fa, on_token, message=message, context=context)
         try:
             if on_token is not None:
                 parts: list[str] = []
@@ -110,7 +123,7 @@ class HelperService:
             return HelperReply(res.text, intent, provider=res.provider, model=res.model)
         except LLMUnavailableError as exc:
             logger.warning("helper LLM unavailable: %s", exc)
-            return self._stub(intent, fa, on_token)
+            return self._stub(intent, fa, on_token, message=message, context=context)
 
     def report_issue(self, report: IssueReport) -> tuple[IssueReport, bool]:
         return self.issues.report(report)
@@ -134,7 +147,23 @@ class HelperService:
                 "webhook_enabled": self.notifier.enabled, "provider_mode": self.settings.provider_mode}
 
     # ------------------------------------------------------------ internals
-    def _stub(self, intent: str, fa: bool, on_token: TokenSink | None) -> HelperReply:
+    def _faq(self, message: str, intent: str, fa: bool, context: dict[str, str] | None) -> str | None:
+        if self.faq_provider is None or intent == "greeting" or not message:
+            return None
+        try:
+            # Overview fallback only for genuine platform questions; free chat keeps the old fallback chain unless a topic matches.
+            return self.faq_provider(message, fa, context, intent == "platform_help")
+        except Exception:  # noqa: BLE001
+            logger.exception("faq provider failed")
+            return None
+
+    def _stub(self, intent: str, fa: bool, on_token: TokenSink | None, *, message: str = "",
+              context: dict[str, str] | None = None) -> HelperReply:
+        faq = self._faq(message, intent, fa, context)
+        if faq:
+            if on_token:
+                on_token(faq)
+            return HelperReply(faq, intent, provider="faq")
         if intent == "greeting":
             text = ("سلام! چطور می‌توانم کمکتان کنم؟ می‌توانید تحلیل یا طراحی را از همین چت شروع کنید.\n\n" + _STUB_HELP_FA) if fa else \
                 ("Hello! How can I help? You can start an analysis or design right from this chat.\n\n" + _STUB_HELP_EN)

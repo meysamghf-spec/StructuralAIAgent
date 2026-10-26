@@ -498,7 +498,8 @@ class ConversationService:
                     progress_sink=progress_sink,
                 )
 
-        content, metadata = self._run_general_chat(enriched_request, history, account=account, progress_sink=progress_sink)
+        content, metadata = self._run_general_chat(enriched_request, history, account=account, progress_sink=progress_sink,
+                                                   conversation=conversation)
         metadata["selected_mode"] = mode or "auto"
         return content, metadata
 
@@ -529,6 +530,11 @@ class ConversationService:
 
         try:
             fa = ca.is_fa(text)
+            # "how do I export to ETABS?" / «چطور دانلود کنم؟» is a question for the helper (explanation + offer), not a command.
+            from app.platform_helper.intents import is_platform_explain_question
+
+            if is_platform_explain_question(text):
+                return None
             spec = ca.parse_download(text)
             if spec is not None:
                 inputs = self._latest_frame_inputs(conversation, account)
@@ -597,6 +603,22 @@ class ConversationService:
                                       " (you gave no name, so I called it “New project”.)")
         return (f"پروژه «{name}» ساخته و باز شد.{note}" if fa else f"Created and opened project “{name}”.{note}"), meta
 
+    def _helper_context(self, conversation, account: AuthenticatedAccount | None) -> dict[str, str]:
+        """Live per-user facts for the assistant prompt: plan + limits, selected project, whether a model exists."""
+        from app.application.platform_knowledge import user_context
+
+        project_name: str | None = None
+        has_model: bool | None = None
+        try:
+            if conversation is not None and conversation.project_id is not None and account is not None:
+                project_name = next((p.name for p in self._project_access.list_accessible_projects(account)
+                                     if str(p.id) == str(conversation.project_id)), "selected")
+            if conversation is not None and account is not None:
+                has_model = self._latest_frame_inputs(conversation, account) is not None
+        except Exception:  # noqa: BLE001 - context is best effort
+            logger.debug("helper context lookup failed", exc_info=True)
+        return user_context(getattr(account, "account_id", None), project=project_name, has_model=has_model)
+
     def _helper_reply(self, conversation, account: AuthenticatedAccount, user_content: str, history,
                       attachments, progress_sink) -> tuple[str, dict] | None:
         """Platform helper: greetings, 'how do I...' questions, bug reports and issue status. Engineering stays with the engines."""
@@ -615,7 +637,7 @@ class ConversationService:
             reply = svc.handle(
                 user_content, pairs, account_id=account.account_id,
                 project_id=str(conversation.project_id or ""), conversation_id=str(conversation.id),
-                context={"project_selected": "yes" if conversation.project_id else "no"},
+                context=self._helper_context(conversation, account),
                 on_token=(lambda d: emit_progress(progress_sink, EVENT_TOKEN, {"delta": d})) if progress_sink else None)
             if reply is None:
                 return None
@@ -833,6 +855,7 @@ class ConversationService:
         *,
         account: AuthenticatedAccount | None = None,
         progress_sink: AgentRunProgressSink | None = None,
+        conversation=None,
     ) -> tuple[str, dict]:
         messages = [
             AIMessage(
@@ -893,13 +916,13 @@ class ConversationService:
             from app.application.platform_helper_factory import get_helper_service
 
             svc = get_helper_service()
-            if svc.llm.configured:
+            if svc.llm.configured or svc.faq_provider is not None:
                 pairs = [("user" if m.role == MessageRole.USER else "assistant", m.content)
                          for m in history[-_MAX_HISTORY_MESSAGES:] if m.role in (MessageRole.USER, MessageRole.ASSISTANT)]
                 if pairs and pairs[-1] == ("user", user_content):
                     pairs = pairs[:-1]
                 reply = svc.converse(
-                    user_content, pairs, intent="general_chat",
+                    user_content, pairs, intent="general_chat", context=self._helper_context(conversation, account),
                     on_token=(lambda d: emit_progress(progress_sink, EVENT_TOKEN, {"delta": d})) if progress_sink else None)
                 if reply.provider != "stub" and reply.text.strip():
                     return reply.text, reply.to_metadata()

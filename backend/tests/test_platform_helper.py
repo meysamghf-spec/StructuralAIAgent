@@ -203,8 +203,10 @@ def test_service_uses_llm_with_knowledge_prompt_and_streams_tokens() -> None:
         chunks = "".join(f"data: {json.dumps({'choices': [{'delta': {'content': p}}]})}\n\n" for p in ("Use ", "Approvals"))
         return httpx.Response(200, content=(chunks + "data: [DONE]\n\n").encode())
 
+    from app.application.platform_helper_factory import knowledge_hooks  # pages/plans are generated product knowledge
+
     svc = HelperService(load_settings({"LLM_PROVIDER": "stub"}),
-                        llm=LLMClient([_cfg("a")], transport=httpx.MockTransport(handler), sleep=lambda s: None))
+                        llm=LLMClient([_cfg("a")], transport=httpx.MockTransport(handler), sleep=lambda s: None), **knowledge_hooks())
     tokens: list[str] = []
     r = svc.handle("how do I approve a project?", on_token=tokens.append)
     assert r and r.text == "Use Approvals" and tokens == ["Use ", "Approvals"]
