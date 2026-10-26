@@ -32,7 +32,7 @@ F2K_UNVERIFIED = [
 ]
 
 FORMATS = {
-    "e2k": {"filename": "model.e2k", "label": "ETABS model (.e2k)", "mime": "text/plain"},
+    "e2k": {"filename": "model.e2k", "label": "ETABS model (.e2k)", "mime": "application/octet-stream"},
     "f2k": {"filename": "foundation.f2k", "label": "SAFE foundation loads (.f2k)", "mime": "text/plain"},
     "s2k": {"filename": "model.s2k", "label": "SAP2000 model (.s2k)", "mime": "text/plain"},
     "dxf_plans": {"filename": "plans.dxf", "label": "AutoCAD plans per storey (.dxf)", "mime": "application/dxf"},
@@ -105,8 +105,9 @@ def build_e2k(inp, raw: dict[str, Any], design: dict[str, Any] | None = None) ->
     conc, rebar, cs, bs = lay["conc"], lay["rebar"], lay["col_sec"], lay["beam_sec"]
     L: list[str] = []
     add = L.append
-    add("$ File model.e2k exported by StructuralAIAgent (chat 3D frame) - units kN, m")
-    add(" ")
+    from datetime import datetime as _dt
+    add(f"$ File C:\\StructuralAIAgent\\model.e2k saved {_dt.now().strftime('%m/%d/%Y %I:%M:%S %p')}")
+    add("")
     add("$ PROGRAM INFORMATION")
     add('  PROGRAM  "ETABS"  VERSION "16.2.1"  ')
     add("")
@@ -133,10 +134,10 @@ def build_e2k(inp, raw: dict[str, Any], design: dict[str, Any] | None = None) ->
     add("")
     add("$ MATERIAL PROPERTIES")
     Ec = ex["Ec_kn_m2"]
-    add(f'  MATERIAL  "{conc}"    TYPE "Concrete"    WEIGHTPERVOLUME 25')
+    add(f'  MATERIAL  "{conc}"    TYPE "Concrete"    GRADE "fc {_g(inp.fc_mpa)} MPa"    WEIGHTPERVOLUME 25')
     add(f'  MATERIAL  "{conc}"    SYMTYPE "Isotropic"  E {_g(Ec)}  U 0.2  A 1E-05')
     add(f'  MATERIAL  "{conc}"    FC {_g(inp.fc_mpa * 1000)}')
-    add(f'  MATERIAL  "{rebar}"    TYPE "Rebar"    WEIGHTPERVOLUME 76.9729')
+    add(f'  MATERIAL  "{rebar}"    TYPE "Rebar"    GRADE "fy {_g(inp.fy_mpa)} MPa"    WEIGHTPERVOLUME 76.9729')
     add(f'  MATERIAL  "{rebar}"    SYMTYPE "Uniaxial"  E 2E+08  A 1.17E-05')
     add(f'  MATERIAL  "{rebar}"  FY {_g(inp.fy_mpa * 1000)}  FU {_g(inp.fy_mpa * 1500)} FYE {_g(inp.fy_mpa * 1100)}  FUE {_g(inp.fy_mpa * 1650)}')
     add("")
@@ -184,6 +185,8 @@ def build_e2k(inp, raw: dict[str, Any], design: dict[str, Any] | None = None) ->
     add("$ LOAD PATTERNS")
     add('  LOADPATTERN "Dead"  TYPE  "Dead"  SELFWEIGHT  1')
     add('  LOADPATTERN "Live"  TYPE  "Live"  SELFWEIGHT  0')
+    if seismic and C is None:
+        seismic = False  # no base-shear coefficient -> never write SHEARCOEFF None
     if seismic:
         for nm, d in (("EX", "X"), ("EY", "Y")):
             add(f'  LOADPATTERN "{nm}"  TYPE  "Seismic"  SELFWEIGHT  0')
@@ -218,7 +221,12 @@ def build_e2k(inp, raw: dict[str, Any], design: dict[str, Any] | None = None) ->
         add(f'  LOADCASE "{pat}"  LOADPAT  "{pat}"  SF  1 ')
     add("")
     add("$ LOAD COMBINATIONS")
+    defined = {"Dead", "Live"} | ({"EX", "EY"} if seismic else set())
     for cname, label, factors in _combo_table(raw):
+        factors = {p: f for p, f in factors.items() if p in defined}  # never reference an undefined case
+        if not factors:
+            continue
+        label = str(label).replace('"', "'")
         add(f'  COMBO "{cname}"  TYPE "Linear Add"  NOTES "{label}"  ')
         add(f'  COMBO "{cname}"  DESIGN "Concrete"  COMBOTYPE "Strength"  ')
         for pat, sf in factors.items():
@@ -227,8 +235,16 @@ def build_e2k(inp, raw: dict[str, Any], design: dict[str, Any] | None = None) ->
     add("$ PROJECT INFORMATION")
     add('  PROJECTINFO    COMPANYNAME "StructuralAIAgent"    MODELNAME "chat-frame3d"  ')
     add("")
+    add("  END")
     add("$ END OF MODEL FILE")
-    return "\r\n".join(L) + "\r\n"
+    return _ascii_e2k("\r\n".join(L) + "\r\n")
+
+
+def _ascii_e2k(text: str) -> str:
+    """ETABS' .e2k reader is ANSI/ASCII-only: strip non-ASCII (e.g. Persian labels), no BOM, CRLF."""
+    import unicodedata
+    out = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
+    return out.replace("\r\n", "\n").replace("\n", "\r\n")
 
 
 def parse_e2k(text: str) -> dict[str, Any]:

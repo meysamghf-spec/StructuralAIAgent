@@ -164,3 +164,35 @@ def test_export_endpoint_without_database():
         assert client.post("/api/v1/frame3d/export", json={"format": "e2k", "inputs": {"storeys": 3}}).status_code == 422
     finally:
         application.dependency_overrides.clear()
+
+
+def test_e2k_matches_etabs_file_structure(model):
+    """Structure of a real ETABS-saved .e2k: '$ File ... saved', ordered sections, '  END' terminator."""
+    inp, raw = model
+    text = cte.build_e2k(inp, raw)
+    text.encode("ascii")  # ASCII only, so no BOM / no UTF-8 multibyte
+    assert not text.startswith("\ufeff")
+    assert "\n" not in text.replace("\r\n", "")
+    lines = text.split("\r\n")
+    assert lines[0].startswith("$ File ") and " saved " in lines[0]
+    assert lines[-3:] == ["  END", "$ END OF MODEL FILE", ""]
+    heads = [l for l in lines if l.startswith("$ ")][1:]
+    order = ["$ PROGRAM INFORMATION", "$ CONTROLS", "$ STORIES - IN SEQUENCE FROM TOP", "$ GRIDS", "$ MATERIAL PROPERTIES",
+             "$ FRAME SECTIONS", "$ POINT COORDINATES", "$ LINE CONNECTIVITIES", "$ LINE ASSIGNS", "$ LOAD PATTERNS",
+             "$ LOAD COMBINATIONS", "$ END OF MODEL FILE"]
+    idx = [heads.index(h) for h in order]
+    assert idx == sorted(idx)
+    stories = [l.split('"')[1] for l in lines if l.startswith('  STORY "')]
+    assert stories[-1] == "Base" and stories[0] == f"Story{inp.storeys}"
+    assert all('GRADE "' in l for l in lines if ' TYPE "' in l and l.startswith("  MATERIAL"))
+    assert "None" not in text
+
+
+def test_e2k_strips_non_ascii_and_skips_undefined_cases(model):
+    inp, raw = model
+    raw = dict(raw); raw["base_shear"] = {}
+    ex = dict(raw["export"]); ex["combo_factors"] = {"ترکیب ۱ D+Ex": {"D": 1.0, "Ex": 1.0}, **ex["combo_factors"]}
+    raw["export"] = ex
+    text = cte.build_e2k(inp, raw)
+    text.encode("ascii")
+    assert 'LOADCASE "EX"' not in text and "SHEARCOEFF" not in text
