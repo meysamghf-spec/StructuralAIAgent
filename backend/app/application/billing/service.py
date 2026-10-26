@@ -175,7 +175,7 @@ def create_checkout(account_id: str, plan_id: str, duration_id: str, asset_id: s
                            "contract": a.contract, "mock": not live, "tx": "", "checkout_url": ""}
     try:
         if a.chain == "btcpay" and live:
-            bp = crypto.btcpay_create(inv_id, q["amount_usdt"], a, f"StructuralAI {plan['name']} {q['months']}m",
+            bp = crypto.btcpay_create(inv_id, q["amount_usdt"], a, f"SAAI {plan['name']} {q['months']}m",
                                       f"{frontend_base}/workspace/upgrades/pay?invoice={inv_id}")
             pay.update(bp, pay_address="", amount_crypto="", rate_usd=None, rate_source="btcpay")
         else:

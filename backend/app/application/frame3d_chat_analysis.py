@@ -49,13 +49,13 @@ from app.application.analysis.frame3d_solver import (
 
 KIND = "frame3d_analysis"
 DISCLAIMER = (
-    "Linear elastic 3D frame analysis with the internal StructuralAIAgent solver. "
+    "Linear elastic 3D frame analysis with the internal SAAI solver. "
     "Seismic load uses the user-supplied coefficient C (equivalent static); "
     "no Iranian Standard 2800 or Mabhas 9 checks are performed yet. Final "
     "engineering decisions require verification by a qualified engineer."
 )
 DISCLAIMER_2800 = (
-    "Linear elastic 3D frame analysis with the internal StructuralAIAgent solver. Seismic loads follow "
+    "Linear elastic 3D frame analysis with the internal SAAI solver. Seismic loads follow "
     "Standard 2800 (4th ed.) as implemented here (equivalent static + response spectrum, simplifications "
     "listed under Assumptions). Not a certified code check; final engineering decisions require "
     "verification by a qualified engineer."

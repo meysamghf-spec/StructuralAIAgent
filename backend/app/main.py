@@ -33,7 +33,7 @@ def create_app() -> FastAPI:
     _configure_logging()
     settings = get_settings()
     app = FastAPI(
-        title="Engineering AI Platform API",
+        title="SAAI API",
         description="Structural engineering AI platform API",
         version="1.0.0",
         lifespan=lifespan,

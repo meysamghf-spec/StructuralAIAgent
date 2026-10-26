@@ -295,7 +295,7 @@ def _build_pdf(pages: list[str]) -> bytes:
     stamp = datetime.now(UTC).strftime("D:%Y%m%d%H%M%SZ")
     trailer = (
         f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R "
-        f"/Info << /Producer (StructuralAIAgent drawing engine) /CreationDate ({stamp}) >> >>\n"
+        f"/Info << /Producer (SAAI drawing engine) /CreationDate ({stamp}) >> >>\n"
         f"startxref\n{xref_position}\n%%EOF\n"
     )
     return header + b"".join(body_parts) + "".join(xref).encode("ascii") + trailer.encode("latin-1", "replace")

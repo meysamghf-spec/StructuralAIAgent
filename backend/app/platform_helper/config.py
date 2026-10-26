@@ -70,7 +70,7 @@ def _provider_from_preset(name: str, env: Mapping[str, str], *, timeout: float, 
     key = key_override or env.get(f"LLM_{up}_API_KEY", "")
     headers = {}
     if name == "openrouter":
-        headers = {"HTTP-Referer": env.get("LLM_REFERER", "https://structuralai.local"), "X-Title": "StructuralAI helper"}
+        headers = {"HTTP-Referer": env.get("LLM_REFERER", "https://structuralai.local"), "X-Title": "SAAI helper"}
     cfg = ProviderConfig(name=name, base_url=base, model=model, api_key=key, keyless=keyless and not key,
                          timeout=timeout, max_tokens=max_tokens, temperature=temperature, extra_headers=headers)
     return cfg if cfg.usable else None

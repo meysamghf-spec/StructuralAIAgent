@@ -141,7 +141,7 @@ export function ChatThread({
   if (messages.length === 0 && !busy) {
     return (
       <div className="chat-empty-state">
-        <h2>STRAI</h2>
+        <h2>SAAI</h2>
         <p className="muted">
           Describe your structural engineering problem, attach models, drawings, PDFs, or spreadsheets,
           and run analysis, design, validation, and reporting workflows from one conversation.

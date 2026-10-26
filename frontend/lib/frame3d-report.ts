@@ -47,5 +47,5 @@ export function buildReportHtml(r: Frame3dResults, projectName: string | null, g
   if (r.warnings.length) parts.push(`<h2>${esc(t("Warnings"))}</h2><ul>${r.warnings.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>`);
   const css = `body{font-family:Segoe UI,Tahoma,sans-serif;margin:24px;color:#111;line-height:1.45}h1{font-size:22px}h2{font-size:16px;margin-top:22px;border-bottom:1px solid #ccc}
 table{border-collapse:collapse;margin:8px 0;font-size:12px}td,th{border:1px solid #bbb;padding:3px 6px}th{background:#eef2f7}td{direction:ltr;unicode-bidi:plaintext}.meta{color:#555}.note{background:#fff7d6;padding:6px 8px}`;
-  return `<!doctype html><html lang="${r.lang}" dir="${fa ? "rtl" : "ltr"}"><head><meta charset="utf-8"><title>STRAI report</title><style>${css}</style></head><body>${parts.join("\n")}</body></html>`;
+  return `<!doctype html><html lang="${r.lang}" dir="${fa ? "rtl" : "ltr"}"><head><meta charset="utf-8"><title>SAAI report</title><style>${css}</style></head><body>${parts.join("\n")}</body></html>`;
 }
