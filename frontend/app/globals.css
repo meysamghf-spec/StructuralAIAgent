@@ -3058,3 +3058,4 @@ a.button,
   .saia-logo--lg .saia-mark { width: 44px; height: 44px; }
   .auth-brand { margin-bottom: 1.25rem; }
 }
+.auth-shell .auth-brand { margin-top: 1.5rem; }
