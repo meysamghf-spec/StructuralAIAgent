@@ -1,4 +1,4 @@
-"""Unified Structural AI Agent orchestration pipeline."""
+"""Unified SAIA orchestration pipeline."""
 
 from __future__ import annotations
 

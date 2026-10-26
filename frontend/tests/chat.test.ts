@@ -602,7 +602,7 @@ describe("prominent prompt composer", () => {
       "utf8",
     );
     expect(source).toContain('variant?: "default" | "prominent"');
-    expect(source).toContain("Tell StructuralAIAgent what you want to accomplish");
+    expect(source).toContain("Tell SAIA what you want to accomplish");
     expect(source).toContain("Send");
   });
 
@@ -612,10 +612,10 @@ describe("prominent prompt composer", () => {
       "utf8",
     );
     expect(source).toContain("shouldShowProminentPrompt");
-    expect(source).toContain("Tell StructuralAIAgent what you want to accomplish.");
-    expect(source).toContain("Describe a structural engineering task");
+    expect(source).toContain("Tell SAIA what you want to accomplish.");
+    expect(source).toContain("validation, approval and memory");
     expect(source).toContain('variant="prominent"');
-    expect(source).toContain("PromptExamples");
+    expect(source).not.toContain("<PromptExamples");
   });
 
   it("shows hero only for empty idle conversations", () => {
@@ -1007,7 +1007,7 @@ describe("first request UX", () => {
     );
     const css = readFileSync(resolve(__dirname, "../app/globals.css"), "utf8");
     expect(workspace).toContain("chat-hero-intro");
-    expect(workspace).toContain("Structural Engineering AI");
+    expect(workspace).toContain("Chat with your structural AI");
     expect(css).toContain(".chat-prompt-examples-label");
     expect(css).toContain("grid-template-columns: 1fr 1fr");
   });

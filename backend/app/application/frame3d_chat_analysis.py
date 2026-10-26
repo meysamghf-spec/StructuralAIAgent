@@ -49,13 +49,13 @@ from app.application.analysis.frame3d_solver import (
 
 KIND = "frame3d_analysis"
 DISCLAIMER = (
-    "Linear elastic 3D frame analysis with the internal StructuralAIAgent solver. "
+    "Linear elastic 3D frame analysis with the internal SAIA solver. "
     "Seismic load uses the user-supplied coefficient C (equivalent static); "
     "no Iranian Standard 2800 or Mabhas 9 checks are performed yet. Final "
     "engineering decisions require verification by a qualified engineer."
 )
 DISCLAIMER_2800 = (
-    "Linear elastic 3D frame analysis with the internal StructuralAIAgent solver. Seismic loads follow "
+    "Linear elastic 3D frame analysis with the internal SAIA solver. Seismic loads follow "
     "Standard 2800 (4th ed.) as implemented here (equivalent static + response spectrum, simplifications "
     "listed under Assumptions). Not a certified code check; final engineering decisions require "
     "verification by a qualified engineer."
@@ -988,7 +988,7 @@ def _build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None 
     elif is_frame3d_request(user_request):
         inp = parse_frame3d_request(user_request)
         model_changes = fu.apply_edits(inp, {k: v for k, v in fu.model_edits(user_request).items() if k in fu.GEOMETRY_KEYS})
-    elif prior_spec and fu.is_model_edit(user_request) and not export_formats:
+    elif prior_spec and (fu.is_model_edit(user_request) or (fu.is_param_edit(user_request) and not wants_foundation(user_request))) and not export_formats:
         inp = inputs_from_dict(prior_spec); from_memory = True
         follow = parse_frame3d_request(user_request)
         edits = {k: getattr(follow, k) for k in follow.parsed if k not in ("storeys", "bays_x", "bays_y") or getattr(follow, k) is not None}

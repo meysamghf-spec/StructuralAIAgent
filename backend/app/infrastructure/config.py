@@ -54,12 +54,22 @@ class Settings(BaseSettings):
     auth_allow_legacy_actor: bool = True
     auth_jwt_secret: SecretStr | None = None
     auth_token_expiry_hours: int = 24
-    # Sign in with Google (OAuth 2.0 / OIDC). Disabled unless all three are set.
+    # "Remember me": longer-lived session (httpOnly cookie + token lifetime)
+    auth_remember_expiry_hours: int = 720
+    # Login rate limiting: this many failures within the window lock the email+IP (and, at 4x, the IP) for the lockout time
+    auth_max_login_failures: int = 5
+    auth_lockout_seconds: int = 900
+    # Sign in with Google (OAuth 2.0 / OIDC). Enabled only when GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are both set.
     google_client_id: str | None = None
     google_client_secret: SecretStr | None = None
     google_redirect_uri: str | None = None
     # Where the browser lands after Google sign-in; defaults to the redirect URI's origin + /login
     google_post_login_url: str | None = None
+
+    @property
+    def google_callback_url(self) -> str:
+        """Redirect URI registered in Google Cloud: GOOGLE_REDIRECT_URI, else the production default."""
+        return self.google_redirect_uri or "https://structuralai.ir/api/auth/google/callback"
     project_access_enforced: bool = False
     entitlement_enforcement_enabled: bool = False
     # Free-launch mode (e.g. Iran hosting, where the crypto payment gateway and CoinGecko are not usable):

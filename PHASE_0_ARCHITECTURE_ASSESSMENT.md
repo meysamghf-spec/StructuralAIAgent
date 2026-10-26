@@ -1,6 +1,6 @@
 # PHASE 0 — Current-State and Architecture Assessment
 
-**Project:** StructuralAIAgent — Engineering AI Platform *(Structural Engineering: initial domain)*  
+**Project:** SAIA — Engineering AI Platform *(Structural Engineering: initial domain)*  
 **Assessment Date:** 2026-08-10  
 **Last Updated:** 2026-08-12 (Phase 0 Architecture Freeze — AG-01 through AG-75 RESOLVED)  
 **Phase:** 0 (Architecture Documentation — No Implementation)  
@@ -2590,7 +2590,7 @@ Invalid or incomplete critical inputs MUST block the affected engineering operat
 | C1 | AG-42–AG-49 approval-gate labels were redefined (2026-08-12) from earlier architecture-approval meanings | **Preserved:** Original content remains in Sections F, G, H, L, M. New AG-42–AG-49 labels are authoritative for agent/platform architecture. |
 | C2 | AG-25 and AG-26 had no prior standalone definitions (numbering gap AG-24 → AG-27) | **Resolved at freeze:** AG-25 = data residency (local-first, hybrid optional); AG-26 = MVP workflow priority (architecture-first per master spec). |
 | C3 | AG-53 previously described as requiring `"APPROVE PHASE 1"` message | **Resolved at freeze:** AG-53 = Phase 1 authorization gate **defined**; Phase 1 **NOT STARTED**. Future explicit implementation authorization still required before coding. |
-| C4 | Project name "StructuralAIAgent" vs. platform vision "Engineering AI Platform" | **Resolved:** Structural Engineering is initial domain; core architecture is domain-independent (AG-54, AG-71). |
+| C4 | Project name "SAIA" vs. platform vision "Engineering AI Platform" | **Resolved:** Structural Engineering is initial domain; core architecture is domain-independent (AG-54, AG-71). |
 | C5 | D7 (vision model) listed OPEN in T.2 | **Resolved at freeze:** Vision routing via AI Gateway task-type model routing (AG-36); no separate provider decision. |
 
 ### U.23 Unresolved Architectural Ambiguities (Report Only — Do Not Invent)

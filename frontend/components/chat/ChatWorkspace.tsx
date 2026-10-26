@@ -5,7 +5,8 @@ import { ChatContextPanel } from "@/components/chat/ChatContextPanel";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { AssistantContextStrip } from "@/components/chat/AssistantContextStrip";
 import { ChatThread } from "@/components/chat/ChatThread";
-import { PromptExamples } from "@/components/chat/PromptExamples";
+import { SaiaLogo } from "@/components/brand/SaiaLogo";
+import { useUiLang } from "@/hooks/useUiLang";
 import { useAuth } from "@/hooks/useAuth";
 import { useChat } from "@/hooks/useChat";
 import { useProjectFiles } from "@/hooks/useProjectFiles";
@@ -18,6 +19,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 export default function ChatWorkspace() {
+  const { t } = useUiLang();
   const { user, isAuthenticated, loading: authLoading, logout } = useAuth();
   const router = useRouter();
   const composerInputRef = useRef<HTMLTextAreaElement>(null);
@@ -39,6 +41,7 @@ export default function ChatWorkspace() {
     setSelectedProjectId,
     selectedProject,
     loading: projectsLoading,
+    refreshProjects,
   } = useProjectScope(urlProject);
 
   const chat = useChat({
@@ -47,6 +50,10 @@ export default function ChatWorkspace() {
     selectedProjectId,
     setSelectedProjectId,
     assistant,
+    onChatAction: (action) => {
+      if (action.switchAssistant) setAssistant(action.switchAssistant);
+      if (action.projectSwitch) void refreshProjects().catch(() => undefined);
+    },
   });
   const setChatContent = chat.setContent;
   useEffect(() => {
@@ -150,17 +157,14 @@ export default function ChatWorkspace() {
     return (
       <section className="panel-stack chat-guest">
         <header className="page-header">
-          <p className="eyebrow">Structural Engineering AI</p>
-          <h2>Chat-first structural engineering workspace</h2>
-          <p className="subtitle">
-            Tell the AI what you need, attach ETABS models, PDFs, drawings, and spreadsheets,
-            and run engineering workflows from one conversation.
-          </p>
+          <p className="eyebrow">{t("Chat with your structural AI")}</p>
+          <h2>{t("Chat-first, AI-driven structural engineering")}</h2>
+          <p className="subtitle">{t("Analysis, design, validation, approval and memory — all in one conversation.")}</p>
         </header>
         <div className="card">
           <p>
             <Link href="/login">Sign in</Link> or <Link href="/register">create an account</Link>{" "}
-            to start chatting with your project context, files, and engineering agents.
+            to start chatting.
           </p>
         </div>
       </section>
@@ -227,7 +231,7 @@ export default function ChatWorkspace() {
             </button>
             {!showProminentPrompt ? (
               <div>
-                <p className="eyebrow">StructuralAIAgent</p>
+                <SaiaLogo size="sm" tagline={false} className="chat-header-logo" />
                 <h2>{activeConversation?.title ?? "New Chat"}</h2>
                 {selectedProject ? (
                   <span className="chat-project-badge">Project: {selectedProject.name}</span>
@@ -238,7 +242,7 @@ export default function ChatWorkspace() {
                 )}
               </div>
             ) : (
-              <p className="chat-main-header-title">StructuralAIAgent</p>
+              <SaiaLogo size="md" className="chat-header-logo" />
             )}
           </div>
           <label className="chat-project-select">
@@ -319,14 +323,13 @@ export default function ChatWorkspace() {
               />
             ) : null}
             <div className="chat-hero-intro">
-              <p className="chat-hero-eyebrow">Structural Engineering AI</p>
-              <h1 className="chat-hero-title">StructuralAIAgent</h1>
+              <p className="chat-hero-eyebrow">{t("Chat with your structural AI")}</p>
+              <h1 className="chat-hero-title"><SaiaLogo size="lg" /></h1>
               <p className="chat-hero-subtitle">
-                Tell StructuralAIAgent what you want to accomplish.
+                Tell SAIA what you want to accomplish.
               </p>
               <p className="chat-hero-lead">
-                Describe a structural engineering task, attach models or documents when needed,
-                and continue the conversation from one workspace.
+                {t("Analysis, design, validation, approval and memory — all in one conversation.")}
               </p>
             </div>
             <div className="chat-hero-composer">
@@ -335,7 +338,6 @@ export default function ChatWorkspace() {
                 hintId="chat-hero-composer-hint"
                 {...composerProps}
               />
-              <PromptExamples onSelect={handleExampleSelect} disabled={chat.busy} />
             </div>
           </div>
         ) : (

@@ -59,6 +59,35 @@ class InvalidCredentialsError(ApplicationError):
         )
 
 
+class InvalidEmailError(ApplicationError):
+    def __init__(self) -> None:
+        super().__init__("INVALID_EMAIL", "Email address is invalid", status_code=422)
+
+
+class EmailNotRegisteredError(ApplicationError):
+    """Deliberately specific: the product tells users when an email has no account (rate limiting guards enumeration)."""
+
+    def __init__(self) -> None:
+        super().__init__("EMAIL_NOT_REGISTERED", "No account is registered with this email", status_code=401)
+
+
+class WrongPasswordError(ApplicationError):
+    def __init__(self, attempts_left: int | None = None) -> None:
+        super().__init__("WRONG_PASSWORD", "Wrong password", status_code=401,
+                         details={"attempts_left": attempts_left} if attempts_left is not None else None)
+
+
+class AccountDisabledError(ApplicationError):
+    def __init__(self) -> None:
+        super().__init__("ACCOUNT_DISABLED", "This account is disabled", status_code=403)
+
+
+class TooManyLoginAttemptsError(ApplicationError):
+    def __init__(self, retry_after_seconds: int) -> None:
+        super().__init__("RATE_LIMITED", "Too many sign-in attempts. Try again later.", status_code=429,
+                         details={"retry_after_seconds": int(retry_after_seconds)})
+
+
 class DuplicateUserError(ApplicationError):
     def __init__(self, email: str) -> None:
         super().__init__(

@@ -8,9 +8,11 @@ import { useEffect, useState, type ReactNode } from "react";
 import { ChatDock } from "@/components/chat/ChatDock";
 import { useUiLang } from "@/hooks/useUiLang";
 import { useDrawerDismiss } from "@/hooks/useDrawerDismiss";
+import { SaiaLogo } from "@/components/brand/SaiaLogo";
 
 
 const AUTH_PATHS = new Set(["/login", "/register"]);
+const PUBLIC_PATHS = new Set(["/about", "/privacy", "/terms"]); // public pages: own chrome, no login or app shell
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -28,10 +30,17 @@ export function AppShell({ children }: { children: ReactNode }) {
     router.replace("/login");
   }
 
+  if (PUBLIC_PATHS.has(pathname.replace(/\/$/, ""))) {
+    return <>{children}</>;
+  }
+
   if (isAuthPage) {
     return (
       <div className="auth-shell">
-        <main className="content auth-content">{children}</main>
+        <main className="content auth-content">
+          <div className="auth-brand"><SaiaLogo size="lg" /></div>
+          {children}
+        </main>
       </div>
     );
   }
@@ -52,7 +61,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         >
           {navOpen ? "✕" : "☰"}
         </button>
-        <span className="mobile-topbar-title">StructuralAIAgent</span>
+        <Link href="/" className="mobile-topbar-title" aria-label="SAIA"><SaiaLogo size="sm" tagline={false} /></Link>
       </header>
       <button
         type="button"
@@ -67,7 +76,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <aside className="sidebar" data-open={navOpen ? "true" : "false"} data-testid="nav-drawer" {...swipe}>
         <button type="button" className="drawer-close" aria-label="Close menu" data-testid="drawer-close" onClick={() => setNavOpen(false)}>✕</button>
         <div className="brand">
-          <p className="brand-eyebrow">StructuralAIAgent</p>
+          <Link href="/" className="brand-link" aria-label="SAIA home"><SaiaLogo size="md" /></Link>
           <h1>Engineering Workspace</h1>
         </div>
         <MainNav onNavigate={() => setNavOpen(false)} />

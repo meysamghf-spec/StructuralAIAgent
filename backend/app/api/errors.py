@@ -27,8 +27,10 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def application_error_handler(
         _request: Request, exc: ApplicationError
     ) -> JSONResponse:
+        retry = exc.details.get("retry_after_seconds")
         return JSONResponse(
             status_code=exc.status_code,
+            headers={"Retry-After": str(retry)} if retry else None,
             content=ErrorResponse(
                 error=ErrorBody(
                     code=exc.code,

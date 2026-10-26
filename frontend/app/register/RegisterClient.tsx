@@ -10,7 +10,7 @@ import {
   type RegistrationFieldErrors,
 } from "@/lib/auth-forms";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 
 export default function RegisterClient() {
@@ -18,7 +18,8 @@ export default function RegisterClient() {
   const router = useRouter();
 
   const [displayName, setDisplayName] = useState("");
-  const [email, setEmail] = useState("");
+  const searchParams = useSearchParams();
+  const [email, setEmail] = useState(() => searchParams.get("email") ?? "");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [fieldErrors, setFieldErrors] = useState<RegistrationFieldErrors>({});
@@ -76,7 +77,7 @@ export default function RegisterClient() {
         <p className="eyebrow">{REGISTER_PAGE.eyebrow}</p>
         <h2>{REGISTER_PAGE.heading}</h2>
         <p className="subtitle">
-          Register to manage projects, engineering workflows, and workspace tools.
+          Create an account to chat with your structural AI — analysis, design, validation, approval and memory.
         </p>
       </header>
 
@@ -103,8 +104,11 @@ export default function RegisterClient() {
           Email
           <input
             className="input"
+            name="email"
             type="email"
-            autoComplete="email"
+            inputMode="email"
+            autoComplete="username"
+            dir="ltr"
             value={email}
             onChange={(event) => {
               setEmail(event.target.value);

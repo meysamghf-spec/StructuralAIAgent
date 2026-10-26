@@ -1,5 +1,5 @@
 import { apiFetch, getApiBaseUrl } from "./api";
-import { storeAuthSession } from "./auth-session";
+import { setRememberHint, storeAuthSession } from "./auth-session";
 
 export type UserResponse = {
   id: string;
@@ -35,6 +35,7 @@ export async function registerUser(input: {
   const response = await apiFetch<AuthTokenResponse>("/api/v1/auth/register", {
     method: "POST",
     body: JSON.stringify(input),
+    credentials: "include",
   });
   storeAuthSession(response.access_token, response.user.account_id);
   return response;
@@ -43,13 +44,35 @@ export async function registerUser(input: {
 export async function loginUser(input: {
   email: string;
   password: string;
+  remember_me?: boolean;
 }): Promise<AuthTokenResponse> {
   const response = await apiFetch<AuthTokenResponse>("/api/v1/auth/login", {
     method: "POST",
     body: JSON.stringify(input),
+    credentials: "include", // accept the httpOnly session cookie
   });
   storeAuthSession(response.access_token, response.user.account_id);
+  setRememberHint(Boolean(input.remember_me));
   return response;
+}
+
+/** Trade the httpOnly "remember me" cookie for a bearer token (null when there is no live session). */
+export async function restoreSession(): Promise<AuthTokenResponse | null> {
+  try {
+    const response = await apiFetch<AuthTokenResponse>("/api/v1/auth/session", { method: "POST", credentials: "include" });
+    storeAuthSession(response.access_token, response.user.account_id);
+    return response;
+  } catch {
+    return null;
+  }
+}
+
+export async function logoutRemote(): Promise<void> {
+  try {
+    await apiFetch<void>("/api/v1/auth/logout", { method: "POST", credentials: "include" });
+  } catch {
+    /* the local session is cleared regardless */
+  }
 }
 
 export async function fetchCurrentUser(): Promise<UserResponse> {

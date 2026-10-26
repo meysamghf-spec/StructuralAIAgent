@@ -1,4 +1,4 @@
-# StructuralAIAgent capability audit
+# SAIA capability audit
 
 **Inspection only.** This document records what the current codebase can and cannot do. It is not a design spec. Placeholders, enums, empty dicts, TODOs, and “readiness” handlers are **not** treated as implemented unless executable logic exists.
 
@@ -262,7 +262,7 @@ Schema can hold multi-story 3D points + members. The product cannot populate a c
 
 ---
 
-## CAN STRUCTURALAIAGENT DESIGN A 12m × 22m BUILDING?
+## CAN SAIA DESIGN A 12m × 22m BUILDING?
 
 **Scenario:** plot 12 m × 22 m; frontage 12 m; pilot/parking floor; 4 parking spaces; 3 residential floors; 1 apartment per floor; 3 bedrooms per apartment; architecture + structure + construction drawings.
 

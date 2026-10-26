@@ -160,3 +160,11 @@ def _helper_llm_offline(monkeypatch: pytest.MonkeyPatch):
     platform_helper_factory.reset_helper_service(None)
     yield
     platform_helper_factory.reset_helper_service(None)
+
+
+@pytest.fixture(autouse=True)
+def _reset_login_throttle():
+    from app.application.login_throttle import login_throttle
+
+    login_throttle.reset()
+    yield

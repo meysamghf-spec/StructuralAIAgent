@@ -2968,3 +2968,129 @@ a.button,
 .issue-detail label { display: grid; gap: 0.25rem; margin: 0.5rem 0; }
 .issue-fix { display: grid; gap: 0.5rem; }
 @media (max-width: 800px) { .issues-layout { grid-template-columns: 1fr; } }
+
+/* ===== SAIA brand: logomark + wordmark, fresher header/sidebar look ===== */
+.saia-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  color: #f8fafc;
+  max-width: 100%;
+  min-width: 0;
+  text-decoration: none;
+}
+.saia-mark {
+  flex: none;
+  filter: drop-shadow(0 4px 14px rgba(56, 189, 248, 0.35));
+}
+.saia-logo-text {
+  display: inline-flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.05;
+}
+.saia-wordmark {
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  font-size: 1.5rem;
+  background: linear-gradient(100deg, #e0e7ff 0%, #7dd3fc 55%, #22d3ee 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+.saia-tagline {
+  margin-top: 0.3rem;
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.saia-logo--sm .saia-wordmark { font-size: 1.1rem; letter-spacing: 0.14em; }
+.saia-logo--sm { gap: 0.5rem; }
+.saia-logo--lg .saia-wordmark { font-size: 2.3rem; letter-spacing: 0.18em; }
+.saia-logo--lg .saia-tagline { font-size: 0.8rem; }
+.saia-logo--lg { gap: 0.9rem; }
+
+.brand-link { display: inline-block; max-width: 100%; margin-bottom: 0.9rem; }
+.brand h1 { font-size: 0.95rem; font-weight: 500; color: #94a3b8; margin-bottom: 1.1rem; }
+.chat-sidebar-header .brand-link { margin-bottom: 0.6rem; }
+.chat-header-logo { margin-bottom: 0.15rem; }
+.chat-hero-title { display: flex; justify-content: center; }
+.chat-hero-title .saia-logo { gap: 1rem; }
+
+.auth-brand { display: flex; justify-content: center; margin-bottom: 1.75rem; }
+.auth-panel .page-header { text-align: center; }
+.auth-shell {
+  background:
+    radial-gradient(60rem 28rem at 15% -10%, rgba(99, 102, 241, 0.22), transparent 60%),
+    radial-gradient(48rem 26rem at 95% 0%, rgba(34, 211, 238, 0.14), transparent 60%),
+    #0f172a;
+}
+
+/* Fresher chrome */
+.sidebar {
+  background: linear-gradient(180deg, #131c31 0%, #0f1729 100%);
+  border-inline-end: 1px solid rgba(148, 163, 184, 0.16);
+  border-right-color: rgba(148, 163, 184, 0.16);
+}
+.nav-link { transition: background 0.15s ease, color 0.15s ease; }
+.nav-link.active {
+  background: linear-gradient(90deg, rgba(99, 102, 241, 0.28), rgba(14, 165, 233, 0.12));
+  box-shadow: inset 2px 0 0 #38bdf8;
+  color: #f8fafc;
+}
+[dir="rtl"] .nav-link.active { box-shadow: inset -2px 0 0 #38bdf8; }
+.mobile-topbar-title { display: inline-flex; align-items: center; min-width: 0; }
+@media (max-width: 960px) {
+  .mobile-topbar {
+    background: rgba(15, 23, 42, 0.86);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(56, 189, 248, 0.18);
+    box-shadow: 0 6px 24px rgba(2, 6, 23, 0.35);
+  }
+}
+@media (max-width: 480px) {
+  .saia-logo--lg .saia-wordmark { font-size: 1.9rem; }
+  .saia-logo--lg .saia-mark { width: 44px; height: 44px; }
+  .auth-brand { margin-bottom: 1.25rem; }
+}
+.auth-shell .auth-brand { margin-top: 1.5rem; }
+
+/* chat-first download buttons */
+.chat-downloads { margin-top: 10px; }
+.chat-downloads-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.chat-downloads-buttons .button { max-width: 100%; white-space: normal; text-align: start; }
+.chat-downloads-error { color: var(--danger, #c0392b); margin: 6px 0 0; font-size: 0.85rem; }
+
+/* Login: remember-me row, specific error alert, Google note */
+.remember-row { display: flex; align-items: flex-start; gap: 0.6rem; color: #cbd5e1; cursor: pointer; }
+.remember-row input { margin-top: 0.25rem; width: 1.05rem; height: 1.05rem; flex: none; accent-color: #38bdf8; }
+.remember-row small { font-size: 0.8rem; }
+.login-alert { display: grid; gap: 0.6rem; overflow-wrap: anywhere; }
+.login-alert p { margin: 0; }
+.login-alert-action { justify-self: start; text-decoration: none; }
+.google-note { font-size: 0.85rem; }
+.auth-form .field-error { color: #fca5a5; font-size: 0.85rem; }
+
+/* Public pages: /about /privacy /terms (no gate, no app shell). body is overflow:hidden app-wide, so this scrolls itself. */
+.public-shell { height: 100vh; height: 100dvh; overflow-y: auto; display: flex; flex-direction: column; background: #0f172a; }
+.public-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem clamp(1rem, 4vw, 2.5rem); border-bottom: 1px solid #1e293b; }
+.public-header .sidebar-lang { margin: 0; }
+.public-main { flex: 1; width: min(100%, 820px); margin: 0 auto; padding: 2rem clamp(1rem, 4vw, 2rem) 3rem; }
+.public-doc[hidden] { display: none; }
+.public-doc h1 { font-size: clamp(1.6rem, 4vw, 2.2rem); line-height: 1.25; margin: 0 0 0.5rem; }
+.public-doc h2 { font-size: 1.15rem; margin: 1.75rem 0 0.5rem; color: #f1f5f9; }
+.public-doc p, .public-doc li { line-height: 1.75; color: #cbd5e1; overflow-wrap: anywhere; }
+.public-doc ul { padding-inline-start: 1.25rem; display: grid; gap: 0.4rem; }
+.public-lead { font-size: 1.15rem; color: #e2e8f0 !important; }
+.public-features { list-style: none; padding: 0 !important; margin: 1.5rem 0; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem !important; }
+.public-features li { background: #111c33; border: 1px solid #1e293b; border-radius: 12px; padding: 0.9rem 1rem; display: grid; gap: 0.25rem; }
+.public-features strong { color: #f8fafc; }
+.public-cta { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.5rem; }
+.public-cta .button { text-decoration: none; text-align: center; }
+.public-footer { border-top: 1px solid #1e293b; padding: 1.25rem clamp(1rem, 4vw, 2.5rem); display: grid; gap: 0.5rem; justify-items: center; text-align: center; }
+.public-footer nav { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem 1.25rem; }

@@ -83,5 +83,5 @@ def add_title_block(msp, x0, y0, x1, y1, *, title, sheet_no, notes=""):
     msp.add_line((bx0, tb), (bx1, tb), dxfattribs=attrs)
     th = pad * 0.25
     msp.add_text(f"{sheet_no}  {title}", height=th, dxfattribs=attrs).set_placement((bx0 + pad * 0.3, by0 + pad * 0.6))
-    msp.add_text(f"StructuralAI  |  {notes}"[:120], height=th * 0.6, dxfattribs=attrs).set_placement((bx0 + pad * 0.3, by0 + pad * 0.2))
+    msp.add_text(f"SAIA  |  {notes}"[:120], height=th * 0.6, dxfattribs=attrs).set_placement((bx0 + pad * 0.3, by0 + pad * 0.2))
     return (bx0, by0, bx1, by1)

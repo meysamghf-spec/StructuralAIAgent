@@ -1,4 +1,4 @@
-# StructuralAIAgent Demo
+# SAIA Demo
 
 Chat-first structural engineering workspace for local demonstration.
 

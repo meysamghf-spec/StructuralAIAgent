@@ -23,6 +23,8 @@ import { AciRcBeamResultCard } from "./AciRcBeamResultCard";
 import { EngineeringResultCard } from "./EngineeringResultCard";
 import { Frame3dResultCard } from "./Frame3dResultCard";
 import { FrameDownloads } from "@/components/frame3d/FrameDownloads";
+import { ChatDownloadsCard } from "./ChatDownloadsCard";
+import { parseChatDownloads } from "@/lib/chat-actions";
 import { AutocadDrawingCard } from "@/components/autocad/AutocadDrawingCard";
 import { ArchitecturalSetViewer } from "@/components/autocad/ArchitecturalSetViewer";
 import { StructuralSetView } from "@/components/autocad/StructuralSetView";
@@ -142,7 +144,7 @@ export function ChatThread({
   if (messages.length === 0 && !busy) {
     return (
       <div className="chat-empty-state">
-        <h2>StructuralAIAgent</h2>
+        <h2>SAIA</h2>
         <p className="muted">
           Describe your structural engineering problem, attach models, drawings, PDFs, or spreadsheets,
           and run analysis, design, validation, and reporting workflows from one conversation.
@@ -186,6 +188,9 @@ export function ChatThread({
               {tokenStreaming ? <span className="chat-stream-caret" aria-hidden="true" /> : null}
               {message.role === "assistant" && rawMessage.metadata?.stopped === true ? (
                 <p className="muted chat-stopped-note">Stopped</p>
+              ) : null}
+              {message.role === "assistant" && parseChatDownloads(rawMessage.metadata) ? (
+                <ChatDownloadsCard downloads={parseChatDownloads(rawMessage.metadata)!} />
               ) : null}
               {message.role === "assistant" && message.autocadResult ? (
                 <AutocadDrawingCard
@@ -246,7 +251,7 @@ export function ChatThread({
                   {message.engineeringResult.frame3dResults ? (
                     <Frame3dResultCard results={message.engineeringResult.frame3dResults} />
                   ) : null}
-                  {!message.engineeringResult.frame3dResults && projectId && (message.engineeringResult.artifacts.length > 0 || (message.engineeringResult.agentRun?.tools ?? []).some((t) => (t.artifacts ?? []).length > 0)) ? (
+                  {!message.engineeringResult.frame3dResults && !parseChatDownloads(rawMessage.metadata) && projectId && (message.engineeringResult.artifacts.length > 0 || (message.engineeringResult.agentRun?.tools ?? []).some((t) => (t.artifacts ?? []).length > 0)) ? (
                     <FrameDownloads collapsed title="Results & downloads (latest frame run)" />
                   ) : null}
                   {message.engineeringResult.aciBeamResults ? (

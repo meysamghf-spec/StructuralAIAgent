@@ -50,6 +50,7 @@ export const DOWNLOADS: Record<DownloadGroup, DownloadItem[]> = {
   ],
   reports: [
     { kind: "table", name: "all", label: "All tables (one workbook)", labelFa: "همهٔ جداول (یک فایل اکسل)", formats: ["xlsx"] },
+    { kind: "report", name: "report_pdf", label: "Calculation report (PDF)", labelFa: "گزارش محاسبات (PDF)", formats: ["pdf"] },
     { kind: "report", name: "report_md", label: "Calculation report", labelFa: "گزارش محاسبات", formats: ["md"] },
     { kind: "report", name: "report_json", label: "Raw results", labelFa: "نتایج خام", formats: ["json"] },
   ],

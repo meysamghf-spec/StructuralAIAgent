@@ -2,6 +2,18 @@
 
 const AUTH_TOKEN_KEY = "structuralai.auth.token";
 const AUTH_ACCOUNT_KEY = "structuralai.auth.accountId";
+// Non-secret hint that an httpOnly "remember me" cookie may exist, so guests do not probe /auth/session on every load.
+const REMEMBER_HINT_KEY = "structuralai.auth.remember";
+
+export function setRememberHint(on: boolean): void {
+  if (typeof window === "undefined") return;
+  if (on) window.localStorage.setItem(REMEMBER_HINT_KEY, "1");
+  else window.localStorage.removeItem(REMEMBER_HINT_KEY);
+}
+
+export function hasRememberHint(): boolean {
+  return typeof window !== "undefined" && window.localStorage.getItem(REMEMBER_HINT_KEY) === "1";
+}
 
 export function getStoredAuthToken(): string | null {
   if (typeof window === "undefined") {
@@ -31,6 +43,7 @@ export function clearAuthSession(): void {
   }
   window.localStorage.removeItem(AUTH_TOKEN_KEY);
   window.localStorage.removeItem(AUTH_ACCOUNT_KEY);
+  window.localStorage.removeItem(REMEMBER_HINT_KEY);
 }
 
 export function hasStoredAuthToken(): boolean {

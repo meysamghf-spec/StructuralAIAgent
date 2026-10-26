@@ -27,7 +27,7 @@ _BUG_WORDS = re.compile(
 _STATUS = re.compile(r"(issue status|status of (my )?(issue|report)s?|my reports|وضعیت گزارش|گزارش(‌| )?های من|وضعیت مشکل)", re.I)
 _GREETING = re.compile(r"^\s*(hi|hello|hey|salam|slm|سلام|درود|وقت بخیر|صبح بخیر|عصر بخیر|thanks|thank you|مرسی|ممنون|تشکر)[\s!.،,؟?]*$", re.I)
 _HELP = re.compile(
-    r"(what can you do|what you can do|what are you|who are you|what do you do|how (do|can) i|how does (the )?platform|what is (this )?(platform|structuralai)|help me|\bhelp\b|where (is|can i find)|"
+    r"(what can you do|what you can do|what are you|who are you|what do you do|how (do|can) i|how does (the )?platform|what is (this )?(platform|structuralai|saia)|help me|\bhelp\b|where (is|can i find)|"
     r"which page|explain (the )?(platform|page|approval|optimization|validation)|"
     r"چه کاری|چکار می ?کنی|چه کارهایی|چطور|چگونه|کجا|کمک|راهنما|پلتفرم|این صفحه|تایید پروژه|تأیید پروژه|چیست|یعنی چه|معنی)", re.I)
 _HOWTO = re.compile(r"^(?:(?:hi|hello|hey|سلام|درود)[\s,،!.]*)?(how (do|can|should) i|how does|where (is|can i)|why (does|is|can'?t)|چطور|چگونه|چرا|کجا|چه جوری)", re.I)

@@ -128,7 +128,7 @@ def parse_2800(text: str) -> dict:
     """Return the 2800 parameters found in ``text`` (already digit-normalised)."""
     found: dict = {}
     zone_alt = "|".join(p for p, _ in _ZONE_WORDS)
-    m = re.search(rf"(?:خطر\s*نسبی|(?:seismic\s*)?hazard|seismicity|zone)\s*(?:zone|level|is|:|=)?\s*({zone_alt})", text, re.I) or \
+    m = re.search(rf"(?:خطر\s*نسبی|(?:زون|پهنه|منطقه)(?:\s*(?:لرزه\s*خیزی|زلزله))?|(?:seismic\s*)?hazard|seismicity|zone)\s*(?:zone|level|is|:|=|را|رو|به)?\s*({zone_alt})", text, re.I) or \
         re.search(rf"({zone_alt})\s*(?:seismic\s*)?(?:hazard|seismicity|zone)", text, re.I)
     if m:
         word = m.group(1)
