@@ -3,8 +3,10 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SAIA — Engineering Workspace",
-  description: "Structural engineering AI platform workspace",
+  title: "SAIA — AI for structural engineering",
+  description: "SAIA: AI for structural engineering — chat-first analysis, design and CAD workspace",
+  icons: { icon: "/icon.svg" },
+  themeColor: "#0f172a",
 };
 
 export default function RootLayout({

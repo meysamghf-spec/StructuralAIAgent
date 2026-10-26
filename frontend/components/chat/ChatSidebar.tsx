@@ -5,6 +5,7 @@ import { useDrawerDismiss } from "@/hooks/useDrawerDismiss";
 import { useMemo, useState } from "react";
 
 import { MainNav } from "@/components/MainNav";
+import { SaiaLogo } from "@/components/brand/SaiaLogo";
 import { ProjectFileTree } from "@/components/chat/ProjectFileTree";
 import type { ProjectFileSummary } from "@/lib/api";
 import type { ChatConversation } from "@/lib/chat-api";
@@ -97,7 +98,7 @@ export function ChatSidebar({
       <aside className="chat-sidebar" data-open={open} data-testid="chat-drawer" {...swipe}>
         <div className="chat-sidebar-header">
           <button type="button" className="drawer-close" aria-label="Close menu" data-testid="drawer-close" onClick={onClose}>✕</button>
-          <p className="brand-eyebrow">SAIA</p>
+          <Link href="/" className="brand-link" aria-label="SAIA home"><SaiaLogo size="md" /></Link>
           <h1>Engineering Chat</h1>
           <button className="button chat-new-button" type="button" onClick={onNewChat}>
             + New Chat

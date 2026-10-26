@@ -23,6 +23,7 @@ export function setUiLang(lang: Frame3dLang): void {
 }
 
 export const UI_FA: Record<string, string> = {
+  "AI for structural engineering": "هوش مصنوعی برای مهندسی سازه",
   Chat: "گفتگو", Projects: "پروژه‌ها", "New Project": "پروژهٔ جدید", Model: "مدل", Files: "فایل‌ها", Memory: "حافظه", Learning: "یادگیری",
   Assistants: "دستیارها", "Assistant Builder": "سازندهٔ دستیار", Approvals: "تأییدها", Analysis: "تحلیل",
   Results: "نتایج", Design: "طراحی", Optimization: "بهینه‌سازی", Integrations: "اتصال نرم‌افزارها", CAD: "نقشه (CAD)",

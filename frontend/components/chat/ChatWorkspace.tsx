@@ -5,6 +5,7 @@ import { ChatContextPanel } from "@/components/chat/ChatContextPanel";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { AssistantContextStrip } from "@/components/chat/AssistantContextStrip";
 import { ChatThread } from "@/components/chat/ChatThread";
+import { SaiaLogo } from "@/components/brand/SaiaLogo";
 import { PromptExamples } from "@/components/chat/PromptExamples";
 import { useAuth } from "@/hooks/useAuth";
 import { useChat } from "@/hooks/useChat";
@@ -227,7 +228,7 @@ export default function ChatWorkspace() {
             </button>
             {!showProminentPrompt ? (
               <div>
-                <p className="eyebrow">SAIA</p>
+                <SaiaLogo size="sm" tagline={false} className="chat-header-logo" />
                 <h2>{activeConversation?.title ?? "New Chat"}</h2>
                 {selectedProject ? (
                   <span className="chat-project-badge">Project: {selectedProject.name}</span>
@@ -238,7 +239,7 @@ export default function ChatWorkspace() {
                 )}
               </div>
             ) : (
-              <p className="chat-main-header-title">SAIA</p>
+              <SaiaLogo size="md" className="chat-header-logo" />
             )}
           </div>
           <label className="chat-project-select">
@@ -320,7 +321,7 @@ export default function ChatWorkspace() {
             ) : null}
             <div className="chat-hero-intro">
               <p className="chat-hero-eyebrow">Structural Engineering AI</p>
-              <h1 className="chat-hero-title">SAIA</h1>
+              <h1 className="chat-hero-title"><SaiaLogo size="lg" /></h1>
               <p className="chat-hero-subtitle">
                 Tell SAIA what you want to accomplish.
               </p>
