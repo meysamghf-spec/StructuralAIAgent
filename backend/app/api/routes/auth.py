@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request, status
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi.responses import JSONResponse, RedirectResponse
 from urllib.parse import quote
 
 from app.api.deps import get_auth_service, get_current_account, get_entitlement_authorization_service
@@ -23,27 +23,82 @@ from app.domain.models.user import AuthenticatedAccount
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+SESSION_COOKIE = "saia_session"
+
+
+def _set_session_cookie(response: Response, request: Request, token: str, *, remember: bool) -> None:
+    """httpOnly session cookie: a browser session cookie, or 30 days (settings) when "remember me" is ticked."""
+    from app.infrastructure.config import get_settings
+
+    settings = get_settings()
+    secure = (request.headers.get("x-forwarded-proto") or request.url.scheme) == "https"
+    response.set_cookie(
+        SESSION_COOKIE, token, httponly=True, secure=secure, samesite="lax", path="/api/v1/auth",
+        max_age=settings.auth_remember_expiry_hours * 3600 if remember else None,
+    )
+
+
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
 
 @router.post("/register", status_code=status.HTTP_201_CREATED, response_model=AuthTokenResponse)
 def register_user(
     body: RegisterRequest,
+    request: Request,
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
-) -> AuthTokenResponse:
+) -> Response:
     user, token = auth_service.register_user(
         email=body.email,
         password=body.password,
         display_name=body.display_name,
     )
-    return AuthTokenResponse(access_token=token, user=UserResponse.from_domain(user))
+    out = JSONResponse(
+        AuthTokenResponse(access_token=token, user=UserResponse.from_domain(user)).model_dump(mode="json"),
+        status_code=status.HTTP_201_CREATED,
+    )
+    _set_session_cookie(out, request, token, remember=False)
+    return out
 
 
 @router.post("/login", response_model=AuthTokenResponse)
 def login_user(
     body: LoginRequest,
+    request: Request,
+    response: Response,
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
-) -> AuthTokenResponse:
-    user, token = auth_service.login(email=body.email, password=body.password)
-    return AuthTokenResponse(access_token=token, user=UserResponse.from_domain(user))
+) -> Response:
+    user, token = auth_service.login(
+        email=body.email, password=body.password, ip=_client_ip(request), remember=body.remember_me
+    )
+    payload = AuthTokenResponse(access_token=token, user=UserResponse.from_domain(user))
+    out = JSONResponse(payload.model_dump(mode="json"))
+    _set_session_cookie(out, request, token, remember=body.remember_me)
+    return out
+
+
+@router.post("/session", response_model=AuthTokenResponse)
+def restore_session(
+    request: Request,
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+) -> Response:
+    """Trade the httpOnly session cookie for a fresh bearer token (used when the browser has no stored token)."""
+    from app.application.exceptions import AuthenticationError
+
+    cookie = request.cookies.get(SESSION_COOKIE)
+    if not cookie:
+        raise AuthenticationError("No active session")
+    user, token, remember = auth_service.session_token(cookie)
+    out = JSONResponse(AuthTokenResponse(access_token=token, user=UserResponse.from_domain(user)).model_dump(mode="json"))
+    _set_session_cookie(out, request, token, remember=remember)
+    return out
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout_user() -> Response:
+    out = Response(status_code=status.HTTP_204_NO_CONTENT)
+    out.delete_cookie(SESSION_COOKIE, path="/api/v1/auth")
+    return out
 
 
 @router.get("/me", response_model=UserResponse)

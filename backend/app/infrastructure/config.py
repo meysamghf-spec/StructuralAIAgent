@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     auth_allow_legacy_actor: bool = True
     auth_jwt_secret: SecretStr | None = None
     auth_token_expiry_hours: int = 24
+    # "Remember me": longer-lived session (httpOnly cookie + token lifetime)
+    auth_remember_expiry_hours: int = 720
+    # Login rate limiting: this many failures within the window lock the email+IP (and, at 4x, the IP) for the lockout time
+    auth_max_login_failures: int = 5
+    auth_lockout_seconds: int = 900
     # Sign in with Google (OAuth 2.0 / OIDC). Disabled unless all three are set.
     google_client_id: str | None = None
     google_client_secret: SecretStr | None = None

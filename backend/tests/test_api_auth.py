@@ -95,14 +95,14 @@ def test_register_persists_password_hash_and_login_me_features_succeed(
         json={"email": email, "password": "wrong-password"},
     )
     assert wrong_password.status_code == 401
-    assert wrong_password.json()["error"]["code"] == "INVALID_CREDENTIALS"
+    assert wrong_password.json()["error"]["code"] == "WRONG_PASSWORD"
 
     unknown_email = api_client.post(
         "/api/v1/auth/login",
         json={"email": f"missing-{uuid.uuid4().hex}@example.com", "password": password},
     )
     assert unknown_email.status_code == 401
-    assert unknown_email.json()["error"]["code"] == "INVALID_CREDENTIALS"
+    assert unknown_email.json()["error"]["code"] == "EMAIL_NOT_REGISTERED"
 
 
 def test_project_owner_can_access_project(
