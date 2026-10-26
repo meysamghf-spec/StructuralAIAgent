@@ -29,7 +29,7 @@ function limitRows(p: Plan): [string, string][] {
       l.frame_max_storeys === null ? "Unlimited" : `${l.frame_max_storeys} storeys × ${l.frame_max_bays} bays`,
     ],
     ["Design sheets", l.design_sheets.map((s) => SHEET_LABEL[s] ?? s).join(", ") || "—"],
-    ["Exports", l.exports.length ? l.exports.map((e) => (e === "dxf" ? "DXF" : e === "e2k" ? "ETABS" : "SAFE")).join(", ") : "—"],
+    ["Exports", l.exports.length ? l.exports.map((e) => (e === "dxf" ? "DXF" : e === "e2k" ? "ETABS" : e === "s2k" ? "SAP2000" : "SAFE")).join(", ") : "—"],
     ["AutoCAD imports / month", fmtLimit(l.autocad_imports_per_month)],
     ["Optimization", l.optimization ? "Included" : "—"],
     ["Seats", fmtLimit(l.seats)],

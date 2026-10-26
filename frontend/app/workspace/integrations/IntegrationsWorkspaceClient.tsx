@@ -148,6 +148,12 @@ export default function IntegrationsWorkspaceClient() {
                 capability.availability,
               )}
             </p>
+            {capability.software === "SAP2000" ? (
+              <p className="muted" data-testid="sap2000-s2k-note">
+                Built in: SAP2000 model export (.s2k, no local install needed). In the chat ask «خروجی SAP2000» /
+                &quot;export SAP2000&quot; after a 3D frame analysis, or download model.s2k from the CAD or Model page.
+              </p>
+            ) : null}
             {capability.message &&
             !getConnectionHelpMessage(
               capability.software,

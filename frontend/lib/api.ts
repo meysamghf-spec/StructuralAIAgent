@@ -900,7 +900,7 @@ export async function archiveBuilderAgent(agentId: string): Promise<AgentDefinit
 }
 
 
-/** Fetch a frame3d export (e2k/f2k/dxf) as text, for in-page viewers. */
+/** Fetch a frame3d export (e2k/f2k/s2k/dxf) as text, for in-page viewers. */
 export async function fetchFrame3dExportText(format: string, inputs: Record<string, unknown>): Promise<string> {
   const response = await fetch(`${getApiBaseUrl()}/api/v1/frame3d/export`, {
     method: "POST",

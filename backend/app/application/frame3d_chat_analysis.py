@@ -148,6 +148,7 @@ _REBAR_WORDS = r"آرماتور ?بندی|دیتیل آرماتور|جزئیات
 _EXPORT_TARGETS = {
     "e2k": r"etabs|\be2k\b|ایتبس|ای ?تبس",
     "f2k": r"\bsafe\b|\bf2k\b|سیف|سیفی|فونداسیون|پی\b",
+    "s2k": r"sap ?2000|\bsap\b|\bs2k\b|ساپ",
     "dxf_plans": r"autocad|auto ?cad|\bdxf\b|\bcad\b|اتوکد|اتو ?کد|نقشه|پلان",
     "dxf_3d": r"autocad|auto ?cad|\bdxf\b|\bcad\b|اتوکد|اتو ?کد|3d|سه ?بعدی",
     "dxf_rebar": _REBAR_WORDS,
@@ -162,7 +163,7 @@ def requested_export_formats(user_request: str) -> list[str]:
     if re.search(_FOUNDATION_DRAWING, t):  # «نقشه فونداسیون» is itself a drawing request
         return ["dxf_foundation"] + (["dxf_rebar"] if re.search(_REBAR_WORDS, t) else [])
     if re.search(_REBAR_WORDS, t):  # "نقشه آرماتوربندی" is itself a drawing request (no export word needed)
-        return ["dxf_rebar"] + [f for f in ("e2k", "f2k") if re.search(_EXPORT_TARGETS[f], t)]
+        return ["dxf_rebar"] + [f for f in ("e2k", "f2k", "s2k") if re.search(_EXPORT_TARGETS[f], t)]
     if not re.search(_EXPORT_WORD, t):
         return []
     found = [f for f, pat in _EXPORT_TARGETS.items() if f not in ("dxf_rebar", "dxf_foundation") and re.search(pat, t)]
@@ -176,7 +177,7 @@ def requested_export_formats(user_request: str) -> list[str]:
 def is_export_request(user_request: str) -> bool:
     """ETABS/SAFE exports always; CAD-only exports when the frame/model is mentioned (other CAD exports keep their agents)."""
     found = requested_export_formats(user_request)
-    if {"e2k", "f2k", "dxf_rebar", "dxf_foundation"} & set(found):
+    if {"e2k", "f2k", "s2k", "dxf_rebar", "dxf_foundation"} & set(found):
         return True
     if wants_foundation(user_request) and re.search(r"frame|model|structure|قاب|مدل|سازه", _norm(user_request).lower()):
         return True
@@ -1228,7 +1229,7 @@ def _frame3d_markdown_en(payload: dict[str, Any]) -> str:
         if payload.get("model_from_project_memory"):
             lines.append("Model re-analysed from the last 3D frame stored in this project.")
         for e in req:
-            if e["format"] in ("e2k", "f2k") and (e["requested"] or not payload.get("export_requested")):
+            if e["format"] in ("e2k", "f2k", "s2k") and (e["requested"] or not payload.get("export_requested")):
                 lines += [f"- {e['filename']}: " + " ".join(e["notes"])]
     if payload["warnings"]:
         lines += ["", "Warnings:", *[f"- {w}" for w in payload["warnings"]]]

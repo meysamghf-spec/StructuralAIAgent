@@ -34,6 +34,7 @@ F2K_UNVERIFIED = [
 FORMATS = {
     "e2k": {"filename": "model.e2k", "label": "ETABS model (.e2k)", "mime": "text/plain"},
     "f2k": {"filename": "foundation.f2k", "label": "SAFE foundation loads (.f2k)", "mime": "text/plain"},
+    "s2k": {"filename": "model.s2k", "label": "SAP2000 model (.s2k)", "mime": "text/plain"},
     "dxf_plans": {"filename": "plans.dxf", "label": "AutoCAD plans per storey (.dxf)", "mime": "application/dxf"},
     "dxf_3d": {"filename": "frame3d.dxf", "label": "AutoCAD 3D wireframe (.dxf)", "mime": "application/dxf"},
     "dxf_rebar": {"filename": "rebar-details.dxf", "label": "Rebar detailing sheets + bar bending schedule (.dxf)", "mime": "application/dxf"},
@@ -634,6 +635,10 @@ def build_export(fmt: str, inp, raw: dict[str, Any], design: dict[str, Any] | No
         return build_e2k(inp, raw, design)
     if fmt == "f2k":
         return build_f2k(inp, raw)
+    if fmt == "s2k":
+        from app.application.sap2000_export import build_s2k
+
+        return build_s2k(inp, raw, design)
     if fmt == "dxf_plans":
         from app.application.structural_drawings import build_dxf_plans as build_pro_plans
 
@@ -655,7 +660,9 @@ def build_export(fmt: str, inp, raw: dict[str, Any], design: dict[str, Any] | No
 
 def export_descriptors(requested: list[str] | None = None) -> list[dict[str, Any]]:
     req = set(requested or [])
-    notes = {"e2k": E2K_UNVERIFIED, "f2k": F2K_UNVERIFIED,
+    from app.application.sap2000_export import S2K_UNVERIFIED
+
+    notes = {"e2k": E2K_UNVERIFIED, "f2k": F2K_UNVERIFIED, "s2k": S2K_UNVERIFIED,
              "dxf_plans": ["DXF R2010 (ezdxf, audited); office drawing standard: A3/A1 paper-space sheets with title block, S-0k story plans, S-10 column/beam schedules, S-F1 foundation plan + footing schedule, E-xx elevations per grid line; units mm."],
              "dxf_3d": ["DXF R12 ASCII; LINE entities with Z plus one 3D POLYLINE per column stack (use 3D Orbit)."],
              "dxf_rebar": ["DXF R2010 (ezdxf, audited); sheets R-01 beams, R-02 columns, R-03 bar bending schedule; units mm.",
