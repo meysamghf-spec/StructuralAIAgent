@@ -266,6 +266,11 @@ def _parse_fa_bays(t: str, inp: "Frame3dInputs") -> None:
         _set_bay(inp, m.group(3).lower(), int(m.group(1)), m.group(2) or m.group(4))
     for m in re.finditer(rf"{dirs}\s*(?:،|,|:)?\s*(\d+)\s*(?:تا\s*)?دهانه(?:\s*ی)?{span}", t, re.I):
         _set_bay(inp, m.group(1).lower(), int(m.group(2)), m.group(3))
+    if not {"bays_x", "bays_y"} & set(inp.parsed):
+        m = re.search(rf"(\d+)\s*(?:تا\s*)?دهانه(?:\s*ی)?{span}\s*(?:،|,)?\s*(?:در\s*)?(?:هر\s*(?:دو\s*)?(?:جهت|راستا)|دو\s*جهت|هر\s*دو\s*طرف)", t)
+        if m:
+            for d in "xy":
+                _set_bay(inp, d, int(m.group(1)), m.group(2))
     if "storey_height_m" not in inp.parsed:
         m = re.search(rf"ارتفاع(?:\s*(?:هر|طبقات|طبقه|طبقه\s*ها))?[^\d]{{0,15}}{_NUM}\s*(?:m\b|متر)", t) or re.search(
             rf"طبقه(?:\s*ها|ات)?[^\d]{{0,12}}(?:به\s*)?ارتفاع[^\d]{{0,6}}{_NUM}", t)
@@ -295,6 +300,9 @@ def parse_frame3d_request(user_request: str) -> Frame3dInputs:
         my = re.search(r"(\d+)\s*bays?\s*(?:in|along)\s*y", t, re.I)
         if mx: inp.bays_x = int(mx.group(1)); inp.parsed.append("bays_x")
         if my: inp.bays_y = int(my.group(1)); inp.parsed.append("bays_y")
+        me = re.search(r"(\d+)\s*bays?\s*(?:of\s*[\d.]+\s*m\s*)?(?:in\s*)?(?:each|both)\s*directions?", t, re.I)
+        if me and not (mx or my):
+            inp.bays_x = inp.bays_y = int(me.group(1)); inp.parsed += ["bays_x", "bays_y"]
         _parse_fa_bays(t, inp)
     m = re.search(rf"bays?\s*(?:of|=|:)?\s*{_NUM}\s*m\b", t, re.I) or re.search(rf"دهانه[^\d]{{0,10}}{_NUM}\s*(?:m|متر)", t)
     if m and not ({"bay_x_m", "bay_y_m"} & set(inp.parsed)):

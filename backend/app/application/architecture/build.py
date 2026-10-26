@@ -103,7 +103,13 @@ def write_set(p: BuildingProgram, out: Path, info: ds.TitleInfo | None = None, p
         item = {"no": s.no, "title_en": s.title_en, "title_fa": s.title_fa, "kind": s.kind, "scale": s.scale, "dxf": f.name}
         if png:
             pf = out / f"{s.no}.png"
-            pdf_b = render(s.doc, pf)
+            try:
+                pdf_b = render(s.doc, pf)
+            except Exception as exc:  # noqa: BLE001 - previews are optional, the DXF is the deliverable
+                meta.setdefault("warnings", []).append(f"Preview rendering unavailable ({type(exc).__name__}); DXF files only.")
+                png = False
+                meta["sheets"].append(item)
+                continue
             (out / f"{s.no}.pdf").write_bytes(pdf_b)
             item["png"] = pf.name
             item["pdf"] = f"{s.no}.pdf"

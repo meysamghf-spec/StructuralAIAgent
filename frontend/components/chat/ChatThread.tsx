@@ -22,6 +22,7 @@ import { AttachmentChip } from "./AttachmentChip";
 import { AciRcBeamResultCard } from "./AciRcBeamResultCard";
 import { EngineeringResultCard } from "./EngineeringResultCard";
 import { Frame3dResultCard } from "./Frame3dResultCard";
+import { FrameDownloads } from "@/components/frame3d/FrameDownloads";
 import { AutocadDrawingCard } from "@/components/autocad/AutocadDrawingCard";
 import { ArchitecturalSetViewer } from "@/components/autocad/ArchitecturalSetViewer";
 import { StructuralSetView } from "@/components/autocad/StructuralSetView";
@@ -181,6 +182,9 @@ export function ChatThread({
                   ) : null}
                   {message.engineeringResult.frame3dResults ? (
                     <Frame3dResultCard results={message.engineeringResult.frame3dResults} />
+                  ) : null}
+                  {!message.engineeringResult.frame3dResults && projectId && (message.engineeringResult.artifacts.length > 0 || (message.engineeringResult.agentRun?.tools ?? []).some((t) => (t.artifacts ?? []).length > 0)) ? (
+                    <FrameDownloads collapsed title="Results & downloads (latest frame run)" />
                   ) : null}
                   {message.engineeringResult.aciBeamResults ? (
                     <AciRcBeamResultCard results={message.engineeringResult.aciBeamResults} />

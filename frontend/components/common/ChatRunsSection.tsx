@@ -7,6 +7,7 @@ import { AutocadDrawingCard } from "@/components/autocad/AutocadDrawingCard";
 import { DownloadsPanel } from "@/components/frame3d/DownloadsPanel";
 import { listProjectChatRuns, type ChatRun } from "@/lib/chat-runs";
 import { getCurrentProjectId, PROJECT_EVENT, projectChatHref } from "@/lib/current-project";
+import { ensureCurrentProject } from "@/lib/ensure-project";
 
 const KIND_LABEL: Record<string, string> = {
   frame3d_analysis: "3D frame analysis",
@@ -30,7 +31,12 @@ export function ChatRunsSection({ kinds, title = "Runs from chat" }: { kinds?: s
       setProjectId(pid);
       setRuns(null);
       setError("");
-      if (!pid) return setRuns([]);
+      if (!pid) {
+        void ensureCurrentProject().then((id) => {
+          if (!id) setRuns([]);
+        });
+        return;
+      }
       listProjectChatRuns(pid, true)
         .then(setRuns)
         .catch((e) => setError(e instanceof Error ? e.message : String(e)));

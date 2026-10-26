@@ -9,6 +9,7 @@ import { Frame3dResultCard } from "@/components/chat/Frame3dResultCard";
 import { DownloadsPanel } from "@/components/frame3d/DownloadsPanel";
 import { makeT } from "@/lib/frame3d-i18n";
 import { projectChatHref } from "@/lib/current-project";
+import { ensureCurrentProject } from "@/lib/ensure-project";
 import { apiFetch } from "@/lib/api";
 import { mapFrame3dResults } from "@/lib/chat-mappers";
 import { getCurrentProjectId, PROJECT_EVENT } from "@/lib/current-project";
@@ -29,7 +30,7 @@ import { hydrateFrame3dFromServer } from "@/lib/chat-runs";
 const Frame3dViewer = dynamic(() => import("@/components/chat/Frame3dViewer"), { ssr: false });
 const FoundationView = dynamic(() => import("@/components/frame3d/FoundationView"), { ssr: false });
 
-type Mode = "model" | "analysis" | "results" | "design";
+type Mode = "model" | "analysis" | "results" | "design" | "foundation";
 
 export async function runFrame3d(inputs: Record<string, unknown>): Promise<unknown> {
   const res = await apiFetch<{ frame3d_analysis: unknown }>("/api/v1/frame3d/run", {
@@ -51,6 +52,7 @@ export function Frame3dWorkspacePanel({ mode }: { mode: Mode }) {
   useEffect(() => {
     const sync = () => {
       const pid = getCurrentProjectId();
+      if (!pid) void ensureCurrentProject();
       setProjectId(pid);
       setPayload(loadFrame3dPayload(pid));
       const saved = loadFrame3dInputs(pid);
@@ -84,7 +86,7 @@ export function Frame3dWorkspacePanel({ mode }: { mode: Mode }) {
   }
 
   useEffect(() => {
-    if ((mode === "results" || mode === "design") && !payload && !busy && loadFrame3dInputs(projectId)) {
+    if ((mode === "results" || mode === "design" || mode === "foundation") && !payload && !busy && loadFrame3dInputs(projectId)) {
       void run({ ...loadFrame3dInputs(projectId)!, lang });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -96,7 +98,7 @@ export function Frame3dWorkspacePanel({ mode }: { mode: Mode }) {
 
   return (
     <section className="panel frame3d-panel" dir={lang === "fa" ? "rtl" : "ltr"} lang={lang}>
-      <h2>{t("Quick 3D frame model")}</h2>
+      <h2>{mode === "foundation" ? t("Foundation design") : t("Quick 3D frame model")}</h2>
       <p className="muted">
         {t("Uses the built-in 3D frame solver, Standard 2800, Mabhas 9 design and isolated footings — same engine as the chat.")}
       </p>
@@ -171,28 +173,30 @@ export function Frame3dWorkspacePanel({ mode }: { mode: Mode }) {
       ) : null}
       {note ? <p className="muted">{note}</p> : null}
       {error ? <p className="alert error">{error}</p> : null}
-      {results?.viewer ? (
+      {results?.viewer && mode !== "foundation" ? (
         <Frame3dViewer data={results.viewer} results={results} t={makeT(results.lang)} embedded />
       ) : null}
-      {results?.viewer?.footings.length && (mode === "design" || mode === "results") ? (
+      {results?.viewer?.footings.length && (mode === "design" || mode === "results" || mode === "foundation") ? (
         <FoundationView data={results.viewer} qa={results.foundation?.qaKpa ?? 150} t={makeT(results.lang)} />
       ) : null}
-      {results ? (
+      {results || saved ? (
         <DownloadsPanel
-          inputs={(results.inputs as Record<string, unknown> | null) ?? saved}
+          inputs={(results?.inputs as Record<string, unknown> | null) ?? saved}
           projectId={projectId}
           groups={
             mode === "analysis"
               ? ["analysis", "figures", "models"]
               : mode === "design"
                 ? ["design", "foundation", "drawings"]
+                : mode === "foundation"
+                  ? ["foundation", "drawings"]
                 : mode === "model"
                   ? ["models", "figures"]
                   : undefined
           }
         />
       ) : null}
-      {results ? (
+      {results && mode !== "foundation" ? (
         <Frame3dResultCard results={results} downloads={false} />
       ) : mode !== "model" ? (
         <EmptyHint projectId={projectId} />

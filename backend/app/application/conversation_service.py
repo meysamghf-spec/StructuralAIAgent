@@ -452,6 +452,11 @@ class ConversationService:
                 msg = ("بهینه‌سازی قاب در پلن فعلی شما فعال نیست. برای استفاده، از صفحه Upgrades به پلن Pro یا بالاتر ارتقا دهید."
                        if fa else exc.message)
                 return msg, {"mode": "rule_based", "intent": "frame_optimization", "quota_exceeded": exc.details}
+        if conversation.project_id is not None and not attachments:
+            direct = self._maybe_direct_frame3d(conversation, account, user_content, history)
+            if direct is not None:
+                direct[1]["selected_mode"] = mode or "auto"
+                return direct
         if conversation.project_id is not None:
             return self._run_project_orchestration(
                 conversation=conversation,
@@ -490,6 +495,10 @@ class ConversationService:
                 return self._run_structural_set(conversation, account, user_content, _save if pid else None)
             except Exception:  # noqa: BLE001
                 logger.exception("structural drawing set failed")
+                fa = any("\u0600" <= ch <= "\u06ff" for ch in user_content)
+                return (("ساخت نقشه‌های اجرایی سازه با خطا روبه‌رو شد. لطفاً ابتدا قاب را دوباره تحلیل کنید و سپس دوباره درخواست دهید."
+                         if fa else "Building the structural drawing set failed. Please re-run the frame analysis and ask again."),
+                        {"mode": "rule_based", "intent": "structural_drawings", "error": "generation_failed"})
         try:
             from app.application.architecture import service as arch
 
@@ -519,6 +528,26 @@ class ConversationService:
             logger.exception("autocad chat failed")
             return None
 
+    def _maybe_direct_frame3d(self, conversation, account: AuthenticatedAccount, user_content: str, history) -> tuple[str, dict] | None:
+        """A fully described 3D frame (any language) runs the deterministic solver directly, even inside a project,
+        so the result card + downloads panel appear instead of a generic agent-workflow summary."""
+        from app.application import frame_optimizer as fopt
+        from app.application.frame3d_chat_analysis import (build_frame3d_payload, frame3d_markdown, is_frame3d_request,
+                                                           missing_inputs, parse_frame3d_request)
+
+        if fopt.is_optimize_request(user_content) or not is_frame3d_request(user_content):
+            return None
+        try:
+            if missing_inputs(parse_frame3d_request(user_content)):
+                return None
+            payload = build_frame3d_payload(user_content, None)
+            if not isinstance(payload, dict) or payload.get("kind") != "frame3d_analysis" or not payload.get("results"):
+                return None
+            return frame3d_markdown(payload), {"mode": "rule_based", "intent": "frame3d_analysis", "engineering_results": payload}
+        except Exception:  # noqa: BLE001
+            logger.exception("direct frame3d failed")
+            return None
+
     def _run_structural_set(self, conversation, account: AuthenticatedAccount, text: str, save) -> tuple[str, dict]:
         """«نقشه‌های اجرایی سازه را بده» -> S-sheet set from the latest 3D frame analysis in this chat / project."""
         from app.application.autocad import structural_set as ss
@@ -530,7 +559,16 @@ class ConversationService:
         if pid is not None:
             runs += self.list_project_chat_runs(account, pid)
         runs.sort(key=lambda r: r["created_at"], reverse=True)
-        inputs = next((r["inputs"] for r in runs if r.get("kind") == "frame3d_analysis" and r.get("inputs")), None)
+        from app.application.frame3d_chat_analysis import inputs_from_dict, missing_inputs
+
+        def _complete(d):
+            try:
+                return not missing_inputs(inputs_from_dict(d))
+            except Exception:  # noqa: BLE001
+                return False
+
+        inputs = next((r["inputs"] for r in runs if r.get("kind") == "frame3d_analysis" and r.get("inputs")
+                       and _complete(r["inputs"])), None)
         if not inputs:
             msg = ("برای نقشه‌های اجرایی سازه ابتدا باید قاب سه‌بعدی تحلیل و طراحی شود. مثلاً بنویسید: «۳ دهانه ۵ متری در جهت x و ۲ دهانه ۴ متری در جهت y، ۴ طبقه با ارتفاع ۳.۲ متر»."
                    if fa else "To produce the structural drawings I first need a 3D frame analysis. For example: "

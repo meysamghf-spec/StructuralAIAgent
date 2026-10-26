@@ -9,6 +9,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/workspace/analysis", label: "Analysis" },
   { href: "/workspace/results", label: "Results" },
   { href: "/workspace/design", label: "Design" },
+  { href: "/workspace/foundation", label: "Foundation" },
   { href: "/workspace/cad", label: "CAD" },
   { href: "/workspace/reports", label: "Reports" },
   { href: "/workspace/validation", label: "Validation" },
