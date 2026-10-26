@@ -96,9 +96,19 @@ export function ChatThread({
       setShowJump(!nearBottom);
     };
     el.addEventListener("scroll", onScroll, { passive: true });
-    onScroll();
     return () => el.removeEventListener("scroll", onScroll);
   }, [scroller, loadingMessages, messages.length === 0]);
+
+  const firstMessageId = messages[0]?.id;
+  useEffect(() => {
+    // A conversation was opened/loaded: jump straight to the newest message (no animation).
+    if (loadingMessages) {
+      return;
+    }
+    stickRef.current = true;
+    setShowJump(false);
+    endRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+  }, [loadingMessages, firstMessageId]);
 
   useEffect(() => {
     // Auto-scroll only while the reader is at the bottom (so streaming does not yank them away).
