@@ -307,6 +307,12 @@ import re  # noqa: E402
 _OPT_RE = re.compile(r"optimi[sz]|بهینه|cheapest|most economical|اقتصادی ?ترین|کمترین هزینه", re.I)
 
 
+def text_lang(text: str) -> str:
+    """fa/en of a message; the Arabic semicolon the follow-up merger inserts does not count as Persian."""
+    t = (text or "").replace("\u061b", " ")
+    return "fa" if any("\u0600" <= ch <= "\u06ff" for ch in t) else "en"
+
+
 def is_optimize_request(text: str) -> bool:
     return bool(_OPT_RE.search(text or ""))
 
@@ -348,6 +354,11 @@ def optimization_markdown(res: dict[str, Any], lang: str = "en") -> str:
                  "", "| Group | Initial (cm) | Optimal (cm) | Governing | Ratio |", "|---|---|---|---|---|"]
     for g in res["groups"]:
         lines.append(f"| {g['group']} | {g['initial_section_cm']} | {g['section_cm']} | {g['governing_constraint']} | {g['utilization']} |")
+    if res.get("assumed_defaults"):
+        used = ", ".join(f"{k}={v}" for k, v in (res.get("inputs_used") or {}).items())
+        lines.append("")
+        lines.append((f"فرض‌های پیش‌فرض (چون ورودی ناقص بود): {used}. هر مقدار را می‌توانید در چت تغییر دهید." if fa
+                      else f"Assumed defaults (inputs were missing): {used}. Change any value in chat and I will re-run."))
     if res["status"] != "completed":
         lines.append("⚠️ " + ("هیچ طرح قابل قبولی در کاتالوگ پیدا نشد؛ ابعاد یا سیستم را بازبینی کنید." if fa else "No feasible design was found in the catalogue; review the system or dimensions."))
     lines.append("")
@@ -356,19 +367,63 @@ def optimization_markdown(res: dict[str, Any], lang: str = "en") -> str:
     return "\n".join(lines)
 
 
-def build_optimization_from_chat(text: str, prior_spec: dict[str, Any] | None, options: dict[str, Any] | None = None) -> dict[str, Any] | None:
+def build_optimization_from_chat(text: str, prior_spec: dict[str, Any] | None, options: dict[str, Any] | None = None,
+                                 assume_defaults: bool = False) -> dict[str, Any] | None:
+    """Optimize the described / last frame. With ``assume_defaults`` (or an «assume defaults» wording in the text)
+    missing geometry is filled with the documented defaults and listed in ``assumed_defaults``."""
+    from app.application import frame3d_followup as fu
+
+    assume = assume_defaults or fu.is_assume_reply(text)
+    assumed: list[str] = []
     if f3.is_frame3d_request(text):
         inp = f3.parse_frame3d_request(text)
     elif prior_spec:
         inp = f3.inputs_from_dict(prior_spec)
+    elif assume:
+        inp = f3.parse_frame3d_request(text)
     else:
         return None
     if f3.missing_inputs(inp):
-        return None
+        if not assume:
+            return None
+        assumed = fu.apply_defaults(inp)
+        if f3.missing_inputs(inp):
+            return None
     if inp.storeys > f3.MAX_STOREYS or max(inp.bays_x, inp.bays_y) > f3.MAX_BAYS:
         return None
-    inp.lang = f3.i18n.detect_lang(text)
-    return optimize_frame(inp, {**options_from_text(text), **(options or {})})
+    inp.lang = text_lang(text)
+    res = optimize_frame(inp, {**options_from_text(text), **(options or {})})
+    if assumed:
+        res["assumed_defaults"] = assumed
+        res["inputs_used"] = {k: getattr(inp, k) for k in assumed if hasattr(inp, k)}
+    return res
+
+
+def pending_optimize_text(text: str, previous_user_texts: list[str]) -> str | None:
+    """The text to optimize: the message itself, or (for «assume defaults» replies to the checklist)
+    the previous optimize request merged with the reply. None when this is not an optimization turn."""
+    from app.application import frame3d_followup as fu
+
+    if is_optimize_request(text):
+        return text
+    if fu.is_assume_reply(text):
+        for prev in (previous_user_texts or [])[:2]:
+            if prev and prev.strip() != (text or "").strip():
+                if is_optimize_request(prev):
+                    return f"{prev} ; {text}"
+                break
+    return None
+
+
+def missing_frame_checklist(text: str) -> str:
+    """Replaces the vague 'describe the frame first': a per-step checklist with the exact fix for each step."""
+    from app.application import optimization_checklist as oc
+
+    fa = text_lang(text) == "fa"
+    partial: list[str] = []
+    if f3.is_frame3d_request(text):
+        partial = f3.missing_inputs(f3.parse_frame3d_request(text))
+    return oc.checklist_markdown(oc.checklist_for_chat(has_frame=False, partial_missing=partial), "fa" if fa else "en")
 
 
 def prior_spec_from_texts(texts: list[str]) -> dict[str, Any] | None:

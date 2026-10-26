@@ -52,6 +52,7 @@ def export_frame3d(
 
 class Frame3dRunRequest(BaseModel):
     inputs: dict[str, Any] = Field(description="Frame3dInputs fields from the manual Model page (storeys, bays_x, bay_x_m, ...)")
+    assume_defaults: bool = Field(default=False, description="fill missing storeys/bays/spans with the documented defaults and report them in assumed_defaults")
 
 
 @router.post("/run")
@@ -62,8 +63,19 @@ def run_frame3d_manual(
     """Run the in-house 3D frame solver (+ 2800, Mabhas 9 design, footings) on manual-form inputs; same payload as chat."""
     billing.check_frame_size(getattr(acc, "account_id", None), body.inputs)
     billing.consume(getattr(acc, "account_id", None), "analyses_per_month")
+    inputs = dict(body.inputs)
+    assumed: list[str] = []
+    if body.assume_defaults:
+        from app.application import frame3d_followup as fu
+
+        for k, v in fu.DEFAULTS.items():
+            if inputs.get(k) in (None, "", 0):
+                inputs[k] = v
+                assumed.append(k)
     try:
-        payload = build_frame3d_payload("", manual_inputs=body.inputs)
+        payload = build_frame3d_payload("", manual_inputs=inputs)
+        if assumed and isinstance(payload, dict):
+            payload["assumed_defaults"] = assumed
     except (TypeError, ValueError, SpaceFrameSolverError) as exc:
         raise HTTPException(status_code=422, detail=f"Cannot analyse this model: {exc}") from exc
     return {"frame3d_analysis": payload}
@@ -72,6 +84,7 @@ def run_frame3d_manual(
 class Frame3dOptimizeRequest(BaseModel):
     inputs: dict[str, Any] = Field(description="Frame3dInputs fields (storeys, bays_x, bays_y, bay_x_m, ...)")
     options: dict[str, Any] = Field(default_factory=dict, description="objective cost|weight, prices{concrete_m3,rebar_kg,formwork_m2}, seed, time_budget_s, max_evaluations, group_storeys")
+    assume_defaults: bool = Field(default=False, description="fill missing storeys/bays/spans with the documented defaults and report them")
 
 
 @router.post("/optimize")
@@ -91,8 +104,14 @@ def optimize_frame3d(
         data = {"seismic_code": "IRAN_2800", **body.inputs}
         inp = f3.inputs_from_dict(data)
         missing = f3.missing_inputs(inp)
+        assumed: list[str] = []
+        if missing and body.assume_defaults:
+            from app.application import frame3d_followup as fu
+
+            assumed = fu.apply_defaults(inp)
+            missing = f3.missing_inputs(inp)
         if missing:
-            raise ValueError("missing " + ", ".join(missing))
+            raise ValueError("missing " + ", ".join(missing) + " (send assume_defaults=true to use typical defaults)")
         if inp.storeys > f3.MAX_STOREYS or max(inp.bays_x, inp.bays_y) > f3.MAX_BAYS or min(inp.storeys, inp.bays_x, inp.bays_y) < 1:
             raise ValueError(f"supports 1-{f3.MAX_STOREYS} storeys and 1-{f3.MAX_BAYS} bays per direction")
         opts = {**body.options}
@@ -101,6 +120,9 @@ def optimize_frame3d(
         res = fopt.optimize_frame(inp, opts)
     except (TypeError, ValueError, SpaceFrameSolverError) as exc:
         raise HTTPException(status_code=422, detail=f"Cannot optimize this model: {exc}") from exc
+    if assumed:
+        res["assumed_defaults"] = assumed
+        res["inputs_used"] = {k: getattr(inp, k) for k in assumed if hasattr(inp, k)}
     res["report_markdown"] = fopt.optimization_markdown(res, str(body.inputs.get("lang") or "en"))
     return {"frame_optimization": res}
 

@@ -345,3 +345,22 @@ def test_chat_with_assistant_uses_summariser_after_a_run(api_client: TestClient)
     body = second.json()["assistant_message"]
     assert "1.2D+1.6L" in body["content"]
     assert body["metadata"]["assistant"] == "LOAD_ASSESSMENT_AGENT"
+
+
+def test_chat_optimize_without_frame_returns_checklist_then_assume_defaults_runs(api_client: TestClient) -> None:
+    token = _register(api_client)
+    project_id = _project(api_client, token)
+    first = api_client.post("/api/v1/chat", json={"message": "optimize the frame", "project_id": project_id},
+                            headers=_headers(token))
+    assert first.status_code == 201
+    body = first.json()
+    text = body["assistant_message"]["content"]
+    assert "prerequisites" in text and "assume defaults" in text
+    second = api_client.post(
+        "/api/v1/chat",
+        json={"message": "assume defaults", "project_id": project_id, "conversation_id": body["conversation_id"]},
+        headers=_headers(token),
+    )
+    assert second.status_code == 201
+    md = second.json()["assistant_message"]
+    assert "Assumed defaults" in md["content"] or "Frame optimization" in md["content"]

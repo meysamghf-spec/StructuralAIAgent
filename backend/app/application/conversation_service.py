@@ -698,16 +698,17 @@ class ConversationService:
 
         from app.application import frame_optimizer as fopt
 
-        if fopt.is_optimize_request(user_content):
+        opt_text = fopt.pending_optimize_text(user_content, [m.content for m in reversed(history) if m.role == MessageRole.USER])
+        if opt_text is not None:
             try:
                 prior = fopt.prior_spec_from_texts(
                     [m.content for m in reversed(history) if m.role == MessageRole.USER]
                 )
-                res = fopt.build_optimization_from_chat(user_content, prior, {"time_budget_s": 35})
+                res = fopt.build_optimization_from_chat(opt_text, prior, {"time_budget_s": 35})
                 if res is not None:
                     lang = "fa" if any("\u0600" <= ch <= "\u06ff" for ch in user_content) else "en"
                     return fopt.optimization_markdown(res, lang), {"mode": "rule_based", "intent": "frame_optimization", "engineering_results": res}
-                return fopt.missing_frame_message(user_content), {"mode": "rule_based", "intent": "frame_optimization"}
+                return fopt.missing_frame_checklist(opt_text), {"mode": "rule_based", "intent": "frame_optimization", "checklist": True}
             except Exception:  # noqa: BLE001
                 logger.exception("frame optimizer failed")
 
@@ -996,6 +997,10 @@ def _format_execution_response(record) -> tuple[str, dict]:
         else:
             sections.append("### Structural analysis (Demo)\nDeterministic simply-supported beam results are available.")
 
+    _so = record.agent_result.structured_output if record.agent_result else None
+    if isinstance(_so, dict) and _so.get("checklist") and isinstance(_so.get("status_message"), str):
+        sections = [_so["status_message"]]  # prerequisites checklist replaces the generic "Completed" report
+
     if record.agent_result and record.agent_result.validation_information:
         warnings = record.agent_result.validation_information.get("warnings")
         if isinstance(warnings, list) and warnings:
@@ -1281,6 +1286,9 @@ def _extract_engineering_results(record) -> dict | None:
     frame = output.get("frame3d_analysis")
     if isinstance(frame, dict):
         return frame
+    opt = output.get("frame_optimization")
+    if isinstance(opt, dict):
+        return opt
     aci = output.get("aci_rc_beam")
     return aci if isinstance(aci, dict) else None
 

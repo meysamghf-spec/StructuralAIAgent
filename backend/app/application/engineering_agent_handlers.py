@@ -183,8 +183,19 @@ def _frame_optimization_result(
         return None
     res = fopt.build_optimization_from_chat(user_request, prior_frame3d_spec(context), {"time_budget_s": 35})
     if res is None:
-        return None
-    lang = "fa" if any("\u0600" <= ch <= "\u06ff" for ch in user_request) else "en"
+        summary = fopt.missing_frame_checklist(user_request)
+        return AgentResult(
+            structured_output=_base_output(
+                agent_type=agent_type, action="frame_optimization", user_request=user_request, parameters=parameters,
+                context=context, capability_status="MISSING_REQUIRED_INPUT", status_message=summary,
+                payload={"user_summary": summary, "checklist": True},
+            ),
+            confidence=0.5, generated_artifacts=[],
+            recommendations=["Reply 'assume defaults' to auto-complete the missing steps."],
+            validation_information={"capability_status": "MISSING_REQUIRED_INPUT", "demo": False,
+                                    "requires_approval": False, "warnings": []},
+        )
+    lang = fopt.text_lang(user_request)
     summary = fopt.optimization_markdown(res, lang)
     ok = res.get("status") == "completed"
     return AgentResult(
