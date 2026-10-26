@@ -345,13 +345,30 @@ export function useChat({
     }
 
     setExecutionPhase("uploading");
-    const conversationId = await ensureConversation();
+    // Show the chips (with spinner) immediately so Send state is truthful while we prepare the conversation.
     const queued = list.map((file) => ({
       localId: randomId(),
       file,
       uploading: true,
     }));
     setPendingAttachments((current) => [...current, ...queued]);
+
+    let conversationId: string;
+    try {
+      conversationId = await ensureConversation();
+    } catch (err) {
+      const message = formatChatError(err);
+      setPendingAttachments((current) =>
+        current.map((entry) =>
+          queued.some((item) => item.localId === entry.localId)
+            ? { ...entry, uploading: false, error: message }
+            : entry,
+        ),
+      );
+      setError(message);
+      setExecutionPhase("idle");
+      return;
+    }
 
     try {
       for (const item of queued) {

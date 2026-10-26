@@ -2,7 +2,7 @@
 
 import { AttachmentChip } from "./AttachmentChip";
 import type { PendingAttachment } from "@/lib/chat";
-import { canSendMessage, handleComposerKeyDown } from "@/lib/chat";
+import { canSendMessage, handleComposerKeyDown, sendBlockReason } from "@/lib/chat";
 import { AGENT_CHAT_MODES, ENGINEERING_FILE_ACCEPT, type AgentChatMode } from "@/lib/chat-types";
 import { FormEvent, useRef, useState, type RefObject } from "react";
 
@@ -59,6 +59,14 @@ export function ChatComposer({
   }
 
   const isProminent = variant === "prominent";
+  const blockReason = sendBlockReason(content, attachments);
+  const uploading = blockReason === "uploading";
+  const blockMessage =
+    blockReason === "uploading"
+      ? "Uploading file… Send will be enabled in a moment."
+      : blockReason === "upload_failed"
+        ? "Upload failed. Remove the file and try again, or type a message to send without it."
+        : null;
 
   return (
     <form
@@ -173,11 +181,23 @@ export function ChatComposer({
             disabled={busy || !canSendMessage(content, attachments)}
             aria-label={busy ? "Sending message" : "Send message"}
             aria-disabled={busy || !canSendMessage(content, attachments)}
+            data-testid="chat-send"
           >
-            {busy ? "Sending…" : isProminent ? "Send" : "Send"}
+            {uploading ? <span className="chat-spinner" aria-hidden="true" /> : null}
+            {busy ? "Sending…" : uploading ? "Uploading…" : "Send"}
           </button>
         </div>
       </div>
+      {blockMessage ? (
+        <p
+          className={blockReason === "upload_failed" ? "chat-composer-status error" : "chat-composer-status"}
+          role="status"
+          aria-live="polite"
+          data-testid="chat-send-status"
+        >
+          {blockMessage}
+        </p>
+      ) : null}
       {!isProminent ? (
         <p id={resolvedHintId} className="muted chat-composer-hint">
           Enter to send · Shift+Enter for a new line · Drag and drop supported engineering files

@@ -2849,3 +2849,33 @@ a.button,
 .inline-panel { margin-top: 10px; max-width: 100%; overflow: hidden; }
 .solver-preview { max-height: 280px; overflow: auto; font-size: 0.75em; background: #f6f8fa; border-radius: 6px; padding: 8px; white-space: pre; max-width: 100%; }
 .card-wide { grid-column: 1 / -1; min-width: 0; }
+
+/* Composer attach: spinner + send-state hint */
+.chat-spinner {
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  margin-inline-end: 0.4em;
+  border: 2px solid currentColor;
+  border-inline-end-color: transparent;
+  border-radius: 50%;
+  vertical-align: -0.12em;
+  animation: chat-spin 0.7s linear infinite;
+}
+.chat-spinner.small {
+  width: 0.75em;
+  height: 0.75em;
+}
+@keyframes chat-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.chat-composer-status {
+  margin: 0.4rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted, #94a3b8);
+}
+.chat-composer-status.error {
+  color: #f87171;
+}

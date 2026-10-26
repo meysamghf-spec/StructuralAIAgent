@@ -281,22 +281,54 @@ export function attachmentStatusLabel(attachment: ChatAttachment | PendingAttach
   return "Ready";
 }
 
+export const ATTACHMENT_ONLY_INSTRUCTION = "Analyze this file";
+
+export function isAttachmentReady(item: PendingAttachment): boolean {
+  return Boolean(item.uploaded) && !item.error && !item.uploading;
+}
+
+export function hasUploadingAttachment(attachments: PendingAttachment[]): boolean {
+  return attachments.some((item) => item.uploading);
+}
+
+/** Send is enabled with text and/or a ready attachment, and only blocked while an upload is in flight. */
 export function canSendMessage(content: string, attachments: PendingAttachment[]): boolean {
   const hasText = content.trim().length > 0;
-  const hasReadyFiles = attachments.some((item) => item.uploaded && !item.error);
-  const isUploading = attachments.some((item) => item.uploading);
-  return (hasText || hasReadyFiles) && !isUploading;
+  const hasReadyFiles = attachments.some(isAttachmentReady);
+  return (hasText || hasReadyFiles) && !hasUploadingAttachment(attachments);
+}
+
+export type SendBlockReason = "uploading" | "upload_failed" | "empty" | null;
+
+/** Explains why Send is disabled so the composer can say it instead of silently greying out. */
+export function sendBlockReason(
+  content: string,
+  attachments: PendingAttachment[],
+): SendBlockReason {
+  if (canSendMessage(content, attachments)) {
+    return null;
+  }
+  if (hasUploadingAttachment(attachments)) {
+    return "uploading";
+  }
+  if (attachments.some((item) => item.error)) {
+    return "upload_failed";
+  }
+  return "empty";
 }
 
 export function buildSendPayload(
   content: string,
   attachments: PendingAttachment[],
 ): { content: string; attachment_file_ids: string[] } {
+  const ids = attachments
+    .filter(isAttachmentReady)
+    .map((item) => item.uploaded?.file_id)
+    .filter((id): id is string => Boolean(id));
+  const text = content.trim();
   return {
-    content: content.trim(),
-    attachment_file_ids: attachments
-      .map((item) => item.uploaded?.file_id)
-      .filter((id): id is string => Boolean(id)),
+    content: text || (ids.length > 0 ? ATTACHMENT_ONLY_INSTRUCTION : ""),
+    attachment_file_ids: ids,
   };
 }
 
