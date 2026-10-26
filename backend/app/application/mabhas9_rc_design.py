@@ -47,7 +47,7 @@ CLAUSES_SIMPLIFIED = [
     "Beam/column shear from the analysis envelope; capacity-design shear (Mpr / 2E) not applied",
     "Section limit Vs ≤ 4·Vc used for the maximum shear reinforcement",
     "Moments at member centre-lines (not at support faces); no redistribution",
-    "Not checked: column shear, slenderness/second-order effects, beam-column joint shear, confinement Ash, development/splices, crack/deflection",
+    "Not checked: column shear, member slenderness (local P-δ magnification; global P-Δ is in the analysis only when applied), beam-column joint shear, confinement Ash, development/splices, crack/deflection",
 ]
 
 

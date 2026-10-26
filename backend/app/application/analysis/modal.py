@@ -1,6 +1,7 @@
-"""Small dense modal-analysis helpers (pure Python, no numpy).
+"""Small dense modal-analysis helpers.
 
-- ``jacobi_eigen``: symmetric eigen-decomposition (cyclic Jacobi).
+- ``jacobi_eigen``: symmetric eigen-decomposition (cyclic Jacobi; kept as an independent reference for tests).
+- ``symmetric_eigen``: numpy.linalg.eigh based symmetric eigen-decomposition (used by the solver).
 - ``generalized_eigen_diag_mass``: K φ = ω² M φ for diagonal M.
 - ``cqc_coefficient`` / ``combine_cqc`` / ``combine_srss``: modal combination.
 """
@@ -8,6 +9,8 @@
 from __future__ import annotations
 
 import math
+
+import numpy as np
 
 
 def jacobi_eigen(a: list[list[float]], tol: float = 1e-12, max_sweeps: int = 100) -> tuple[list[float], list[list[float]]]:
@@ -43,19 +46,27 @@ def jacobi_eigen(a: list[list[float]], tol: float = 1e-12, max_sweeps: int = 100
     return [m[i][i] for i in range(n)], v
 
 
+def symmetric_eigen(a: list[list[float]]) -> tuple[list[float], list[list[float]]]:
+    """Return (eigenvalues ascending, eigenvectors as columns) via ``numpy.linalg.eigh``."""
+    arr = np.asarray(a, dtype=float)
+    arr = 0.5 * (arr + arr.T)
+    vals, vecs = np.linalg.eigh(arr)
+    return [float(v) for v in vals], vecs.tolist()
+
+
 def generalized_eigen_diag_mass(k: list[list[float]], mass: list[float]) -> list[tuple[float, list[float]]]:
     """Solve K φ = ω² M φ (M diagonal, positive). Returns [(ω², φ)] sorted ascending, φᵀMφ = 1."""
     n = len(k)
-    inv_sqrt = [1.0 / math.sqrt(mi) for mi in mass]
-    a = [[k[i][j] * inv_sqrt[i] * inv_sqrt[j] for j in range(n)] for i in range(n)]
-    for i in range(n):  # enforce symmetry
-        for j in range(i + 1, n):
-            avg = 0.5 * (a[i][j] + a[j][i]); a[i][j] = a[j][i] = avg
-    vals, vecs = jacobi_eigen(a)
+    inv_sqrt = np.array([1.0 / math.sqrt(mi) for mi in mass])
+    a = np.asarray(k, dtype=float) * inv_sqrt[:, None] * inv_sqrt[None, :]
+    a = 0.5 * (a + a.T)  # enforce symmetry
+    vals, vecs = np.linalg.eigh(a)
     out = []
     for idx in range(n):
-        phi = [vecs[i][idx] * inv_sqrt[i] for i in range(n)]
-        out.append((vals[idx], phi))
+        phi = [float(vecs[i, idx] * inv_sqrt[i]) for i in range(n)]
+        if phi[max(range(n), key=lambda i: abs(phi[i]))] < 0.0:  # deterministic sign
+            phi = [-x for x in phi]
+        out.append((float(vals[idx]), phi))
     out.sort(key=lambda item: item[0])
     return out
 

@@ -24,6 +24,8 @@ from dataclasses import asdict, dataclass, field
 from dataclasses import fields as dc_fields
 from typing import Any, Callable
 
+import numpy as np
+
 from app.application import csi_text_export as cte
 from app.application import detailing_assumptions as da
 from app.application import foundation_design as fnd
@@ -31,7 +33,7 @@ from app.application import frame3d_followup as fu
 from app.application import frame3d_i18n as i18n
 from app.application import iran2800
 from app.application import mabhas9_rc_design as m9
-from app.application.analysis.modal import combine_cqc, generalized_eigen_diag_mass
+from app.application.analysis.modal import combine_cqc, cqc_coefficient, generalized_eigen_diag_mass
 from app.application.analysis.linear_algebra import factor_linear_system
 from app.application.analysis.frame3d_solver import (
     DOF_PER_NODE,
@@ -43,10 +45,15 @@ from app.application.analysis.frame3d_solver import (
     SpaceNode,
     SpaceSupport,
     assemble_space_system,
+    prepare_second_order,
     recover_space_result,
+    solve_space_many,
     torsion_constant_rectangle,
 )
 
+P_DELTA_IGNORE = 0.1  # Standard 2800 (4th ed.) §3-6: θ < 0.1 → P-Δ may be ignored
+P_DELTA_RULE = ("auto: P-Δ is included for IRAN_2800 projects when the storey stability index θ = Pu·Δe/(V·h) exceeds 0.1 "
+                "(Standard 2800 4th ed. §3-6, eq. 3-12); on = always; off = never (θ is still reported)")
 KIND = "frame3d_analysis"
 DISCLAIMER = (
     "Linear elastic 3D frame analysis with the internal SAIA solver. "
@@ -111,6 +118,7 @@ class Frame3dInputs:
     allowable_bearing_kpa: float = 150.0
     foundation: bool = False
     lang: str = "en"
+    p_delta: str = "auto"  # auto | on | off — second-order (P-Δ) lateral analysis
     # per-project design / rebar-detailing assumptions changed from chat (see detailing_assumptions.py)
     assumptions: dict | None = None
     # optional per-storey sections from the optimizer: {"C1": [b, h], "B1": [b, h], ...} (metres)
@@ -337,6 +345,9 @@ def parse_frame3d_request(user_request: str) -> Frame3dInputs:
         inp.seismic_code = "IRAN_2800"
     if re.search(r"mabhas|مبحث\s*(?:9|نهم)|\bdesign\b|طراحی", t, re.I):
         inp.design_code = "MABHAS9"
+    pd_req = fu.p_delta_request(t)
+    if pd_req:
+        inp.p_delta = pd_req; inp.parsed.append("p_delta")
     return inp
 
 
@@ -446,10 +457,13 @@ def run_frame3d(inp: Frame3dInputs, *, with_modal: bool = True, with_foundation:
                   for k in range(1, ns + 1)]
     ncol_lvl = (nx + 1) * (ny + 1)
     W: dict[int, float] = {}
+    WD: dict[int, float] = {}  # unfactored dead / live storey weights (for the P-Δ gravity load Pu)
+    WL: dict[int, float] = {}
     for k in range(1, ns + 1):
         wD = sum(beam_w("D", k, L, o, e) * L for _, _, _, kk, L, o, e in beams if kk == k) + ncol_lvl * (0.5 * sw_col_k[k] + (0.5 * sw_col_k[k + 1] if k < ns else 0.0))
         wL = sum(beam_w("L", k, L, o, e) * L for _, _, _, kk, L, o, e in beams if kk == k)
         W[k] = wD + 0.2 * wL
+        WD[k], WL[k] = wD, wL
 
     provider = SEISMIC_PROVIDERS.get(inp.seismic_code)
     if provider is None:
@@ -482,14 +496,8 @@ def run_frame3d(inp: Frame3dInputs, *, with_modal: bool = True, with_foundation:
     base: dict[str, dict[str, Any]] = {}
     equilibrium: dict[str, float] = {}
     lateral_prep: dict[str, Any] = {}
-    for case in cases:
-        m = model(case)
-        if case in ("Ex", "Ey"):  # same stiffness, no member loads: assemble/factor once
-            if "prep" not in lateral_prep:
-                lateral_prep["prep"] = assemble_space_system(m); lateral_prep["model"] = m
-            prep = lateral_prep["prep"]
-        else:
-            prep = assemble_space_system(m)
+
+    def solve_case(case: str, m: SpaceFrameModel, prep: dict[str, Any]) -> None:
         lv = list(prep["gravity_load"])
         idx = prep["node_index"]
         for ld in m.nodal_loads:
@@ -505,7 +513,7 @@ def run_frame3d(inp: Frame3dInputs, *, with_modal: bool = True, with_foundation:
                 nd = nodes[d // DOF_PER_NODE].id
                 u_el.append(r.displacements[nd][d % DOF_PER_NODE])
             ul = _matvec(T, u_el)
-            ends[e.id] = [a + b for a, b in zip(_matvec(lk, ul), fl)]
+            ends[e.id] = [a + b for a, b in zip(_matvec(lk, ul), fl)]  # elastic end forces (internal actions)
             T3 = [row[:3] for row in T[:3]]
             wloc[e.id] = _matvec(T3, [e.udl_gx, e.udl_gy, e.udl_gz])
         applied = [sum(getattr(l, c) for l in m.nodal_loads) for c in ("fx", "fy", "fz")]
@@ -516,6 +524,84 @@ def run_frame3d(inp: Frame3dInputs, *, with_modal: bool = True, with_foundation:
         equilibrium[case] = max(abs(a + b) for a, b in zip(applied, reac))
         base[case] = {"res": r, "ends": ends, "w": wloc, "reac": reac,
                       "supp": {s.node_id: [float(x) for x in r.reactions[s.node_id]] for s in supports}}
+
+    lateral_models: dict[str, SpaceFrameModel] = {}
+    for case in cases:
+        m = model(case)
+        if case in ("Ex", "Ey"):  # same stiffness, no member loads: assemble/factor once
+            if "prep" not in lateral_prep:
+                lateral_prep["prep"] = assemble_space_system(m); lateral_prep["model"] = m
+            prep = lateral_prep["prep"]
+            lateral_models[case] = m
+        else:
+            prep = assemble_space_system(m)
+        solve_case(case, m, prep)
+
+    # ---- P-Δ (second-order) -------------------------------------------------------------
+    def story_drifts(case: str) -> list[float]:
+        prev, out = 0.0, []
+        ax = 0 if case == "Ex" else 1
+        for k in range(1, ns + 1):
+            um = max(abs(base[case]["res"].displacements[_nid(i, j, k)][ax]) for i in range(nx + 1) for j in range(ny + 1))
+            out.append(um - prev); prev = um
+        return out
+
+    p_delta = {"mode": inp.p_delta, "applied": False, "status": "NOT_APPLICABLE", "rule": P_DELTA_RULE, "warnings": []}
+    response_prep = None
+    first_drifts: dict[str, list[float]] = {}
+    theta_rows: dict[str, list[float]] = {}
+    if V > 0:
+        cd_pd = seismic_info.get("drift_factor", 0.7 * inp.behaviour_r)
+        storey_p = [sum(1.2 * WD[j] + 1.0 * WL[j] for j in range(k, ns + 1)) for k in range(1, ns + 1)]  # Pu: 1.2D + 1.0L above
+        for E in ("Ex", "Ey"):
+            first_drifts[E] = story_drifts(E)
+            theta_rows[E] = [storey_p[k - 1] * first_drifts[E][k - 1] / (sum(F[j] for j in range(k, ns + 1)) * h) for k in range(1, ns + 1)]
+        theta_max = {E: max(t) for E, t in theta_rows.items()}
+        theta_gov = max(theta_max.values())
+        theta_lim = min(0.25, 0.65 / cd_pd) if cd_pd > 0 else 0.25
+        pd_required = theta_gov > P_DELTA_IGNORE
+        mode = inp.p_delta
+        want = mode == "on" or (mode == "auto" and inp.seismic_code == "IRAN_2800" and pd_required)
+        p_delta.update({
+            "gravity_combo": "1.2D+1.0L", "storey_Pu_kn": storey_p, "theta": {E[1].upper(): t for E, t in theta_rows.items()},
+            "theta_max": {E[1].upper(): v for E, v in theta_max.items()}, "theta_governing": theta_gov,
+            "theta_ignore_below": P_DELTA_IGNORE, "theta_limit": theta_lim, "required_by_theta": pd_required,
+            "drift_first_order_mm": {E[1].upper(): [d * 1000 for d in v] for E, v in first_drifts.items()},
+            "approx_amplification_1_over_1_minus_theta": {E[1].upper(): [1 / (1 - t) if t < 1 else None for t in v] for E, v in theta_rows.items()},
+            "method": "Second-order elastic analysis: K + K_G with member axial forces frozen from 1.2D+1.0L (linear geometric stiffness of each beam-column)",
+            "status": "NOT_REQUIRED", "warnings": [],
+        })
+        if theta_gov > theta_lim:
+            p_delta["warnings"].append("theta_exceeds_limit")
+        if want:
+            comp = {eid: 1.2 * base["D"]["ends"][eid][0] + 1.0 * base["L"]["ends"][eid][0] for eid in base["D"]["ends"]}
+            try:
+                prep2 = prepare_second_order(lateral_models["Ex"], lateral_prep["prep"], comp)
+            except SpaceFrameSolverError as exc:
+                p_delta.update({"status": "UNSTABLE", "message": str(exc), "lambda_cr": (exc.details or {}).get("lambda_cr")})
+                p_delta["warnings"].append("unstable")
+            else:
+                for E in ("Ex", "Ey"):
+                    solve_case(E, lateral_models[E], prep2)
+                response_prep = prep2
+                second_drifts = {E: story_drifts(E) for E in ("Ex", "Ey")}
+                p_delta.update({
+                    "applied": True, "status": "APPLIED", "lambda_cr": prep2["second_order"]["lambda_cr"],
+                    "drift_second_order_mm": {E[1].upper(): [d * 1000 for d in v] for E, v in second_drifts.items()},
+                    "amplification": {E[1].upper(): [d2 / d1 if d1 > 0 else 1.0 for d1, d2 in zip(first_drifts[E], second_drifts[E])] for E in second_drifts},
+                    "base_shear_amplification": {"X": abs(base["Ex"]["reac"][0]) / V, "Y": abs(base["Ey"]["reac"][1]) / V},
+                })
+        elif mode == "off":
+            p_delta["status"] = "OFF"
+        if not p_delta["applied"] and pd_required and p_delta["status"] != "UNSTABLE":
+            p_delta["warnings"].append("theta_above_0_1_not_included")
+
+    modal = None
+    rs_members: dict[str, dict[str, list[float]]] = {}
+    if with_modal and V > 0 and inp.seismic_code == "IRAN_2800":
+        modal = _modal_response_spectrum(inp, lateral_prep, nodes, XS, YS, Z, W, (ci, cj, dxc, dyc), V, seismic_info,
+                                         response_prep=response_prep)
+        rs_members = modal.pop("_members")
 
     combos: dict[str, dict[str, float]] = {"1.4D": {"D": 1.4}, "1.2D+1.6L": {"D": 1.2, "L": 1.6}}
     if V > 0:
@@ -574,6 +660,10 @@ def run_frame3d(inp: Frame3dInputs, *, with_modal: bool = True, with_foundation:
         col_env.append({"id": cid, "storey": k, "P_kn": pmax, "M_kn_m": mmax, "governing": gov,
                         "position": position, "i": ii, "j": jj, "records": recs})
 
+    rs_design = None
+    if rs_members:
+        rs_design = _merge_rs_member_forces(rs_members, modal, beams, cols, beam_env, col_env, combos, beam_curve, comb_vec)
+
     drift = []
     if V > 0:
         cd = seismic_info.get("drift_factor", 0.7 * inp.behaviour_r)
@@ -582,8 +672,13 @@ def run_frame3d(inp: Frame3dInputs, *, with_modal: bool = True, with_foundation:
             for k in range(1, ns + 1):
                 um = max(abs(base[E]["res"].displacements[_nid(i, j, k)][ax]) for i in range(nx + 1) for j in range(ny + 1))
                 d = um - prev; prev = um
-                drift.append({"direction": E[1].upper(), "storey": k, "u_max_mm": um * 1000, "drift_elastic_mm": d * 1000,
-                              "ratio_elastic": d / h, "ratio_amplified": cd * d / h})
+                row = {"direction": E[1].upper(), "storey": k, "u_max_mm": um * 1000, "drift_elastic_mm": d * 1000,
+                       "ratio_elastic": d / h, "ratio_amplified": cd * d / h,
+                       "theta": theta_rows[E][k - 1], "p_delta_applied": p_delta["applied"]}
+                d1 = first_drifts[E][k - 1]
+                row["drift_first_order_mm"] = d1 * 1000
+                row["ratio_amplified_first_order"] = cd * d1 / h
+                drift.append(row)
     base_shear = None
     if V > 0:
         base_shear = {
@@ -591,9 +686,6 @@ def run_frame3d(inp: Frame3dInputs, *, with_modal: bool = True, with_foundation:
             "V_reaction_x_kn": abs(base["Ex"]["reac"][0]), "V_reaction_y_kn": abs(base["Ey"]["reac"][1]),
         }
         base_shear["error_pct"] = 100 * max(abs(base_shear["V_reaction_x_kn"] - V), abs(base_shear["V_reaction_y_kn"] - V)) / V
-    modal = None
-    if with_modal and V > 0 and inp.seismic_code == "IRAN_2800":
-        modal = _modal_response_spectrum(inp, lateral_prep, nodes, XS, YS, Z, W, (ci, cj, dxc, dyc), V, seismic_info)
     total_gravity = abs(base["D"]["reac"][2]) + abs(base["L"]["reac"][2])
     result = {
         "geometry": {"XS": XS, "YS": YS, "Z": Z},
@@ -603,14 +695,72 @@ def run_frame3d(inp: Frame3dInputs, *, with_modal: bool = True, with_foundation:
         "combos": list(combos), "equilibrium_error_kn": max(equilibrium.values()),
         "gravity_reaction_kn": {"D": abs(base["D"]["reac"][2]), "L": abs(base["L"]["reac"][2]), "D+L": total_gravity},
         "beams": beam_env, "columns": col_env, "drift": drift, "base_shear": base_shear, "modal": modal,
+        "p_delta": p_delta, "rs_design": rs_design,
         "viewer": _viewer_raw(nodes, beams, cols, base, cases, combos, supports),
         # data needed by the ETABS/SAFE/DXF exporters (csi_text_export.py)
         "export": {"reactions": {c: base[c]["supp"] for c in cases}, "combo_factors": combos, "sw_col_kn": sw_col,
                    "beam_udl": {bid: {"D": beam_w("D", k, L, o, e), "L": beam_w("L", k, L, o, e)} for bid, a, b, k, L, o, e in beams},
-                   "Ec_kn_m2": Ec, "eccentricity": inp.accidental_ecc},
+                   "Ec_kn_m2": Ec, "eccentricity": inp.accidental_ecc, "p_delta_applied": p_delta["applied"]},
     }
     result["foundation_design"] = fnd.design_foundation(inp, result) if with_foundation else None
     return result
+
+
+def _merge_rs_member_forces(rs_members, modal, beams, cols, beam_env, col_env, combos, beam_curve, comb_vec) -> dict[str, Any]:
+    """Fold the scaled response-spectrum member forces into the beam/column design envelopes.
+
+    For each gravity combination used with earthquake (1.2D+1.0L and 0.9D) and each direction the CQC
+    amplitude R of every member action is added to the gravity action with the worst sign:
+    M = ±|M_g| ± R (end moments), V = |V_g| + R, column P = P_g ± R_P, M = |M_g| + R. R already contains the
+    dynamic-base-shear scale factor, so a dynamic base shear below 85 % (regular) / 90 % (irregular) of the
+    static value is raised before it is combined. The static-equivalent combinations stay in the envelope, so the
+    design is the maximum of both methods. The sum of absolute values is conservative (peaks are not simultaneous).
+    """
+    gravity = (("1.2D+1.0L", {"D": 1.2, "L": 1.0}), ("0.9D", {"D": 0.9}))
+    beam_by_id = {b["id"]: b for b in beam_env}
+    n_beam = n_col = 0
+    for bid, a, b, k, L, o, e in beams:
+        be = beam_by_id[bid]
+        M0, _ = beam_curve(combos["1.4D"], bid, L)
+        s0 = 1.0 if M0[len(M0) // 2] >= 0 else -1.0
+        hit = False
+        for dname in ("X", "Y"):
+            r = rs_members[dname][bid]
+            for gname, gcf in gravity:
+                M, Vv = beam_curve(gcf, bid, L)
+                cn = f"{gname}±RS{dname}"
+                for gm, rm in ((s0 * M[0], r[4]), (s0 * M[-1], r[10])):
+                    neg, pos = rm - gm, gm + rm
+                    if neg > be["M_neg_end_kn_m"]: be["M_neg_end_kn_m"] = neg; hit = True
+                    if pos > be["M_pos_end_kn_m"]: be["M_pos_end_kn_m"] = pos; hit = True
+                    if neg > be["M_neg_kn_m"]: be["M_neg_kn_m"] = neg; be["governing"]["M_neg"] = cn
+                    if pos > be["M_pos_kn_m"]: be["M_pos_kn_m"] = pos; be["governing"]["M_pos"] = cn
+                vm = max(abs(Vv[0]) + abs(r[2]), abs(Vv[-1]) + abs(r[8]))
+                if vm > be["V_kn"]: be["V_kn"] = vm; be["governing"]["V"] = cn; hit = True
+        n_beam += hit
+    col_by_id = {c["id"]: c for c in col_env}
+    for cid, a, b, k in cols:
+        ce = col_by_id[cid]
+        hit = False
+        for dname in ("X", "Y"):
+            r = rs_members[dname][cid]
+            for gname, gcf in gravity:
+                f = comb_vec(gcf, "ends", cid)
+                for sg in (1.0, -1.0):
+                    cn = f"{gname}{'+' if sg > 0 else '-'}RS{dname}"
+                    p_val = f[0] + sg * abs(r[0])
+                    ends = [(abs(f[4]) + abs(r[4]), abs(f[5]) + abs(r[5])), (abs(f[10]) + abs(r[10]), abs(f[11]) + abs(r[11]))]
+                    ce["records"].append({"combo": cn, "seismic": True, "P": p_val, "ends": ends})
+                    if p_val > ce["P_kn"]: ce["P_kn"] = p_val; ce["governing"]["P"] = cn; hit = True
+                    mu = max(max(x) for x in ends)
+                    if mu > ce["M_kn_m"]: ce["M_kn_m"] = mu; ce["governing"]["M"] = cn; hit = True
+        n_col += hit
+    return {"used": True, "scale_factor": {d: modal["response_spectrum"][d]["scale_factor"] for d in ("X", "Y")},
+            "scaled_up_to_minimum": {d: modal["response_spectrum"][d]["scaled_to_minimum"] for d in ("X", "Y")},
+            "V_scaled_over_static": {d: modal["response_spectrum"][d]["V_scaled_over_static"] for d in ("X", "Y")},
+            "beams_governed_by_rs": n_beam, "columns_governed_by_rs": n_col,
+            "combinations": [f"{g}±RS{d}" for d in ("X", "Y") for g, _ in gravity],
+            "note": "RS member forces: CQC, 5 % damping, 5 % accidental torsion, scaled to ≥ 85 % (regular) / 90 % (irregular) of V_static"}
 
 
 G = 9.81
@@ -721,43 +871,57 @@ def _design_mabhas9(inp: "Frame3dInputs", raw: dict[str, Any], ductility: str) -
             "summary": {"max_DC": round(max_dc, 3), "groups": len(all_rows), "groups_failing": n_fail,
                         "scwb_min_ratio": min((j["min_ratio"] for j in joints), default=None)},
             "clauses_implemented": m9.CLAUSES_IMPLEMENTED, "clauses_simplified": m9.CLAUSES_SIMPLIFIED,
-            "analysis_basis": "Member forces from the equivalent static load cases (response spectrum used for checks only)",
+            "analysis_basis": ("Member forces: envelope of the equivalent static load cases and the response-spectrum (CQC, scaled to the minimum dynamic base shear, ±5% accidental torsion) load cases"
+                               if raw.get("rs_design") else
+                               "Member forces from the equivalent static load cases (no response-spectrum member forces: modal analysis not available or not Standard 2800)")
+                              + ("; second-order P-Δ analysis included" if (raw.get("p_delta") or {}).get("applied") else "; first-order analysis (P-Δ not included)"),
             "special_frame_note": "Special-frame detailing (capacity shear, joint shear, Ash confinement) not implemented" if ductility == "special" else None}
 
 
-def _modal_response_spectrum(inp, lateral_prep, nodes, XS, YS, Z, W, centre, V_static, info) -> dict[str, Any]:
+def _modal_response_spectrum(inp, lateral_prep, nodes, XS, YS, Z, W, centre, V_static, info, response_prep=None) -> dict[str, Any]:
     """Modal + response-spectrum analysis on the diaphragm DOFs (ux, uy, rz per storey).
 
     Lateral stiffness is condensed from the full 3D model by unit loads at each diaphragm
     centre (exact static condensation for massless joints). Storey masses W/g with polar
     inertia m(Lx²+Ly²)/12 about the plan centre (uniform mass distribution assumed).
+    Eigen-solution: numpy.linalg.eigh on the mass-normalised stiffness. Modal inertia forces are
+    applied to the full 3D model (``response_prep`` = elastic system, or the second-order K+K_G system
+    when P-Δ is active) to get drifts and member forces; modes are combined with CQC (5 % damping).
+    Accidental torsion: for each direction the modal storey forces are applied with an additional
+    torque ±ecc·L_perp·F_k (ecc = ``inp.accidental_ecc``, 5 %); the worse sign governs each result.
+    Results are scaled by max(1, k·V_static/V_dynamic) (k = 0.85 regular / 0.90 irregular).
+    Member end forces (CQC magnitudes, scaled) are returned under ``_members`` for design.
     """
     ci, cj, dxc, dyc = centre
     prep, model = lateral_prep["prep"], lateral_prep["model"]
+    rprep = response_prep or prep
     idx = prep["node_index"]
+    n_full = prep["n_full"]
     ns = len(Z) - 1
     nx, ny = len(XS) - 1, len(YS) - 1
     n = 3 * ns
 
-    def solve(forces: list[float]):
-        lv = [0.0] * prep["n_full"]
+    def load_vec(forces: list[float]) -> list[float]:
+        lv = [0.0] * n_full
         for k in range(1, ns + 1):
             fx, fy, mz = forces[3 * (k - 1): 3 * k]
             b0 = idx[_nid(ci, cj, k)] * DOF_PER_NODE
             lv[b0] += fx; lv[b0 + 1] += fy; lv[b0 + 5] += mz + fx * dyc - fy * dxc
-        return recover_space_result(model, prep, lv)
+        return lv
 
-    def centre_disp(r) -> list[float]:
+    def centre_disp(u) -> list[float]:
         out = []
         for k in range(1, ns + 1):
-            ux, uy, _, _, _, rz = r.displacements[_nid(ci, cj, k)]
+            b0 = idx[_nid(ci, cj, k)] * DOF_PER_NODE
+            ux, uy, rz = float(u[b0]), float(u[b0 + 1]), float(u[b0 + 5])
             out += [ux + rz * dyc, uy - rz * dxc, rz]
         return out
 
+    units = [[1.0 if q == col else 0.0 for q in range(n)] for col in range(n)]
+    ufl = solve_space_many(prep, [load_vec(u) for u in units])
     flex = [[0.0] * n for _ in range(n)]
     for col in range(n):
-        unit = [0.0] * n; unit[col] = 1.0
-        d = centre_disp(solve(unit))
+        d = centre_disp(ufl[:, col])
         for row in range(n):
             flex[row][col] = d[row]
     flex = [[0.5 * (flex[i][j] + flex[j][i]) for j in range(n)] for i in range(n)]
@@ -770,7 +934,6 @@ def _modal_response_spectrum(inp, lateral_prep, nodes, XS, YS, Z, W, centre, V_s
         m = W[k] / G
         mass += [m, m, m * (lx * lx + ly * ly) / 12.0]
     modes = generalized_eigen_diag_mass(stiff, mass)
-    m_tot = sum(W.values()) / G
     rows = []
     omegas = []
     for w2, phi in modes:
@@ -790,54 +953,76 @@ def _modal_response_spectrum(inp, lateral_prep, nodes, XS, YS, Z, W, centre, V_s
         mode_table.append({"mode": i + 1, "T_s": r["T"], "mass_x_pct": 100 * r["part"]["X"], "mass_y_pct": 100 * r["part"]["Y"],
                            "mass_rz_pct": 100 * r["part"]["RZ"], "cum_x_pct": 100 * cum["X"], "cum_y_pct": 100 * cum["Y"]})
     a, I, R = info["A"], info["I"], info["R"]
-    rs = {}
+    m_modes = len(rows)
+    rho = np.array([[1.0 if i == j else cqc_coefficient(omegas[i], omegas[j]) for j in range(m_modes)] for i in range(m_modes)])
+    plan = [(ii, jj) for ii in range(nx + 1) for jj in range(ny + 1)]
+    top_idx = np.array([[idx[_nid(ii, jj, k)] * DOF_PER_NODE for ii, jj in plan] for k in range(1, ns + 1)])
+    bot_idx = np.array([[idx[_nid(ii, jj, k - 1)] * DOF_PER_NODE for ii, jj in plan] for k in range(1, ns + 1)])
+    elem_ops = {}
+    for e in model.elements:  # ends_local = (K_local · T) · u_global(element dofs)  (no member loads in RS cases)
+        lk, _fl, dofs, _L, T = rprep["element_cache"][e.id]
+        elem_ops[e.id] = (np.asarray(dofs), np.asarray(lk) @ np.asarray(T))
+    rs, members, h = {}, {}, Z[1] - Z[0]
+    ecc_by_dir = {"X": inp.accidental_ecc * YS[-1], "Y": inp.accidental_ecc * XS[-1]}
     for dname, off in (("X", 0), ("Y", 1)):
-        shears, drifts_modes = [], []
+        ecc = ecc_by_dir[dname]
+        shears, base_forces = [], []
         for r in rows:
             phi = r["phi"]
             gamma = sum(mass[i] * phi[i] for i in range(off, n, 3))  # φᵀMφ = 1
             sa = a * iran2800.spectral_b(r["T"], inp.soil, inp.zone) * I / R * G
             forces = [mass[i] * phi[i] * gamma * sa for i in range(n)]
-            res = solve(forces)
             shears.append(sum(forces[off::3]))
-            # inter-storey drift (max over plan nodes) per storey, signed per node
-            per_storey = []
-            for k in range(1, ns + 1):
-                vals = []
-                for ii in range(nx + 1):
-                    for jj in range(ny + 1):
-                        top = res.displacements[_nid(ii, jj, k)][off]
-                        bot = res.displacements[_nid(ii, jj, k - 1)][off] if k > 1 else 0.0
-                        vals.append(top - bot)
-                per_storey.append(vals)
-            drifts_modes.append(per_storey)
+            base_forces.append(forces)
+        signs = (1.0, -1.0) if ecc > 0 else (1.0,)
+        loads = []
+        for sg in signs:
+            for forces in base_forces:
+                f2 = list(forces)
+                for k in range(ns):
+                    f2[3 * k + 2] += sg * ecc * forces[3 * k + off]  # accidental torsion ±ecc·F_k
+                loads.append(load_vec(f2))
+        u_all = solve_space_many(rprep, loads)  # n_full × (len(signs)·m)
         v_dyn = combine_cqc(shears, omegas)
         scale = max(1.0, info["dynamic_scale_min"] * V_static / v_dyn) if v_dyn > 0 else 1.0
+        worst_drift = np.zeros(ns)
+        member_cqc = {eid: np.zeros(12) for eid in elem_ops}
+        for si_, sg in enumerate(signs):
+            u_s = u_all[:, si_ * m_modes:(si_ + 1) * m_modes]  # n_full × m
+            dm = u_s[top_idx + off, :] - u_s[bot_idx + off, :]  # ns × nodes × m
+            cq = np.sqrt(np.maximum(np.einsum("kpm,mn,kpn->kp", dm, rho, dm), 0.0))
+            worst_drift = np.maximum(worst_drift, cq.max(axis=1))
+            for eid, (dofs_e, op) in elem_ops.items():
+                ends = op @ u_s[dofs_e, :]  # 12 × m
+                member_cqc[eid] = np.maximum(member_cqc[eid], np.sqrt(np.maximum(np.einsum("cm,mn,cn->c", ends, rho, ends), 0.0)))
         drift_rows = []
-        h = Z[1] - Z[0]
         for k in range(ns):
-            n_nodes = len(drifts_modes[0][k])
-            worst = max(combine_cqc([dm[k][p] for dm in drifts_modes], omegas) for p in range(n_nodes))
-            de = worst * scale
+            de = float(worst_drift[k]) * scale
             drift_rows.append({"storey": k + 1, "drift_elastic_mm": de * 1000, "ratio_elastic": de / h,
                                "ratio_amplified": info["drift_factor"] * de / h})
         rs[dname] = {"V_dynamic_kn": v_dyn, "V_static_kn": V_static, "ratio": v_dyn / V_static,
-                     "scale_factor": scale, "V_dynamic_scaled_kn": v_dyn * scale, "drift": drift_rows}
+                     "scale_factor": scale, "V_dynamic_scaled_kn": v_dyn * scale, "drift": drift_rows,
+                     "accidental_torsion": ecc > 0, "scaled_to_minimum": scale > 1.0 + 1e-9, "V_scaled_over_static": v_dyn * scale / V_static}
+        members[dname] = {eid: (scale * v).tolist() for eid, v in member_cqc.items()}
     modes_90 = {key: next((m["mode"] for m in mode_table if m[f"cum_{key.lower()}_pct"] >= 90.0), None) for key in ("X", "Y")}
     # nodal mode shapes for the viewer animation: static response to the modal inertia forces ω²·M·φ, normalised to 1
+    n_shapes = min(MAX_MODE_SHAPES, m_modes)
+    u_sh = solve_space_many(prep, [load_vec([mass[q] * rows[i]["phi"][q] * omegas[i] ** 2 for q in range(n)]) for i in range(n_shapes)])
     shapes = []
-    for i, (r, w) in enumerate(zip(rows[:MAX_MODE_SHAPES], omegas)):
-        res = solve([mass[q] * r["phi"][q] * w * w for q in range(n)])
-        disp = {nid: list(u[:3]) for nid, u in res.displacements.items()}
+    for i in range(n_shapes):
+        r = rows[i]
+        disp = {nd.id: [float(u_sh[idx[nd.id] * DOF_PER_NODE + c, i]) for c in range(3)] for nd in nodes}
         peak = max((max(abs(c) for c in u) for u in disp.values()), default=0.0) or 1.0
         t_row = mode_table[i]
         shapes.append({"mode": i + 1, "T_s": round(r["T"], 4), "freq_hz": round(1.0 / r["T"], 4),
                        "mass_x_pct": round(t_row["mass_x_pct"], 2), "mass_y_pct": round(t_row["mass_y_pct"], 2),
                        "mass_rz_pct": round(t_row["mass_rz_pct"], 2),
                        "disp": {nid: [round(c / peak, 4) for c in u] for nid, u in disp.items()}})
-    return {"shapes": shapes, "method": "Modal (condensed diaphragm DOFs) + Standard 2800 design spectrum A·B·I/R, CQC (5% damping)",
+    return {"shapes": shapes, "method": "Modal (condensed diaphragm DOFs, numpy eigh) + Standard 2800 design spectrum A·B·I/R, CQC (5% damping)"
+            + (", 5% accidental torsion" if inp.accidental_ecc > 0 else ""),
             "modes": mode_table, "modes_for_90pct": modes_90, "response_spectrum": rs,
-            "T_fundamental_s": mode_table[0]["T_s"] if mode_table else None}
+            "T_fundamental_s": mode_table[0]["T_s"] if mode_table else None,
+            "_members": members}
 
 
 # --------------------------------------------------------------------------- payload
@@ -1102,6 +1287,14 @@ def _build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None 
     if raw["equilibrium_error_kn"] > 1e-3:
         warnings.append(f"Equilibrium residual {raw['equilibrium_error_kn']:.3g} kN.")
 
+    pdr = raw["p_delta"]
+    if pdr["status"] == "UNSTABLE":
+        warnings.append("P-Δ analysis failed: the gravity load exceeds the elastic critical load of the frame (unstable); the first-order results are shown. Enlarge the columns or add stiffness.")
+    if "theta_exceeds_limit" in pdr["warnings"]:
+        warnings.append(f"Stability index θ = {pdr['theta_governing']:.3f} exceeds the maximum {pdr['theta_limit']:.3f} (θmax = 0.65/Cd ≤ 0.25, Standard 2800 §3-6): the structure is likely unstable; revise the sections or the system.")
+    if "theta_above_0_1_not_included" in pdr["warnings"]:
+        warnings.append(f"Stability index θ = {pdr['theta_governing']:.3f} exceeds 0.1 but P-Δ was not included; Standard 2800 §3-6 requires it (add 'with P-delta').")
+
     beams, cols = raw["beams"], raw["columns"]
     per_storey_beam = []
     for k in range(1, inp.storeys + 1):
@@ -1136,14 +1329,15 @@ def _build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None 
         "Two-way slab loads to beams by equivalent triangular/trapezoidal UDL; slab self-weight is part of the dead load",
         f"Perimeter wall {inp.wall_kn_m:g} kN/m on edge beams, roof parapet {inp.parapet_kn_m:g} kN/m; roof live load {inp.roof_live_kn_m2:g} kN/m²",
         "Combinations: 1.4D, 1.2D+1.6L, 1.2D+1.0L±E, 0.9D±E (Mabhas 6 / ACI form; no 30% orthogonal combination)",
-        "No P-Δ",
+        _p_delta_assumption(raw["p_delta"], is2800),
     ]
     if is2800:
         assumptions += [
             f"Standard 2800 (4th ed.) equivalent static with the empirical period {si['T_formula']} = {si['T_empirical_s']:.3f} s (analytical period not used for C)",
             f"Inelastic drift Δm = Cd·Δe/I ({si['drift_factor_label']}), limit {si['drift_limit']*100:g}% ; drift from the design-force analysis (conservative)",
             "Modal analysis on rigid-diaphragm DOFs with storey masses (D+0.2L)/g and uniform-plate polar inertia; mass centre at plan centre",
-            "Response spectrum: 2800 design spectrum A·B1·N·I/R, CQC 5% damping, no accidental torsion in the dynamic cases",
+            "Response spectrum: 2800 design spectrum A·B1·N·I/R, CQC 5% damping, 5% accidental torsion in the dynamic cases",
+            "Dynamic results scaled so V_dynamic ≥ 85% (regular) / 90% (irregular) of V_static; scaled response-spectrum member forces are enveloped with the static ones in design",
         ]
     else:
         assumptions.append(f"Drift amplified by 0.7R with R={inp.behaviour_r:g}; the 2.5% value shown is only a reference, not a 2800 check")
@@ -1178,6 +1372,7 @@ def _build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None 
             {"label": "T (empirical) / B1·N", "value": f"{si['T_empirical_s']:.3f} s / {si['B1']:.3f}×{si['N']:.3f} = {si['B']:.3f}", "unit": ""},
             {"label": "C = ABI/R (≥ 0.12AI)", "value": f"{si['C']:.4f} (Cmin {si['C_min']:.4f}), k={si['k']:.2f}", "unit": ""},
         ]
+    fields.append({"label": "P-Δ / stability index θ", "value": _p_delta_field(raw["p_delta"]), "unit": ""})
     if base_shear:
         fields.append({"label": "Base shear V = C·W", "value": f"{base_shear['V_expected_kn']:.1f} (C={base_shear['C']:g})", "unit": "kN"})
     modal = raw.get("modal")
@@ -1212,6 +1407,8 @@ def _build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None 
         "drift_reference_limit_pct": _r(si.get("drift_limit", 0.025) * 100, 2),
         "drift_check": (("PASS" if max_drift["ratio_amplified_pct"] <= si["drift_limit"] * 100 + 1e-9 else "FAIL") if (is2800 and max_drift) else None),
         "modal": _modal_payload(modal, si) if modal else None,
+        "p_delta": _p_delta_payload(raw["p_delta"]),
+        "rs_design": raw.get("rs_design"),
         "design": design,
         "beam_forces_by_storey": per_storey_beam,
         "column_forces_by_storey": [{"storey": k, "P_kn": _r(max(c["P_kn"] for c in cols if c["storey"] == k)),
@@ -1227,6 +1424,54 @@ def _build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None 
         "foundation": ({k: v for k, v in fdn.items() if k != "footings"} if fdn else None),
         "viewer": _viewer_payload(raw, inp, design, fdn),
     })
+
+
+def _p_delta_assumption(pd: dict[str, Any], is2800: bool) -> str:
+    st = pd["status"]
+    if st == "APPLIED":
+        return "P-Δ included: second-order elastic analysis of the lateral cases (K + K_G, member axial forces from 1.2D+1.0L); drifts, reactions and member forces include P-Δ"
+    if st == "OFF":
+        return "P-Δ not included: switched off by the user (the stability index θ is still reported)"
+    if st == "UNSTABLE":
+        return "P-Δ not included: the second-order analysis failed (gravity load above the elastic critical load)"
+    if st == "NOT_REQUIRED":
+        if is2800:
+            return "P-Δ not included: stability index θ < 0.1 (Standard 2800 §3-6 allows ignoring it)"
+        return "P-Δ not included: the automatic rule applies to Standard 2800 projects only (add 'with P-delta' to include it)"
+    return "P-Δ not included: no lateral load case"
+
+
+def _p_delta_field(pd: dict[str, Any]) -> str:
+    if pd["status"] == "NOT_APPLICABLE":
+        return "no lateral load case"
+    th = pd["theta_max"]
+    txt = f"θ max X {th['X']:.3f} / Y {th['Y']:.3f}"
+    if pd["applied"]:
+        txt += f"; P-Δ included, λcr = {pd['lambda_cr']:.2f}"
+    else:
+        txt += "; P-Δ not included"
+    return txt
+
+
+def _p_delta_payload(pd: dict[str, Any]) -> dict[str, Any]:
+    out = {"mode": pd["mode"], "applied": pd["applied"], "status": pd["status"], "rule": pd["rule"]}
+    if "theta" not in pd:
+        return out
+    out.update({
+        "basis": pd["method"],
+        "theta": {d: [_r(x, 4) for x in v] for d, v in pd["theta"].items()},
+        "theta_max": {d: _r(v, 4) for d, v in pd["theta_max"].items()},
+        "theta_limit": _r(pd["theta_limit"], 3), "theta_ignore_below": pd["theta_ignore_below"],
+        "required_by_theta": pd["required_by_theta"],
+        "storey_Pu_kn": [_r(x) for x in pd["storey_Pu_kn"]],
+        "drift_first_order_mm": {d: [_r(x) for x in v] for d, v in pd["drift_first_order_mm"].items()},
+        "warnings": pd["warnings"],
+    })
+    if pd["applied"]:
+        out.update({"lambda_cr": _r(pd["lambda_cr"], 3),
+                    "drift_second_order_mm": {d: [_r(x) for x in v] for d, v in pd["drift_second_order_mm"].items()},
+                    "amplification": {d: [_r(x, 4) for x in v] for d, v in pd["amplification"].items()}})
+    return out
 
 
 def _modal_payload(modal: dict[str, Any], si: dict[str, Any]) -> dict[str, Any]:
