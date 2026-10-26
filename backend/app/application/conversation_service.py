@@ -911,6 +911,11 @@ class ConversationService:
         except Exception:  # noqa: BLE001 - fall back to the chat model / help text
             logger.exception("rule-based chat engine failed")
 
+        small_talk = gbe.small_talk_reply(user_content)
+        if small_talk is not None:
+            # Greetings / small talk: instant deterministic reply (works with no LLM, never invents numbers).
+            return small_talk, {"mode": "small_talk", "provider": "none"}
+
         try:
             from app.application.platform_helper_factory import get_helper_service
 
@@ -933,10 +938,10 @@ class ConversationService:
             )
         except Exception:  # noqa: BLE001
             logger.exception("chat model failed")
-            return gbe.CAPABILITIES_MESSAGE, {"mode": "capabilities", "provider": "none"}
+            return gbe.capabilities_message(user_content), {"mode": "capabilities", "provider": "none"}
         content = (response.content or "").strip()
         if "stub" in str(response.provider).lower() or content.startswith("{") or "task_acknowledged" in content:
-            return gbe.CAPABILITIES_MESSAGE, {"mode": "capabilities", "provider": str(response.provider)}
+            return gbe.capabilities_message(user_content), {"mode": "capabilities", "provider": str(response.provider)}
         return response.content, {"mode": "general_chat", "provider": response.provider}
 
     def _persist_conversation_memory(
