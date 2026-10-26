@@ -306,3 +306,12 @@ def test_rename_conversation_and_streaming_tokens_event(api_client: TestClient) 
         body = "".join(resp.iter_text())
     assert "event: agent_run.token" in body and '"delta": "Hel"' in body
     assert body.index("agent_run.token") < body.index("agent_run.completed")
+
+
+def test_howto_with_leading_greeting_is_platform_help() -> None:
+    from app.platform_helper import intents
+
+    assert intents.classify("سلام، چطور بهینه‌سازی قاب را اجرا کنم؟").name == "platform_help"
+    assert intents.classify("Hi, how do I optimize my frame?").name == "platform_help"
+    assert intents.classify("Hi, explain what you can do.").name == "platform_help"
+    assert intents.classify("run the analysis on my frame").name == "engineering"

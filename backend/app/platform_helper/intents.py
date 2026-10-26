@@ -30,7 +30,7 @@ _HELP = re.compile(
     r"(what can you do|what you can do|what are you|who are you|what do you do|how (do|can) i|how does (the )?platform|what is (this )?(platform|structuralai)|help me|\bhelp\b|where (is|can i find)|"
     r"which page|explain (the )?(platform|page|approval|optimization|validation)|"
     r"چه کاری|چکار می ?کنی|چه کارهایی|چطور|چگونه|کجا|کمک|راهنما|پلتفرم|این صفحه|تایید پروژه|تأیید پروژه|چیست|یعنی چه|معنی)", re.I)
-_HOWTO = re.compile(r"^(how (do|can|should) i|how does|where (is|can i)|why (does|is|can'?t)|چطور|چگونه|چرا|کجا|چه جوری)", re.I)
+_HOWTO = re.compile(r"^(?:(?:hi|hello|hey|سلام|درود)[\s,،!.]*)?(how (do|can|should) i|how does|where (is|can i)|why (does|is|can'?t)|چطور|چگونه|چرا|کجا|چه جوری)", re.I)
 _ENGINEERING = re.compile(
     r"(\d\s*(m|kn|mpa|kn/m|متر|کیلو)|analy[sz]e|design (a|the)|optimi[sz]e|frame|beam|column|slab|footing|storey|story|stories|"
     r"تحلیل|طراحی|بهینه|قاب|تیر|ستون|دال|پی\b|طبقه|دهانه|بار گسترده|مقطع|آرماتور|سازه)", re.I)
