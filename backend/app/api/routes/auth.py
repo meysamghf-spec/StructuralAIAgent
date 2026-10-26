@@ -133,12 +133,17 @@ def get_current_user_features(
 _GOOGLE_COOKIE = "sa_google_nonce"
 
 
+def _request_host(request: Request) -> str:
+    host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").split(",")[0].strip()
+    host = host.rsplit(":", 1)[0] if not host.startswith("[") else host.split("]")[0].lstrip("[")
+    return host.lower()
+
+
 def _ip_host(request: Request) -> bool:
     """True when the app is reached by a bare IP (no Google sign-in there: the redirect URI is the domain)."""
     import ipaddress
 
-    host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").split(",")[0].strip()
-    host = host.rsplit(":", 1)[0] if not host.startswith("[") else host.split("]")[0].lstrip("[")
+    host = _request_host(request)
     try:
         ipaddress.ip_address(host)
         return True
@@ -163,6 +168,14 @@ def google_start(request: Request, next: str = "/") -> RedirectResponse:
         raise AuthenticationError("Google sign-in is not configured")
     if not next.startswith("/") or next.startswith("//"):
         next = "/"
+    # The nonce cookie is host-only, and Google returns to the registered redirect URI's host. If sign-in was
+    # started from another host (e.g. www), restart it on the callback host so cookie and callback match.
+    from urllib.parse import urlparse
+
+    cb = urlparse(settings.google_callback_url)
+    host, cb_host = _request_host(request), (cb.hostname or "").lower()
+    if host != cb_host and host.removeprefix("www.") == cb_host.removeprefix("www."):
+        return RedirectResponse(f"{cb.scheme}://{cb.netloc}{request.url.path}?next={quote(next, safe="")}", status_code=302)
     nonce = g.new_nonce()
     state = g.make_state(AuthService(user_repository=None, settings=settings)._jwt_secret(), nonce, next)  # type: ignore[arg-type]
     resp = RedirectResponse(g.authorization_url(settings, state, nonce), status_code=302)

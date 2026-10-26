@@ -217,3 +217,18 @@ def test_google_is_not_offered_on_bare_ip_access(api_client: TestClient, monkeyp
         assert api_client.get("/api/v1/auth/google/start", headers={"Host": "structuralai.ir"}, follow_redirects=False).status_code == 302
     finally:
         get_settings.cache_clear()
+
+
+def test_google_start_from_www_restarts_on_the_callback_host(api_client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "cid.apps.googleusercontent.com")
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "s3cret")
+    get_settings.cache_clear()
+    try:
+        r = api_client.get("/api/v1/auth/google/start?next=%2Fprojects", headers={"Host": "www.structuralai.ir"}, follow_redirects=False)
+        assert r.status_code == 302
+        assert r.headers["location"] == "https://structuralai.ir/api/v1/auth/google/start?next=%2Fprojects"
+        assert "set-cookie" not in r.headers  # no nonce cookie on the wrong host
+        ok = api_client.get("/api/v1/auth/google/start", headers={"Host": "structuralai.ir"}, follow_redirects=False)
+        assert ok.headers["location"].startswith("https://accounts.google.com/") and "sa_google_nonce" in ok.headers["set-cookie"]
+    finally:
+        get_settings.cache_clear()
