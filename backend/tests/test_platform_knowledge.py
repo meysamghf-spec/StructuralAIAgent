@@ -335,3 +335,19 @@ def test_chat_api_llm_reply_carries_user_context(api_client: TestClient) -> None
     m = _chat(api_client, h, "how do I export to ETABS?")
     assert m["content"] == "explained"
     assert "plan: Free" in seen["system"] and "project_selected: none" in seen["system"] and "Generated platform facts" in seen["system"]
+
+
+def test_api_error_report_is_diagnosed_then_filed_only_on_report_it(api_client: TestClient) -> None:
+    _down_service()
+    h = _register(api_client)
+    r1 = api_client.post("/api/v1/chat", json={"message": "Approve button is not working, it shows 409"}, headers=h)
+    assert r1.status_code == 201, r1.text
+    md = r1.json()["assistant_message"]["metadata"]
+    text = r1.json()["assistant_message"]["content"]
+    assert md["intent"] == "diagnose" and not md.get("issue_id")
+    assert "cannot change code" in text and "report a problem:" in text
+    cid = r1.json()["assistant_message"]["conversation_id"]
+    r2 = api_client.post("/api/v1/chat", json={"message": "report it", "conversation_id": cid}, headers=h)
+    assert r2.status_code == 201, r2.text
+    assert r2.json()["assistant_message"]["metadata"]["intent"] == "bug_report"
+    assert r2.json()["assistant_message"]["metadata"]["issue_id"]
