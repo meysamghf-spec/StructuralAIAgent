@@ -12,6 +12,7 @@ import { SaiaLogo } from "@/components/brand/SaiaLogo";
 
 
 const AUTH_PATHS = new Set(["/login", "/register"]);
+const PUBLIC_PATHS = new Set(["/about", "/privacy", "/terms"]); // public pages: own chrome, no login or app shell
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -27,6 +28,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   function handleLogout() {
     logout();
     router.replace("/login");
+  }
+
+  if (PUBLIC_PATHS.has(pathname.replace(/\/$/, ""))) {
+    return <>{children}</>;
   }
 
   if (isAuthPage) {

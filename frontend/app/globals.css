@@ -3075,3 +3075,22 @@ a.button,
 .login-alert-action { justify-self: start; text-decoration: none; }
 .google-note { font-size: 0.85rem; }
 .auth-form .field-error { color: #fca5a5; font-size: 0.85rem; }
+
+/* Public pages: /about /privacy /terms (no gate, no app shell). body is overflow:hidden app-wide, so this scrolls itself. */
+.public-shell { height: 100vh; height: 100dvh; overflow-y: auto; display: flex; flex-direction: column; background: #0f172a; }
+.public-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem clamp(1rem, 4vw, 2.5rem); border-bottom: 1px solid #1e293b; }
+.public-header .sidebar-lang { margin: 0; }
+.public-main { flex: 1; width: min(100%, 820px); margin: 0 auto; padding: 2rem clamp(1rem, 4vw, 2rem) 3rem; }
+.public-doc[hidden] { display: none; }
+.public-doc h1 { font-size: clamp(1.6rem, 4vw, 2.2rem); line-height: 1.25; margin: 0 0 0.5rem; }
+.public-doc h2 { font-size: 1.15rem; margin: 1.75rem 0 0.5rem; color: #f1f5f9; }
+.public-doc p, .public-doc li { line-height: 1.75; color: #cbd5e1; overflow-wrap: anywhere; }
+.public-doc ul { padding-inline-start: 1.25rem; display: grid; gap: 0.4rem; }
+.public-lead { font-size: 1.15rem; color: #e2e8f0 !important; }
+.public-features { list-style: none; padding: 0 !important; margin: 1.5rem 0; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem !important; }
+.public-features li { background: #111c33; border: 1px solid #1e293b; border-radius: 12px; padding: 0.9rem 1rem; display: grid; gap: 0.25rem; }
+.public-features strong { color: #f8fafc; }
+.public-cta { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.5rem; }
+.public-cta .button { text-decoration: none; text-align: center; }
+.public-footer { border-top: 1px solid #1e293b; padding: 1.25rem clamp(1rem, 4vw, 2.5rem); display: grid; gap: 0.5rem; justify-items: center; text-align: center; }
+.public-footer nav { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem 1.25rem; }
