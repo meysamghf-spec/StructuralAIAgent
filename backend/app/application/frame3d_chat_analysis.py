@@ -27,6 +27,7 @@ from typing import Any, Callable
 from app.application import csi_text_export as cte
 from app.application import detailing_assumptions as da
 from app.application import foundation_design as fnd
+from app.application import frame3d_followup as fu
 from app.application import frame3d_i18n as i18n
 from app.application import iran2800
 from app.application import mabhas9_rc_design as m9
@@ -140,7 +141,12 @@ def is_frame3d_request(user_request: str) -> bool:
     t = _norm(user_request).lower()
     storey = re.search(r"stor(e)?y|stories|storeys|floors?\b|طبقه", t)
     frame = re.search(r"\bframe\b|\bbays?\b|قاب|دهانه|3d|سه ?بعدی", t)
-    return bool(storey and frame)
+    if storey and frame:
+        return True
+    # «قاب سه بعدی ... تحلیل کن» / "analyze a 3D frame" without storey words -> frame solver (asks for missing params)
+    frame3d = re.search(r"قاب\s*(?:ی\s*)?(?:بتنی\s*|فولادی\s*)?سه\s*‌?\s*بعدی|3d\s*(?:rc\s*|concrete\s*|steel\s*)?frame|ghab(?:e)?\s*3d|space\s*frame", t)
+    analyse = re.search(r"تحلیل|analy[sz]|tahlil|solve|حل کن", t)
+    return bool(frame3d and analyse)
 
 
 _EXPORT_WORD = r"export|download|خروجی|اکسپورت|دانلود|فایل"
@@ -931,13 +937,34 @@ def _viewer_payload(raw: dict[str, Any], inp: "Frame3dInputs", design: dict[str,
             "modes": (raw.get("modal") or {}).get("shapes") or []}
 
 
+def _finite(o: Any) -> Any:
+    """JSON-safe payload (Postgres json rejects Infinity/NaN): ±inf (D/C of an inadequate section) -> ±999, NaN -> 0."""
+    if isinstance(o, float):
+        if math.isnan(o):
+            return 0.0
+        return o if math.isfinite(o) else math.copysign(999.0, o)
+    if isinstance(o, dict):
+        return {k: _finite(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)):
+        return [_finite(v) for v in o]
+    return o
+
+
 def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None = None, *,
+                          manual_inputs: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    payload = _build_frame3d_payload(user_request, prior_spec, manual_inputs=manual_inputs)
+    return _finite(payload) if payload is not None else None
+
+
+def _build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None = None, *,
                           manual_inputs: dict[str, Any] | None = None) -> dict[str, Any] | None:
     """Analyse a described frame, or re-run the project's last frame when only an export is asked for.
 
     `manual_inputs` (from the manual Model page form) bypasses prompt parsing; every given key counts as user input."""
     export_formats = requested_export_formats(user_request) if (is_export_request(user_request) or is_frame3d_request(user_request)) else []
     from_memory = False
+    model_changes: list[str] = []
+    followup_notes: list[str] = []
     a_upd, inp_upd = da.parse_assumptions(user_request) if manual_inputs is None else ({}, {})
     show_assumptions = manual_inputs is None and da.is_show_assumptions(user_request)
     # input-only values (fy, fc, ...) count as an assumption command only on an existing project frame
@@ -952,6 +979,27 @@ def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None =
         export_formats = []
     elif is_frame3d_request(user_request):
         inp = parse_frame3d_request(user_request)
+        model_changes = fu.apply_edits(inp, {k: v for k, v in fu.model_edits(user_request).items() if k in fu.GEOMETRY_KEYS})
+    elif prior_spec and fu.is_model_edit(user_request) and not export_formats:
+        inp = inputs_from_dict(prior_spec); from_memory = True
+        follow = parse_frame3d_request(user_request)
+        edits = {k: getattr(follow, k) for k in follow.parsed if k not in ("storeys", "bays_x", "bays_y") or getattr(follow, k) is not None}
+        if follow.seismic_code == "IRAN_2800" and "seismic_code" not in edits:
+            edits["seismic_code"] = "IRAN_2800"
+        own = fu.model_edits(user_request)
+        if {"bay_x_m", "bay_y_m"} & set(own):  # «دهانه x را ۶ متر کن» changes X only
+            edits = {k: v for k, v in edits.items() if k not in ("bay_x_m", "bay_y_m")}
+        edits.update(own)
+        model_changes = fu.apply_edits(inp, edits)
+        if "_unsupported" in edits:
+            followup_notes.append("us_codes")
+        if "_units" in edits:
+            followup_notes.append("units")
+        if inp.group_sections and {"column_b_m", "column_h_m", "beam_b_m", "beam_h_m"} & set(model_changes):
+            inp.group_sections = None  # explicit uniform section replaces the optimizer's per-storey groups
+    elif fu.is_assume_reply(user_request) and fu.is_frame_followup(user_request):
+        inp = parse_frame3d_request(user_request)
+        model_changes = fu.apply_edits(inp, fu.model_edits(user_request))
     elif (export_formats or wants_foundation(user_request) or assumption_cmd) and prior_spec:
         inp = inputs_from_dict(prior_spec); from_memory = True
         follow = parse_frame3d_request(user_request)
@@ -977,7 +1025,10 @@ def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None =
         return _loc(blank)
     else:
         return None
-    inp.lang = i18n.detect_lang(user_request)
+    inp.lang = "fa" if fu.is_finglish(user_request) else i18n.detect_lang(user_request)
+    assumed_defaults: list[str] = []
+    if manual_inputs is None and fu.is_assume_reply(user_request):
+        assumed_defaults = fu.apply_defaults(inp)
     if a_upd:
         inp.assumptions = {**(inp.assumptions or {}), **a_upd}
     for k, v in inp_upd.items():
@@ -996,6 +1047,8 @@ def build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None =
         "export_requested": export_formats, "model_from_project_memory": from_memory,
         "spec": frame3d_spec(inp), "lang": inp.lang,
         "detailing_assumptions": da.describe(inp.assumptions, inp, inp.lang, changed),
+        "assumed_defaults": assumed_defaults, "model_changes": model_changes if from_memory else [],
+        "followup_note": _followup_note(inp, assumed_defaults, model_changes if from_memory else [], followup_notes),
         "assumptions_changed": sorted(changed), "animate_mode": animate_mode, "show_foundation": bool(show_foundation), "assumptions_command": "show" if show_assumptions and not changed else ("update" if changed else None),
     }
     missing = missing_inputs(inp)
@@ -1181,9 +1234,31 @@ def _modal_payload(modal: dict[str, Any], si: dict[str, Any]) -> dict[str, Any]:
             "scale_rule": f"V_dynamic ≥ {si['dynamic_scale_min']:.0%} V_static ({si.get('regularity', 'regular')})"}
 
 
+def _followup_note(inp: "Frame3dInputs", assumed: list[str], changes: list[str], notes: list[str]) -> str:
+    fa = inp.lang == "fa"
+    parts = []
+    if assumed:
+        parts.append(("**فرض‌های من (چون مقدار داده نشده بود):** " if fa else "**Assumed (not given):** ") + fu.describe(assumed, inp, fa)
+                     + ("." if fa else ". Change any of them in chat, e.g. `storeys 6`, `bay x 6 m`."))
+        if fa:
+            parts[-1] += " هر کدام را می‌توانید در چت عوض کنید، مثلاً «طبقات را ۶ کن» یا «دهانه x را ۶ متر کن»."
+    if changes:
+        parts.append(("**تغییرات روی مدل قبلی پروژه:** " if fa else "**Changed on the project's last model:** ") + fu.describe(changes, inp, fa)
+                     + (" — مدل دوباره تحلیل شد." if fa else " — model re-analysed."))
+    if "us_codes" in notes:
+        parts.append("تحلیل قاب در چت فعلاً با آیین‌نامه‌های ایران (۲۸۰۰ و مبحث ۹) انجام می‌شود؛ ACI/ASCE برای این تحلیل هنوز پشتیبانی نمی‌شود."
+                     if fa else "Chat frame analysis currently runs with Iranian codes (2800 + Mabhas 9); ACI/ASCE is not supported for it yet.")
+    if "units" in notes:
+        parts.append("محاسبات این تحلیل با واحد SI (kN، m) است؛ واحد نمایش پروژه را از تنظیمات پروژه عوض کنید."
+                     if fa else "This analysis computes in SI (kN, m); change the project display units in the project settings.")
+    return "\n\n".join(parts)
+
+
 def frame3d_markdown(payload: dict[str, Any]) -> str:
     text = _frame3d_markdown_en(payload)
     text = i18n.fa_markdown(text) if payload.get("lang") == "fa" else text
+    if payload.get("followup_note"):
+        text = payload["followup_note"] + "\n\n" + text
     rows = payload.get("detailing_assumptions") or []
     if rows:
         fa = payload.get("lang") == "fa"

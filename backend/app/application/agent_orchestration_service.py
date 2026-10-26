@@ -1044,7 +1044,7 @@ class AgentOrchestrationService:
                     "memory_type": memory.memory_type.value,
                     "content": memory.content[:500],
                 }
-                for memory in assembly.memories[:25]
+                for memory in _context_memories(assembly.memories)
             ],
             "files": [
                 {
@@ -1119,3 +1119,14 @@ def _attachment_entries(attachment_context: Any) -> list[dict[str, Any]]:
         for item in raw_entries
         if isinstance(item, dict) and item.get("filename")
     ]
+
+
+def _context_memories(memories: list, limit: int = 25) -> list:
+    """First `limit` memories plus the newest frame3d spec (memories are oldest-first, so the latest
+    "[frame3d-spec]" falls outside the slice after a few chat turns and edits hit a stale model)."""
+    picked = list(memories[:limit])
+    latest = next((m for m in reversed(memories) if str(getattr(m, "content", "")).startswith("[frame3d-spec]")), None)
+    if latest is not None and latest not in picked[-1:]:
+        picked = [m for m in picked if m is not latest] + [latest]
+    return picked
+
