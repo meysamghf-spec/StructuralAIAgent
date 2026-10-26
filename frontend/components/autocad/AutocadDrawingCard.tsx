@@ -2,6 +2,7 @@
 
 import { downloadAutocadDxf, fetchAutocadPreview, reviewAutocadJob } from "@/lib/autocad";
 import { useEffect, useState } from "react";
+import { PanZoom } from "@/components/common/PanZoom";
 
 type Props = {
   jobId: string;
@@ -46,7 +47,13 @@ export function AutocadDrawingCard({ jobId, title, filename, kind, layers, revie
         </span>
       </div>
       <div className="autocad-card-preview">
-        {svg ? <div dangerouslySetInnerHTML={{ __html: svg }} /> : <span className="muted">Loading preview…</span>}
+        {svg ? (
+          <PanZoom height={360}>
+            <div className="autocad-svg" dangerouslySetInnerHTML={{ __html: svg }} />
+          </PanZoom>
+        ) : (
+          <span className="muted">Loading preview…</span>
+        )}
       </div>
       <div className="autocad-card-actions">
         <button type="button" className="button" onClick={() => void downloadAutocadDxf(jobId, filename)}>

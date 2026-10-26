@@ -23,6 +23,7 @@ import {
   saveFrame3dPayload,
 } from "@/lib/frame3d-store";
 import { useUiLang } from "@/hooks/useUiLang";
+import { hydrateFrame3dFromServer } from "@/lib/chat-runs";
 
 const Frame3dViewer = dynamic(() => import("@/components/chat/Frame3dViewer"), { ssr: false });
 const FoundationView = dynamic(() => import("@/components/frame3d/FoundationView"), { ssr: false });
@@ -52,6 +53,7 @@ export function Frame3dWorkspacePanel({ mode }: { mode: Mode }) {
       setProjectId(pid);
       setPayload(loadFrame3dPayload(pid));
       const saved = loadFrame3dInputs(pid);
+      if (!saved) void hydrateFrame3dFromServer(pid);
       if (saved && mode === "model") setValues(inputsToForm({ ...DEFAULT_FRAME_INPUTS, ...saved }));
     };
     sync();
@@ -214,6 +216,7 @@ export function useLatestFrame3d() {
       const pid = getCurrentProjectId();
       setProjectId(pid);
       const saved = loadFrame3dInputs(pid);
+      if (!saved) void hydrateFrame3dFromServer(pid);
       setInputs(saved);
       const p = loadFrame3dPayload(pid);
       setPayload(p);

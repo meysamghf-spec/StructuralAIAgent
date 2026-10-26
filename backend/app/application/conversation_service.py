@@ -126,6 +126,18 @@ class ConversationService:
     ) -> list[Conversation]:
         return self._repo.list_for_account(account.account_id, limit=limit)
 
+    def list_project_chat_runs(self, account: AuthenticatedAccount, project_id: UUID) -> list[dict]:
+        """Engineering runs from this account's chats in one project, newest first."""
+        from app.application.chat_runs import extract_runs
+
+        runs: list[dict] = []
+        for conv in self._repo.list_for_account(account.account_id, limit=500):
+            if conv.project_id != project_id:
+                continue
+            runs.extend(extract_runs(conv, self._repo.list_messages(conv.id)))
+        runs.sort(key=lambda r: r["created_at"], reverse=True)
+        return runs
+
     def get_conversation(
         self,
         conversation_id: UUID,

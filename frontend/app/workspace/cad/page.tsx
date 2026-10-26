@@ -6,8 +6,8 @@ import CadWorkspaceClient from "./CadWorkspaceClient";
 export default function CadWorkspacePage() {
   return (
     <>
-      <CadDrawingsPanel />
       <AutocadDrawingsSection />
+      <CadDrawingsPanel />
       <LegacySection label="cad">
         <CadWorkspaceClient />
       </LegacySection>
