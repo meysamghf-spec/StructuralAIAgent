@@ -24,6 +24,7 @@ from app.api.schemas.model import (
     SupportsUpdateRequest,
 )
 from app.application.pem_model_service import PemModelService
+from app.domain.models.pem import effective_unit_configuration
 
 router = APIRouter(
     prefix="/projects/{project_id}/model",
@@ -44,7 +45,7 @@ def get_current_model(
         snapshot_id=snapshot_id,
         structural_model=pem.structural_model,
         code_configuration=pem.code_configuration.model_dump(mode="json"),
-        unit_configuration=pem.unit_configuration.model_dump(mode="json"),
+        unit_configuration=effective_unit_configuration(pem.unit_configuration, pem.code_configuration).model_dump(mode="json"),
     )
 
 

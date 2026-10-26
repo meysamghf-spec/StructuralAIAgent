@@ -260,6 +260,22 @@ def create_si_unit_configuration() -> UnitConfiguration:
     )
 
 
+def effective_unit_configuration(unit: UnitConfiguration, code: CodeConfiguration | None) -> UnitConfiguration:
+    """Unit system to *use/show* for a project, following its design code.
+
+    Projects created before the Iranian default profile stored the old US-customary software default
+    (status DEFAULT, never confirmed by a user) next to an Iranian code profile. For those the effective
+    units are SI (kN, m, MPa). The stored value is never rewritten; user-confirmed or modified units and
+    US-code projects are returned unchanged.
+    """
+    if code is None or unit.system != UnitSystem.US_CUSTOMARY or unit.status != UnitConfigurationStatus.DEFAULT:
+        return unit
+    if code.jurisdiction != Jurisdiction.IRAN:
+        return unit
+    si = create_si_unit_configuration()
+    return si.model_copy(update={"configured_by": unit.configured_by, "configured_at": unit.configured_at})
+
+
 def create_default_code_configuration(jurisdiction: Jurisdiction = Jurisdiction.IRAN) -> CodeConfiguration:
     return create_software_default_code_configuration() if jurisdiction == Jurisdiction.US else create_iran_default_code_configuration()
 

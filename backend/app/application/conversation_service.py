@@ -758,8 +758,16 @@ class ConversationService:
         resume_context = _find_resumable_workflow_context(history)
         from app.application import frame3d_followup as _fu
 
-        user_request = _fu.merge_with_pending(
-            user_request, [m.content for m in reversed(history) if m.role == MessageRole.USER])
+        prior_user_texts = [m.content for m in reversed(history) if m.role == MessageRole.USER]
+        merged_request = _fu.merge_with_pending(user_request, prior_user_texts)
+        if merged_request == user_request:
+            # «پیش‌فرض‌ها را فرض کن» right after the optimization checklist -> run the default-frame optimization.
+            from app.application import frame_optimizer as _fopt
+
+            last_assistant = next((m.content for m in reversed(history) if m.role == MessageRole.ASSISTANT), None)
+            merged_request = _fopt.merge_assume_with_checklist(user_request, prior_user_texts, last_assistant)
+        resumed_optimization = merged_request != user_request and _fopt_is_optimize(merged_request)
+        user_request = merged_request
         parameters: dict = {
             "conversation_id": str(conversation.id),
             "attachment_file_ids": [str(item.file_id) for item in attachments],
@@ -770,6 +778,9 @@ class ConversationService:
         if attachment_context is not None:
             parameters["attachment_context"] = attachment_context.to_dict()
         hinted_type = chat_mode_to_agent_type(mode)
+        if hinted_type is None and resumed_optimization:
+            # keyword scoring would send e.g. «قاب … بهینه» to the Analysis agent, away from the pending optimization step
+            hinted_type = EngineeringAgentType.OPTIMIZATION_AGENT
         record = self._agent_runtime.execute(
             AgentExecutionRequest(
                 project_id=conversation.project_id,
@@ -1022,6 +1033,12 @@ _RESUMABLE_TASK_STATUSES = frozenset(
 )
 
 
+def _fopt_is_optimize(text: str) -> bool:
+    from app.application import frame_optimizer as _fopt
+
+    return _fopt.is_optimize_request(text)
+
+
 def _find_resumable_workflow_context(
     messages: list[ConversationMessage],
 ) -> dict[str, str] | None:
@@ -1199,7 +1216,9 @@ def _format_execution_response(record) -> tuple[str, dict]:
         engineering_task = record.traceability_metadata.get("engineering_task")
     if isinstance(engineering_task, dict):
         metadata["engineering_task"] = engineering_task
-        workflow_section = _format_engineering_task_section(engineering_task)
+        _req = record.input_request.get("user_request") if isinstance(record.input_request, dict) else None
+        workflow_section = _format_engineering_task_section(
+            engineering_task, "fa" if _is_persian(str(_req or "")) else "en" if _req else None)
         if workflow_section:
             sections.insert(1, workflow_section)
     if isinstance(record.traceability_metadata, dict) and record.traceability_metadata.get("report_id"):
@@ -1353,54 +1372,110 @@ def _build_status_events(record, progress: str, agent_run: dict | None = None) -
     return events
 
 
-def _format_engineering_task_section(engineering_task: dict) -> str | None:
+_WF_FA_TITLES = {
+    "Understand engineer goal": "درک هدف مهندسی",
+    "Validate required inputs": "بررسی ورودی‌های لازم",
+    "Execute specialist assistant work": "اجرای کار دستیار تخصصی",
+    "Validate and record results": "اعتبارسنجی و ثبت نتایج",
+    "Review attached or project files": "بررسی فایل‌های پیوست یا پروژه",
+}
+_WF_FA_STATUS = {
+    "COMPLETED": "تکمیل شد",
+    "PARTIALLY_COMPLETED": "نیمه‌کاره",
+    "WAITING_FOR_INPUT": "در انتظار ورودی",
+    "WAITING_FOR_APPROVAL": "در انتظار تأیید",
+    "RUNNING": "در حال اجرا",
+    "READY": "آماده",
+    "FAILED": "ناموفق",
+}
+_WF_FA_MISSING = {"Structural model (required inputs)": "مدل سازه (ورودی‌های لازم)"}
+_WF_FA_FIELDS = {
+    "Design code": "آیین‌نامه طراحی", "Unit system": "سیستم واحدها", "Number of stories": "تعداد طبقات",
+    "Plan dimensions": "ابعاد پلان", "Primary structural material": "مصالح اصلی سازه",
+}
+_WF_FA_SOURCE = {
+    "PROJECT_CONFIGURED": "تنظیم پروژه", "USER_PROVIDED": "ورودی شما", "ENGINEER_ASSUMED": "فرض مهندس",
+    "SOFTWARE_DEFAULT": "پیش‌فرض نرم‌افزار",
+}
+_WF_FA_UNITS = {"SI_METRIC": "SI (kN، m، MPa)", "US_CUSTOMARY": "آمریکایی (kip، ft، ksi)"}
+_WF_EN_UNITS = {"SI_METRIC": "SI (kN, m, MPa)", "US_CUSTOMARY": "US customary (kip, ft, ksi)"}
+
+
+def _is_persian(text: str | None) -> bool:
+    t = (text or "").replace("\u061b", " ")
+    return any("\u0600" <= ch <= "\u06ff" for ch in t)
+
+
+def _format_engineering_task_section(engineering_task: dict, lang: str | None = None) -> str | None:
+    """Honest step checklist: only EXECUTED steps are listed as completed; blocked / pending steps say why.
+
+    ``lang`` is "fa"/"en" (the language of the user's message); defaults to the task's original request.
+    """
     if not engineering_task:
         return None
+    if lang not in ("fa", "en"):
+        lang = "fa" if _is_persian(str(engineering_task.get("original_request") or "")) else "en"
+    fa = lang == "fa"
 
-    lines = ["### Engineering workflow"]
+    def title_of(raw: str) -> str:
+        return _WF_FA_TITLES.get(raw, raw) if fa else raw
+
+    lines = ["### گردش‌کار مهندسی" if fa else "### Engineering workflow"]
     status = engineering_task.get("status")
     if status:
-        lines.append(f"Task status: {str(status).replace('_', ' ').title()}")
+        status_s = str(status)
+        label = _WF_FA_STATUS.get(status_s, status_s) if fa else status_s.replace("_", " ").title()
+        lines.append(f"{'وضعیت کار' if fa else 'Task status'}: {label}")
 
     objective = engineering_task.get("normalized_objective")
-    if objective:
-        lines.append(f"Objective: {objective}")
+    if objective and (not fa or _is_persian(str(objective))):
+        lines.append(f"{'هدف' if fa else 'Objective'}: {objective}")
 
     steps = engineering_task.get("steps") or []
+    task_status = str(engineering_task.get("status"))
     completed: list[str] = []
     in_progress: list[str] = []
+    pending: list[str] = []
     waiting_approval: list[str] = []
     blocked: list[str] = []
     unsupported: list[str] = []
     for step in steps:
         if not isinstance(step, dict):
             continue
-        title = step.get("title", "Step")
+        title = title_of(str(step.get("title", "Step")))
         step_status = str(step.get("status", "PLANNED")).upper()
         if step_status == "EXECUTED":
             completed.append(title)
-        elif step_status in {"EXECUTABLE", "PLANNED"} and str(engineering_task.get("status")) == "RUNNING":
+        elif step_status in {"EXECUTABLE", "PLANNED"} and task_status == "RUNNING":
             in_progress.append(title)
-        elif step_status == "EXECUTABLE" and str(engineering_task.get("status")) == "WAITING_FOR_APPROVAL":
+        elif step_status == "EXECUTABLE" and task_status == "WAITING_FOR_APPROVAL":
             waiting_approval.append(title)
         elif step_status == "BLOCKED":
+            reasons = [
+                (_WF_FA_MISSING.get(str(m), str(m)) if fa else str(m)) for m in (step.get("missing_inputs") or [])
+            ]
+            if reasons:
+                title = f"{title} — " + ("در انتظار: " if fa else "waiting for: ") + (("، " if fa else ", ").join(reasons))
             blocked.append(title)
         elif step_status == "UNSUPPORTED":
             unsupported.append(title)
         elif step_status == "EXECUTABLE":
             in_progress.append(title)
+        elif step_status == "PLANNED":
+            pending.append(title)
 
-    if completed:
-        lines.append("Completed:\n" + "\n".join(f"- {item}" for item in completed[:10]))
-    if in_progress:
-        lines.append("In progress:\n" + "\n".join(f"- {item}" for item in in_progress[:6]))
-    if waiting_approval or str(engineering_task.get("status")) == "WAITING_FOR_APPROVAL":
-        approval_items = waiting_approval or ["Workflow paused for human approval"]
-        lines.append("Waiting for approval:\n" + "\n".join(f"- {item}" for item in approval_items[:6]))
-    if blocked:
-        lines.append("Blocked:\n" + "\n".join(f"- {item}" for item in blocked[:8]))
-    if unsupported:
-        lines.append("Unsupported:\n" + "\n".join(f"- {item}" for item in unsupported[:8]))
+    def block(en_head: str, fa_head: str, items: list[str], limit: int) -> None:
+        if items:
+            lines.append(f"{fa_head if fa else en_head}:\n" + "\n".join(f"- {item}" for item in items[:limit]))
+
+    block("Completed", "انجام‌شده", completed, 10)
+    block("In progress", "در حال انجام", in_progress, 6)
+    if waiting_approval or task_status == "WAITING_FOR_APPROVAL":
+        approval_items = waiting_approval or (["کار برای تأیید انسانی متوقف شده است"] if fa else ["Workflow paused for human approval"])
+        block("Waiting for approval", "در انتظار تأیید", approval_items, 6)
+    block("Blocked", "مسدود", blocked, 8)
+    block("Pending", "در انتظار اجرا", pending, 8)
+    block("Unsupported", "پشتیبانی‌نشده", unsupported, 8)
 
     assumptions = engineering_task.get("assumptions") or []
     if assumptions:
@@ -1408,21 +1483,29 @@ def _format_engineering_task_section(engineering_task: dict) -> str | None:
         for assumption in assumptions[:8]:
             if not isinstance(assumption, dict):
                 continue
-            field_name = assumption.get("field_name", "Assumption")
+            field_name = str(assumption.get("field_name", "Assumption"))
             value = assumption.get("value")
-            source = assumption.get("source", "UNKNOWN")
+            source = str(assumption.get("source", "UNKNOWN"))
             if value:
+                value = str(value)
+                if field_name == "Unit system":
+                    value = (_WF_FA_UNITS if fa else _WF_EN_UNITS).get(value, value)
+                if fa:
+                    field_name = _WF_FA_FIELDS.get(field_name, field_name)
+                    source = _WF_FA_SOURCE.get(source, source)
                 assumption_lines.append(f"- {field_name}: {value} ({source})")
         if assumption_lines:
-            lines.append("Assumptions:\n" + "\n".join(assumption_lines))
+            lines.append(("فرض‌ها" if fa else "Assumptions") + ":\n" + "\n".join(assumption_lines))
 
     missing = engineering_task.get("missing_required_inputs") or []
     if missing:
-        missing_lines = "\n".join(f"- {item}" for item in missing[:8])
-        lines.append(f"Missing inputs:\n{missing_lines}")
+        missing_lines = "\n".join(
+            f"- {(_WF_FA_MISSING.get(str(item), str(item)) if fa else item)}" for item in missing[:8]
+        )
+        lines.append(("ورودی‌های ناقص" if fa else "Missing inputs") + f":\n{missing_lines}")
 
     limitations = engineering_task.get("limitations") or []
-    if limitations:
+    if limitations and not fa:
         limitation_lines = "\n".join(f"- {item}" for item in limitations[:5])
         lines.append(f"Limitations:\n{limitation_lines}")
 
@@ -1436,7 +1519,7 @@ def _format_engineering_task_section(engineering_task: dict) -> str | None:
             + (f" ({item.get('filename')})" if item.get("filename") else "")
             for item in generated[:5]
         )
-        lines.append(f"Deliverables:\n{artifact_lines}")
+        lines.append(("خروجی‌ها" if fa else "Deliverables") + f":\n{artifact_lines}")
 
     if len(lines) <= 1:
         return None
