@@ -4,11 +4,13 @@ import {
   fetchCurrentUser,
   fetchFeatureAccess,
   loginUser,
+  logoutRemote,
   registerUser,
+  restoreSession,
   type FeatureAccessSummary,
   type UserResponse,
 } from "@/lib/auth-api";
-import { clearAuthSession, getStoredAuthToken } from "@/lib/auth-session";
+import { clearAuthSession, getStoredAuthToken, hasRememberHint } from "@/lib/auth-session";
 import {
   createContext,
   useCallback,
@@ -24,7 +26,7 @@ type AuthContextValue = {
   features: FeatureAccessSummary | null;
   loading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, remember?: boolean) => Promise<void>;
   register: (email: string, password: string, displayName?: string) => Promise<void>;
   logout: () => void;
   refresh: () => Promise<void>;
@@ -56,6 +58,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let active = true;
     async function bootstrap() {
       try {
+        if (!getStoredAuthToken() && hasRememberHint()) {
+          await restoreSession(); // "remember me": the httpOnly cookie brings the session back
+        }
         if (getStoredAuthToken()) {
           await refresh();
         }
@@ -78,8 +83,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   const login = useCallback(
-    async (email: string, password: string) => {
-      const response = await loginUser({ email, password });
+    async (email: string, password: string, remember = false) => {
+      const response = await loginUser({ email, password, remember_me: remember });
       setUser(response.user);
       const featureSummary = await fetchFeatureAccess();
       setFeatures(featureSummary);
@@ -102,6 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(() => {
+    void logoutRemote();
     clearAuthSession();
     setUser(null);
     setFeatures(null);

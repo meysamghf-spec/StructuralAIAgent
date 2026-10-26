@@ -23,6 +23,7 @@ export function setUiLang(lang: Frame3dLang): void {
 }
 
 export const UI_FA: Record<string, string> = {
+  "Welcome back": "خوش آمدید",
   "Chat with your structural AI": "با هوش مصنوعی سازه‌ات گفتگو کن",
   "Analysis, design, validation, approval and memory — all in one conversation.": "تحلیل، طراحی، اعتبارسنجی، تأیید و حافظه — همه در یک گفتگو.",
   "Chat-first, AI-driven structural engineering": "مهندسی سازهٔ گفتگومحور و مبتنی بر هوش مصنوعی",

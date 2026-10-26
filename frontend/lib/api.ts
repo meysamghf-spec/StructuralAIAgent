@@ -14,6 +14,23 @@ function buildJsonHeaders(extra?: HeadersInit): Record<string, string> {
   };
 }
 
+/** An API failure that keeps the machine-readable code (e.g. EMAIL_NOT_REGISTERED) next to the human message. */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code: string | null;
+  readonly details: Record<string, unknown>;
+  readonly retryAfterSeconds: number | null;
+
+  constructor(message: string, status: number, code: string | null, details: Record<string, unknown>, retryAfterSeconds: number | null) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+    this.details = details;
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${getApiBaseUrl()}${path}`, {
     ...init,
@@ -27,9 +44,18 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
       typeof body?.error?.message === "string"
         ? body.error.message
         : `Request failed (${response.status})`;
-    throw new Error(message);
+    const retryHeader = Number(response.headers?.get?.("retry-after"));
+    const retryDetail = Number(body?.error?.details?.retry_after_seconds);
+    throw new ApiError(
+      message,
+      response.status,
+      typeof body?.error?.code === "string" ? body.error.code : null,
+      (body?.error?.details as Record<string, unknown>) ?? {},
+      Number.isFinite(retryDetail) && retryDetail > 0 ? retryDetail : Number.isFinite(retryHeader) && retryHeader > 0 ? retryHeader : null,
+    );
   }
 
+  if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
 

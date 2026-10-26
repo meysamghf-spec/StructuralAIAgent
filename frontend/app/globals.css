@@ -3065,3 +3065,13 @@ a.button,
 .chat-downloads-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 .chat-downloads-buttons .button { max-width: 100%; white-space: normal; text-align: start; }
 .chat-downloads-error { color: var(--danger, #c0392b); margin: 6px 0 0; font-size: 0.85rem; }
+
+/* Login: remember-me row, specific error alert, Google note */
+.remember-row { display: flex; align-items: flex-start; gap: 0.6rem; color: #cbd5e1; cursor: pointer; }
+.remember-row input { margin-top: 0.25rem; width: 1.05rem; height: 1.05rem; flex: none; accent-color: #38bdf8; }
+.remember-row small { font-size: 0.8rem; }
+.login-alert { display: grid; gap: 0.6rem; overflow-wrap: anywhere; }
+.login-alert p { margin: 0; }
+.login-alert-action { justify-self: start; text-decoration: none; }
+.google-note { font-size: 0.85rem; }
+.auth-form .field-error { color: #fca5a5; font-size: 0.85rem; }
