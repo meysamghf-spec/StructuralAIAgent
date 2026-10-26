@@ -132,6 +132,8 @@ export type WorkflowGlance = {
   model: string;
   analysis: string;
   design: string;
+  /** Detailing follows Design: "Available" (S-401 reinforcement sheet stored) / "Ready" (design passed) / "Not run". */
+  detailing: string;
   qa: string;
   output: string;
   message: string | null;
@@ -143,6 +145,7 @@ type WorkflowPackage = {
   analysis?: { status?: string; executed?: boolean };
   design_checks?: Array<{ status?: string; recognized?: boolean }>;
   qa?: { status?: string };
+  drawings?: { s401_generated?: boolean };
   engineering_report?: unknown;
   final_engineering_approval?: boolean;
   engineer_message?: string;
@@ -168,6 +171,7 @@ export function structuralWorkflowGlance(
       ? packageData.analysis.status ?? "SUCCESS"
       : packageData.analysis?.status ?? "NOT_RUN",
     design: designStatus,
+    detailing: packageData.drawings?.s401_generated ? "Available" : designStatus === "PASS" ? "Ready" : "Not run",
     qa: packageData.qa?.status ?? "NOT_RUN",
     output: packageData.engineering_report ? "Available" : "Not generated",
     message: packageData.engineer_message ?? null,

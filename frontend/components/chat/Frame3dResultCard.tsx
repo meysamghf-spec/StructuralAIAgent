@@ -6,6 +6,7 @@ import { saveFrame3dInputs } from "@/lib/frame3d-store";
 
 import { downloadFrame3dExport } from "@/lib/api";
 import { DownloadsPanel } from "@/components/frame3d/DownloadsPanel";
+import { DetailingStep } from "@/components/frame3d/DetailingStep";
 import type { Frame3dExport, Frame3dResults } from "@/lib/chat-types";
 import dynamic from "next/dynamic";
 import { isRtl, makeT } from "@/lib/frame3d-i18n";
@@ -160,6 +161,15 @@ export function Frame3dResultCard({ results, downloads = true }: Frame3dResultCa
       ) : null}
 
       {results.design ? <DesignSection design={results.design} t={t} /> : null}
+
+      {completed && results.inputs ? (
+        <DetailingStep
+          inputs={results.inputs as unknown as Record<string, unknown>}
+          projectId={getCurrentProjectId()}
+          hasDesign={Boolean(results.design && results.design.beams.length + results.design.columns.length > 0)}
+          lang={results.lang}
+        />
+      ) : null}
 
       {results.foundation ? <FoundationSection foundation={results.foundation} t={t} /> : null}
 

@@ -2575,13 +2575,15 @@ body {
 .workflow-progress { border: 1px solid rgba(148,163,184,.25); border-radius: 10px; padding: .6rem .8rem; }
 .workflow-progress > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: .75rem; }
 .workflow-progress > summary::-webkit-details-marker { display: none; }
-.workflow-steps { flex: 1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; padding: 0; list-style: none; }
+.workflow-steps { flex: 1; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin: 0; padding: 0; list-style: none; }
 .workflow-steps .step { position: relative; display: grid; justify-items: center; gap: .3rem; font-size: .85rem; color: #94a3b8; }
 .workflow-steps .step + .step::before { content: ""; position: absolute; top: 6px; right: 50%; width: 100%; height: 2px; background: #334155; z-index: 0; }
 .workflow-steps .step.done + .step.done::before { background: #0ea5e9; }
 .step-dot { width: 14px; height: 14px; border-radius: 50%; background: #334155; border: 2px solid #475569; position: relative; z-index: 1; }
 .step.done .step-dot { background: #0ea5e9; border-color: #38bdf8; }
 .step.done { color: #e2e8f0; }
+.step.ready .step-dot { background: transparent; border-color: #38bdf8; }
+.step.ready { color: #cbd5e1; }
 .workflow-progress-hint { font-size: .8rem; color: #94a3b8; }
 .workflow-progress[open] .workflow-progress-hint { color: #e2e8f0; }
 .workflow-details { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: .4rem .8rem; margin: .7rem 0 0; }
@@ -3094,3 +3096,19 @@ a.button,
 .public-cta .button { text-decoration: none; text-align: center; }
 .public-footer { border-top: 1px solid #1e293b; padding: 1.25rem clamp(1rem, 4vw, 2.5rem); display: grid; gap: 0.5rem; justify-items: center; text-align: center; }
 .public-footer nav { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem 1.25rem; }
+
+/* Detailing step (after Design): result card block, Assistants-page note */
+.detailing-step { border-inline-start: 3px solid #0ea5e9; padding-inline-start: 0.75rem; }
+.detailing-step-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.detailing-step-head .engineering-result-label { margin-bottom: 0; }
+.detailing-step-desc { margin: 0.35rem 0; overflow-wrap: anywhere; }
+.detailing-step-actions { margin: 0.5rem 0; }
+.detailing-step-actions .button { min-width: 0; max-width: 100%; text-align: center; }
+.detailing-step-chat { margin: 0.25rem 0 0; overflow-wrap: anywhere; }
+.detailing-step code, .detailing-glance code { background: #0f172a; border-radius: 4px; padding: 0.1rem 0.4rem; unicode-bidi: isolate; }
+.detailing-badge { display: inline-block; border-radius: 999px; padding: 0.1rem 0.6rem; font-size: 0.75rem; background: #334155; color: #e2e8f0; }
+.detailing-badge.detailing-ready { background: #075985; color: #e0f2fe; }
+.detailing-badge.detailing-done { background: #14532d; color: #bbf7d0; }
+.detailing-badge.detailing-locked { background: #78350f; color: #fde68a; }
+.detailing-glance { margin: 0.25rem 0; }
+.detailing-glance p { margin: 0.2rem 0; overflow-wrap: anywhere; }

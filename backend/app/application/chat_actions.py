@@ -30,6 +30,10 @@ def is_fa(text: str) -> bool:
 # ------------------------------------------------------------------------------------------- downloads
 _DL_VERB = (r"download|دانلود|export|اکسپورت|get me|give me|send me|generate|produce|save|\bzip\b|زیپ|بده|بدی|بگیر|بفرست|بساز|تهیه کن|"
             r"بزن|درآور|دراور|خروجی بگیر|\bpdf\b|\bbede\b|\bbegir\b|\bbede(?:h)?\b|\bdownload\b")
+# "detail the rebar" / "دیتیلینگ آرماتور را بده": the Detailing step that follows Design (maps to the rebar DXF sheets)
+_DETAIL_CMD = (r"\bdetail(?:ing)? (?:the |my |all )?(?:rebars?|reinforcement|bars|members|beams|columns)\b|\brebar detailing\b|"
+               r"دیتیل(?:ینگ)?|جزئیات ?سازی|جزییات ?سازی")
+_DETAIL_QUESTION = (r"[?؟]\s*$|^(?:what|why|how|when|which|is|are|does|do|can you explain|explain)\b|چیست|چطور|چگونه|چرا|یعنی چه|توضیح بده")
 _ALL_NOUN = (r"(?:all|every|everything|whole|complete|full)\b.{0,24}(?:output|result|file|deliverable|package|document)s?|"
              r"\b(?:outputs?|deliverables?|results? package|package|bundle|zip)\b|همه.{0,12}(?:خروجی|فایل|نتایج|مدارک)|"
              r"خروجی ?ها|خروجی های|زیپ|پکیج|بسته|(?:همه|تمام)\b|نتایج|\beverything\b")
@@ -39,7 +43,7 @@ _SPECIFIC: list[tuple[str, str, str, str, str]] = [
     (r"\bsafe\b|\bf2k\b|سیف|سیفی", "model", "f2k", "f2k", "SAFE model (.f2k)"),
     (r"sap ?2000|\bsap\b|\bs2k\b|ساپ", "model", "s2k", "s2k", "SAP2000 model (.s2k)"),
     (r"نقشه (?:های )?اجرایی|structural (?:drawing )?set|construction drawings|شیت", "drawing", "structural_set", "pdf", "Structural drawing set (PDF)"),
-    (r"آرماتور ?بندی|rebar|bar bending|reinforcement detail|میلگرد", "drawing", "dxf_rebar", "dxf", "Rebar details (DXF)"),
+    (r"آرماتور ?بندی|rebar|bar bending|reinforcement detail|میلگرد|دیتیل(?:ینگ)?|جزئیات ?سازی|جزییات ?سازی", "drawing", "dxf_rebar", "dxf", "Rebar details (DXF)"),
     (r"نقشه (?:ی )?(?:فونداسیون|پی)|foundation (?:drawing|detail|plan)", "drawing", "dxf_foundation", "dxf", "Foundation details (DXF)"),
     (r"\bdxf\b|autocad|auto ?cad|\bcad\b|اتوکد|اتو کد|نقشه|پلان", "drawing", "dxf_plans", "dxf", "Plans (DXF)"),
     (r"excel|xlsx|اکسل|جدول|tables?|spreadsheet", "table", "all", "xlsx", "All tables (Excel)"),
@@ -62,8 +66,11 @@ def parse_download(text: str) -> dict[str, Any] | None:
     t = _n(text)
     if not t or len(t) > 200:
         return None
-    if not re.search(_DL_VERB, t):
+    detail_cmd = bool(re.search(_DETAIL_CMD, t))
+    if not re.search(_DL_VERB, t) and not detail_cmd:
         return None
+    if detail_cmd and not re.search(_DL_VERB, t) and re.search(_DETAIL_QUESTION, t):
+        return None  # "what is rebar detailing?" is a question, not a command
     # reading / extracting from documents is not a request for outputs ("extract requirements from the specification PDF")
     if re.search(r"\b(?:extract|summari[sz]e|read|parse|review|ocr)\b|استخراج|خلاصه|بخوان|بررسی کن", t) and not re.search(r"download|دانلود|\bzip\b|زیپ", t):
         return None

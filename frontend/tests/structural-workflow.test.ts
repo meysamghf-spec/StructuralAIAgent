@@ -51,7 +51,20 @@ describe("structural workflow glance", () => {
       qa: "PASS",
       output: "Available",
       approval: "Not approved",
+      detailing: "Ready",
     });
+  });
+
+  it("places detailing after design: ready only when design passed, available only when S-401 is stored", () => {
+    const base = { model_readiness: { status: "READY" }, analysis: { status: "SUCCESS", executed: true }, qa: { status: "PASS" } };
+    expect(structuralWorkflowGlance(execution({ ...base, design_checks: [{ status: "PASS", recognized: true }] }))?.detailing).toBe("Ready");
+    expect(structuralWorkflowGlance(execution({ ...base, design_checks: [{ status: "FAIL", recognized: true }] }))?.detailing).toBe("Not run");
+    expect(structuralWorkflowGlance(execution({ ...base, design_checks: [] }))?.detailing).toBe("Not run");
+    expect(
+      structuralWorkflowGlance(
+        execution({ ...base, design_checks: [{ status: "PASS", recognized: true }], drawings: { s401_generated: true } }),
+      )?.detailing,
+    ).toBe("Available");
   });
 
   it("does not treat a missing calculation as a design pass", () => {

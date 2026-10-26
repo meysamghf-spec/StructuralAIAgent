@@ -30,7 +30,7 @@ export function RunDossier({ execution }: { execution: AgentExecutionSummary }) 
         <section aria-label="Structural workflow">
           <p className="result-label">Structural workflow</p>
           <p className="muted">
-            Model {workflow.model} · Analysis {workflow.analysis} · Design {workflow.design} · QA{" "}
+            Model {workflow.model} · Analysis {workflow.analysis} · Design {workflow.design} · Detailing {workflow.detailing} · QA{" "}
             {workflow.qa} · Output {workflow.output}
           </p>
           <p className="muted">Approval {workflow.approval}</p>

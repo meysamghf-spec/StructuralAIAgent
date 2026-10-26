@@ -37,6 +37,7 @@ import { listCadDrawings, type CadDrawing } from "@/lib/cad";
 import { RequestPlanPanel } from "@/components/agents/RequestPlanPanel";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { DetailingGlanceNote } from "@/components/frame3d/DetailingStep";
 import { ProjectApprovalCard } from "@/components/agents/ProjectApprovalCard";
 import { useSearchParams } from "next/navigation";
 
@@ -300,12 +301,14 @@ export default function AgentsWorkspaceClient() {
                   ["Model", workflowGlance?.model],
                   ["Analysis", workflowGlance?.analysis],
                   ["Design", workflowGlance?.design],
+                  ["Detailing", workflowGlance?.detailing],
                   ["Output", workflowGlance?.output],
                 ] as const
               ).map(([label, value]) => {
-                const done = !!value && !/not\s*(run|generated)|pending|—/i.test(value);
+                const done = !!value && !/not\s*(run|generated)|pending|—/i.test(value) && !(label === "Detailing" && value === "Ready");
+                const ready = label === "Detailing" && value === "Ready";
                 return (
-                  <li key={label} className={done ? "step done" : "step"} title={`${label}: ${value ?? "Not run"}`}>
+                  <li key={label} className={done ? "step done" : ready ? "step ready" : "step"} title={`${label}: ${value ?? "Not run"}`}>
                     <span className="step-dot" aria-hidden="true" />
                     <span className="step-label">{label}</span>
                   </li>
@@ -324,6 +327,7 @@ export default function AgentsWorkspaceClient() {
                 ["Model", workflowGlance?.model ?? "Not run"],
                 ["Analysis", workflowGlance?.analysis ?? "Not run"],
                 ["Design", workflowGlance?.design ?? "Not run"],
+                ["Detailing", workflowGlance?.detailing ?? "Not run"],
                 ["QA", workflowGlance?.qa ?? "Not run"],
                 ["Output", workflowGlance?.output ?? "Not generated"],
               ] as const
@@ -336,6 +340,7 @@ export default function AgentsWorkspaceClient() {
           </dl>
         </details>
         <p className="muted">{workflowGlance?.message ?? "No structural workflow has been run for this project."}</p>
+        <DetailingGlanceNote value={workflowGlance?.detailing ?? "Not run"} projectId={selectedProjectId} />
         <ProjectApprovalCard projectId={selectedProjectId} refreshKey={executions.length} />
         <div className="button-row">
           {(

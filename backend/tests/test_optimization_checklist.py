@@ -75,3 +75,19 @@ def test_manual_run_and_optimize_accept_assume_defaults():
         assert r2.status_code == 200 and "storeys" in r2.json()["frame_optimization"]["assumed_defaults"]
     finally:
         application.dependency_overrides.clear()
+
+
+def test_detailing_is_an_optional_step_right_after_design():
+    from app.application import optimization_checklist as oc
+
+    for chk in (oc.checklist_for_chat(has_frame=True),
+                oc.checklist_for_readiness({"model_summary": {"member_count": 3}, "findings": []}, "p1")):
+        keys = [s["key"] for s in chk["steps"]]
+        assert keys[keys.index("design") + 1] == "detailing"
+        det = chk["steps"][keys.index("detailing")]
+        # honest: never claimed done, never blocks the optimization, offers the chat command in both languages
+        assert det["done"] is False and det["optional"] is True
+        assert "detailing" not in chk["missing_keys"]
+        assert det["action"]["command"] == "detail the rebar" and det["action"]["command_fa"]
+    assert "detail the rebar" in oc.checklist_markdown(oc.checklist_for_chat(has_frame=True), "en")
+    assert "دیتیلینگ" in oc.checklist_markdown(oc.checklist_for_chat(has_frame=True), "fa")

@@ -150,3 +150,17 @@ def test_downloads_respect_the_plan_exports():
     assert ca.apply_plan(zip_spec, None) == (zip_spec, [])
     _, assumed = ca.default_frame_inputs(True)
     assert "طبقه" in assumed[0] and "storey" not in "".join(assumed)
+
+
+@pytest.mark.parametrize("text", [
+    "detail the rebar", "Rebar detailing please", "detail the beams", "دیتیلینگ آرماتور را بده", "جزئیات‌سازی انجام بده", "دیتیلینگ",
+])
+def test_detailing_command_maps_to_rebar_dxf(text):
+    spec = ca.parse_download(text)
+    assert spec is not None and spec["zip"] is False
+    assert [i["name"] for i in spec["items"]] == ["dxf_rebar"]
+
+
+@pytest.mark.parametrize("text", ["what is rebar detailing?", "دیتیلینگ چیست؟", "how does detailing work", "explain rebar detailing"])
+def test_detailing_questions_are_not_commands(text):
+    assert ca.parse_download(text) is None
