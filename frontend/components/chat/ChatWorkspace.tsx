@@ -227,7 +227,7 @@ export default function ChatWorkspace() {
             </button>
             {!showProminentPrompt ? (
               <div>
-                <p className="eyebrow">StructuralAIAgent</p>
+                <p className="eyebrow">STRAI</p>
                 <h2>{activeConversation?.title ?? "New Chat"}</h2>
                 {selectedProject ? (
                   <span className="chat-project-badge">Project: {selectedProject.name}</span>
@@ -238,7 +238,7 @@ export default function ChatWorkspace() {
                 )}
               </div>
             ) : (
-              <p className="chat-main-header-title">StructuralAIAgent</p>
+              <p className="chat-main-header-title">STRAI</p>
             )}
           </div>
           <label className="chat-project-select">
@@ -320,9 +320,9 @@ export default function ChatWorkspace() {
             ) : null}
             <div className="chat-hero-intro">
               <p className="chat-hero-eyebrow">Structural Engineering AI</p>
-              <h1 className="chat-hero-title">StructuralAIAgent</h1>
+              <h1 className="chat-hero-title">STRAI</h1>
               <p className="chat-hero-subtitle">
-                Tell StructuralAIAgent what you want to accomplish.
+                Tell STRAI what you want to accomplish.
               </p>
               <p className="chat-hero-lead">
                 Describe a structural engineering task, attach models or documents when needed,

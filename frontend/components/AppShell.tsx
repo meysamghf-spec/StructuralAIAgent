@@ -52,7 +52,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         >
           {navOpen ? "✕" : "☰"}
         </button>
-        <span className="mobile-topbar-title">StructuralAIAgent</span>
+        <span className="mobile-topbar-title">STRAI</span>
       </header>
       <button
         type="button"
@@ -67,7 +67,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <aside className="sidebar" data-open={navOpen ? "true" : "false"} data-testid="nav-drawer" {...swipe}>
         <button type="button" className="drawer-close" aria-label="Close menu" data-testid="drawer-close" onClick={() => setNavOpen(false)}>✕</button>
         <div className="brand">
-          <p className="brand-eyebrow">StructuralAIAgent</p>
+          <p className="brand-eyebrow">STRAI</p>
           <h1>Engineering Workspace</h1>
         </div>
         <MainNav onNavigate={() => setNavOpen(false)} />

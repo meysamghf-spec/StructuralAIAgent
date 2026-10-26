@@ -97,7 +97,7 @@ export function ChatSidebar({
       <aside className="chat-sidebar" data-open={open} data-testid="chat-drawer" {...swipe}>
         <div className="chat-sidebar-header">
           <button type="button" className="drawer-close" aria-label="Close menu" data-testid="drawer-close" onClick={onClose}>✕</button>
-          <p className="brand-eyebrow">StructuralAIAgent</p>
+          <p className="brand-eyebrow">STRAI</p>
           <h1>Engineering Chat</h1>
           <button className="button chat-new-button" type="button" onClick={onNewChat}>
             + New Chat

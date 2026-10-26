@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "StructuralAIAgent — Engineering Workspace",
+  title: "STRAI — Engineering Workspace",
   description: "Structural engineering AI platform workspace",
 };
 

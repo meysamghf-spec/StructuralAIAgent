@@ -602,7 +602,7 @@ describe("prominent prompt composer", () => {
       "utf8",
     );
     expect(source).toContain('variant?: "default" | "prominent"');
-    expect(source).toContain("Tell StructuralAIAgent what you want to accomplish");
+    expect(source).toContain("Tell STRAI what you want to accomplish");
     expect(source).toContain("Send");
   });
 
@@ -612,7 +612,7 @@ describe("prominent prompt composer", () => {
       "utf8",
     );
     expect(source).toContain("shouldShowProminentPrompt");
-    expect(source).toContain("Tell StructuralAIAgent what you want to accomplish.");
+    expect(source).toContain("Tell STRAI what you want to accomplish.");
     expect(source).toContain("Describe a structural engineering task");
     expect(source).toContain('variant="prominent"');
     expect(source).toContain("PromptExamples");
