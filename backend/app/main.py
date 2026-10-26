@@ -50,6 +50,9 @@ def create_app() -> FastAPI:
     )
     register_exception_handlers(app)
     app.include_router(api_router)
+    from app.api.routes.auth import google_alias_router
+
+    app.include_router(google_alias_router, prefix="/api", include_in_schema=False)  # https://structuralai.ir/api/auth/google/callback
     return app
 
 

@@ -123,7 +123,7 @@ class AuthService:
                 display_name=display_name,
             )
         elif not user.is_active:
-            raise InvalidCredentialsError()
+            raise AccountDisabledError()
         return user, self._issue_token(user)
 
     def authenticate_bearer(self, token: str) -> AuthenticatedAccount:

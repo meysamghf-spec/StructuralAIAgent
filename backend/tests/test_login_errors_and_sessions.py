@@ -108,23 +108,99 @@ def test_remember_me_token_lives_longer(api_client: TestClient):
     assert decode_access_token(short, secret=secret)["exp"] - time.time() <= s.auth_token_expiry_hours * 3600 + 5
 
 
-def test_google_button_gate_follows_configuration(api_client: TestClient, monkeypatch: pytest.MonkeyPatch):
+def _google_env(monkeypatch, redirect: str | None = None):
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "cid.apps.googleusercontent.com")
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "s3cret")
+    if redirect:
+        monkeypatch.setenv("GOOGLE_REDIRECT_URI", redirect)
+    else:
+        monkeypatch.delenv("GOOGLE_REDIRECT_URI", raising=False)
+    get_settings.cache_clear()
+
+
+def test_google_button_needs_both_id_and_secret(api_client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("GOOGLE_CLIENT_ID", raising=False)
+    monkeypatch.delenv("GOOGLE_CLIENT_SECRET", raising=False)
+    get_settings.cache_clear()
     assert api_client.get("/api/v1/auth/google/config").json() == {"enabled": False}
     assert api_client.get("/api/v1/auth/google/start", follow_redirects=False).status_code == 401
     monkeypatch.setenv("GOOGLE_CLIENT_ID", "cid.apps.googleusercontent.com")
-    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "s3cret")
-    monkeypatch.setenv("GOOGLE_REDIRECT_URI", "https://structuralai.ir/api/v1/auth/google/callback")
     get_settings.cache_clear()
     try:
-        assert api_client.get("/api/v1/auth/google/config").json() == {"enabled": True}
-        r = api_client.get("/api/v1/auth/google/start?next=/projects", follow_redirects=False)
-        assert r.status_code == 302
-        loc = r.headers["location"]
-        assert loc.startswith("https://accounts.google.com/") and "client_id=cid.apps.googleusercontent.com" in loc
-        assert "redirect_uri=https%3A%2F%2Fstructuralai.ir%2Fapi%2Fv1%2Fauth%2Fgoogle%2Fcallback" in loc
-        assert "s3cret" not in loc
-        # a cancelled / failed Google round trip lands on /login with a readable error, never a stack trace
-        cb = api_client.get("/api/v1/auth/google/callback?error=access_denied", follow_redirects=False)
-        assert cb.status_code == 302 and cb.headers["location"].startswith("https://structuralai.ir/login#google_error=")
+        assert api_client.get("/api/v1/auth/google/config").json() == {"enabled": False}  # id alone is not enough
     finally:
         get_settings.cache_clear()
+
+
+def test_google_flow_uses_the_registered_redirect_uri_and_minimal_scopes(api_client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    from urllib.parse import parse_qs, urlparse
+
+    _google_env(monkeypatch)  # no GOOGLE_REDIRECT_URI -> production default
+    try:
+        for base in ("/api/v1/auth/google", "/api/auth/google"):
+            assert api_client.get(f"{base}/config").json() == {"enabled": True}
+            r = api_client.get(f"{base}/start?next=/projects", follow_redirects=False)
+            assert r.status_code == 302
+            loc = urlparse(r.headers["location"])
+            q = parse_qs(loc.query)
+            assert loc.netloc == "accounts.google.com"
+            assert q["redirect_uri"] == ["https://structuralai.ir/api/auth/google/callback"]
+            assert q["scope"] == ["openid email profile"] and q["response_type"] == ["code"]
+            assert q["client_id"] == ["cid.apps.googleusercontent.com"] and q["state"] and q["nonce"]
+            assert "s3cret" not in r.headers["location"]
+            ck = r.headers["set-cookie"].lower()
+            assert "httponly" in ck and "samesite=lax" in ck and "secure" in ck and "path=/api" in ck
+        # a cancelled / failed Google round trip lands on /login with a readable error, never a stack trace
+        cb = api_client.get("/api/auth/google/callback?error=access_denied", follow_redirects=False)
+        assert cb.status_code == 302 and cb.headers["location"].startswith("https://structuralai.ir/login#google_error=")
+        # forged state is rejected
+        bad = api_client.get("/api/auth/google/callback?code=x&state=forged.state", follow_redirects=False)
+        assert "google_error=" in bad.headers["location"]
+    finally:
+        get_settings.cache_clear()
+
+
+def test_google_callback_verifies_token_and_links_by_verified_email(api_client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    from urllib.parse import parse_qs, urlparse
+
+    from app.application import google_oauth as g
+
+    email, _pw = _register(api_client)
+    _google_env(monkeypatch)
+    try:
+        start = api_client.get("/api/auth/google/start", follow_redirects=False)
+        q = parse_qs(urlparse(start.headers["location"]).query)
+        state, nonce = q["state"][0], q["nonce"][0]
+
+        def fake_exchange(settings, code, n):
+            assert code == "good-code" and n == nonce
+            return {"email": email.upper(), "name": "Linked User", "email_verified": "true"}
+
+        monkeypatch.setattr(g, "exchange_code", fake_exchange)
+        no_cookie = api_client.get(f"/api/auth/google/callback?code=good-code&state={state}", follow_redirects=False)
+        assert "google_error=" in no_cookie.headers["location"]  # state must match the browser's nonce cookie (CSRF)
+        # (the cookie is Secure, so the plain-http test client would not echo it back; send it explicitly)
+        ok = api_client.get(
+            f"/api/auth/google/callback?code=good-code&state={state}",
+            headers={"cookie": f"sa_google_nonce={nonce}"},
+            follow_redirects=False,
+        )
+        assert "google_token=" in ok.headers["location"] and "google_error" not in ok.headers["location"]
+        token = parse_qs(urlparse(ok.headers["location"]).fragment)["google_token"][0]
+        me = api_client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+        assert me.json()["email"] == email  # linked to the existing account, no duplicate
+    finally:
+        get_settings.cache_clear()
+
+
+def test_google_claim_validation():
+    from app.application.exceptions import AuthenticationError
+    from app.application.google_oauth import validate_claims
+    from app.infrastructure.config import Settings
+
+    s = Settings(google_client_id="cid", google_client_secret="x")
+    good = {"aud": "cid", "iss": "https://accounts.google.com", "exp": time.time() + 60, "nonce": "n", "email": "a@b.co", "email_verified": "true"}
+    assert validate_claims(s, good, "n")["email"] == "a@b.co"
+    for patch in ({"aud": "other"}, {"iss": "evil.com"}, {"exp": 1}, {"nonce": "zzz"}, {"email_verified": "false"}):
+        with pytest.raises(AuthenticationError):
+            validate_claims(s, {**good, **patch}, "n")

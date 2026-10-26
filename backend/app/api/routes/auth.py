@@ -133,7 +133,6 @@ def get_current_user_features(
 _GOOGLE_COOKIE = "sa_google_nonce"
 
 
-@router.get("/google/config")
 def google_config() -> dict:
     from app.application.google_oauth import google_enabled
     from app.infrastructure.config import get_settings
@@ -141,7 +140,6 @@ def google_config() -> dict:
     return {"enabled": google_enabled(get_settings())}
 
 
-@router.get("/google/start")
 def google_start(request: Request, next: str = "/") -> RedirectResponse:
     from app.application import google_oauth as g
     from app.application.exceptions import AuthenticationError
@@ -157,12 +155,11 @@ def google_start(request: Request, next: str = "/") -> RedirectResponse:
     resp = RedirectResponse(g.authorization_url(settings, state, nonce), status_code=302)
     resp.set_cookie(
         _GOOGLE_COOKIE, nonce, max_age=g.STATE_TTL_SECONDS, httponly=True, samesite="lax",
-        secure=(settings.google_redirect_uri or "").startswith("https://"), path="/api/v1/auth/google",
+        secure=settings.google_callback_url.startswith("https://"), path="/api",
     )
     return resp
 
 
-@router.get("/google/callback")
 def google_callback(
     request: Request,
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
@@ -187,5 +184,14 @@ def google_callback(
         resp = RedirectResponse(f"{target}#google_token={quote(token)}&next={quote(data.get('p', '/'))}", status_code=302)
     except (ApplicationError, ValueError) as exc:
         resp = RedirectResponse(f"{target}#google_error={quote(str(exc))}", status_code=302)
-    resp.delete_cookie(_GOOGLE_COOKIE, path="/api/v1/auth/google")
+    resp.delete_cookie(_GOOGLE_COOKIE, path="/api")
     return resp
+
+
+# Same handlers on /api/v1/auth/google/* and on /api/auth/google/* (the redirect URI registered with Google).
+google_alias_router = APIRouter(prefix="/auth/google", tags=["auth"])
+for _r in (router, google_alias_router):
+    _p = "/google" if _r is router else ""
+    _r.add_api_route(f"{_p}/config", google_config, methods=["GET"])
+    _r.add_api_route(f"{_p}/start", google_start, methods=["GET"])
+    _r.add_api_route(f"{_p}/callback", google_callback, methods=["GET"])

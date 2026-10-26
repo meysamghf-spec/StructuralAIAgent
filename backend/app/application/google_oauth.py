@@ -27,14 +27,13 @@ def google_enabled(settings: Settings) -> bool:
         settings.google_client_id
         and settings.google_client_secret
         and settings.google_client_secret.get_secret_value()
-        and settings.google_redirect_uri
     )
 
 
 def post_login_url(settings: Settings) -> str:
     if settings.google_post_login_url:
         return settings.google_post_login_url
-    u = urlparse(settings.google_redirect_uri or "")
+    u = urlparse(settings.google_callback_url)
     return f"{u.scheme}://{u.netloc}/login"
 
 
@@ -72,7 +71,7 @@ def authorization_url(settings: Settings, state: str, nonce: str) -> str:
     return AUTH_URL + "?" + urlencode(
         {
             "client_id": settings.google_client_id,
-            "redirect_uri": settings.google_redirect_uri,
+            "redirect_uri": settings.google_callback_url,
             "response_type": "code",
             "scope": "openid email profile",
             "state": state,
@@ -92,7 +91,7 @@ def exchange_code(settings: Settings, code: str, nonce: str) -> dict:
                 "code": code,
                 "client_id": settings.google_client_id,
                 "client_secret": settings.google_client_secret.get_secret_value(),
-                "redirect_uri": settings.google_redirect_uri,
+                "redirect_uri": settings.google_callback_url,
                 "grant_type": "authorization_code",
             },
         )
