@@ -12,6 +12,7 @@ import {
   workspaceActionsForChat,
 } from "@/lib/chat";
 import { mapBackendMessage } from "@/lib/chat-mappers";
+import { countUserMessages, isManualScrollKey, lastUserMessageIndex, planReplyScroll, replyMessageIndex } from "@/lib/chat-scroll";
 import type { AgentRunStep, ChatMessage as UiChatMessage, ExecutionPhase } from "@/lib/chat-types";
 
 import { AgentContextStrip } from "./AgentContextStrip";
@@ -83,10 +84,26 @@ export function ChatThread({
   const [showJump, setShowJump] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const scroller = useCallback(
-    () => (threadRef.current?.closest(".chat-main-body") as HTMLElement | null) ?? null,
-    [],
-  );
+  // Turn state for "show the START of the new answer": reset whenever the user sends a message.
+  const turnRef = useRef<{ users: number; active: boolean; pinned: boolean; manual: boolean }>({
+    users: 0,
+    active: false,
+    pinned: false,
+    manual: false,
+  });
+
+  const scroller = useCallback((): HTMLElement | null => {
+    // Nearest vertically scrolling ancestor: .chat-main-body on the chat page, .chat-dock-body in the dock.
+    let node = threadRef.current?.parentElement ?? null;
+    while (node) {
+      const overflowY = window.getComputedStyle(node).overflowY;
+      if (overflowY === "auto" || overflowY === "scroll" || overflowY === "overlay") {
+        return node;
+      }
+      node = node.parentElement;
+    }
+    return null;
+  }, []);
 
   useEffect(() => {
     const el = scroller();
@@ -98,27 +115,109 @@ export function ChatThread({
       stickRef.current = nearBottom;
       setShowJump(!nearBottom);
     };
+    // Any hand-driven scroll (wheel, touch, scrollbar drag, keys) means "do not fight me" for this answer.
+    const markManual = () => {
+      turnRef.current.manual = true;
+    };
+    const onMouseDown = (event: MouseEvent) => {
+      if (event.target === el) {
+        markManual(); // scrollbar drag
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (isManualScrollKey(event.key, target?.tagName, Boolean(target?.isContentEditable))) {
+        markManual();
+      }
+    };
     el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
+    el.addEventListener("wheel", markManual, { passive: true });
+    el.addEventListener("touchmove", markManual, { passive: true });
+    el.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      el.removeEventListener("wheel", markManual);
+      el.removeEventListener("touchmove", markManual);
+      el.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [scroller, loadingMessages, messages.length === 0]);
 
-  const firstMessageId = messages[0]?.id;
+  const initRef = useRef(false);
+  const loadedRef = useRef(false);
+  const prevBusyRef = useRef(false);
   useEffect(() => {
-    // A conversation was opened/loaded: jump straight to the newest message (no animation).
     if (loadingMessages) {
+      loadedRef.current = true;
       return;
     }
-    stickRef.current = true;
-    setShowJump(false);
-    endRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
-  }, [loadingMessages, firstMessageId]);
-
-  useEffect(() => {
-    // Auto-scroll only while the reader is at the bottom (so streaming does not yank them away).
+    const users = countUserMessages(messages);
+    if (!initRef.current || loadedRef.current) {
+      // First render or a conversation was opened/loaded: jump straight to the newest message (no animation).
+      initRef.current = true;
+      loadedRef.current = false;
+      prevBusyRef.current = busy;
+      turnRef.current = { users, active: false, pinned: false, manual: false };
+      stickRef.current = true;
+      setShowJump(false);
+      endRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+      return;
+    }
+    const turn = turnRef.current;
+    const busyStarted = busy && !prevBusyRef.current;
+    prevBusyRef.current = busy;
+    if (users > turn.users) {
+      // The user just sent a message: keep scrolling to the bottom as before; the reply is handled below.
+      turnRef.current = { users, active: true, pinned: false, manual: false };
+      stickRef.current = true;
+      endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    } else if (busyStarted && users === turn.users && users > 0) {
+      // Regenerate / retry: a new reply for the same question starts streaming.
+      turnRef.current = { users, active: true, pinned: false, manual: false };
+    } else if (users < turn.users) {
+      // "New chat" or messages removed: no reply to track.
+      turnRef.current = { users, active: false, pinned: false, manual: false };
+    }
+    if (turnRef.current.active) {
+      const turn = turnRef.current;
+      // Reply is arriving/streaming: bring the question that triggered the answer to the top of the view, once, then leave the
+      // scroll alone (no fighting a reader who scrolls manually while it streams).
+      if (turn.manual || turn.pinned) {
+        return;
+      }
+      const container = scroller();
+      // The block that must be on screen = the user's question (aligned to the top) + the answer below it.
+      const question = threadRef.current?.querySelector<HTMLElement>('[data-chat-question="true"]');
+      const reply = threadRef.current?.querySelector<HTMLElement>('[data-chat-reply="true"]');
+      if (!container || !question) {
+        return;
+      }
+      const cRect = container.getBoundingClientRect();
+      const qRect = question.getBoundingClientRect();
+      const blockBottom = Math.max(qRect.bottom, reply?.getBoundingClientRect().bottom ?? 0);
+      const style = window.getComputedStyle(container);
+      const topOffset = (parseFloat(style.scrollPaddingTop) || 0) + 8;
+      const plan = planReplyScroll({
+        scrollTop: container.scrollTop,
+        clientHeight: container.clientHeight,
+        scrollHeight: container.scrollHeight,
+        replyTop: qRect.top - cRect.top + container.scrollTop,
+        replyHeight: blockBottom - qRect.top,
+        topOffset,
+        pinned: turn.pinned,
+      });
+      turn.pinned = plan.pinned;
+      if (plan.top !== null) {
+        container.scrollTo({ top: plan.top, behavior: "smooth" });
+      }
+      return;
+    }
+    // Not in a send turn (e.g. late server refresh): old behaviour, follow only while at the bottom.
     if (stickRef.current) {
       endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
     }
-  }, [messages, busy, loadingMessages]);
+  }, [messages, busy, loadingMessages, scroller]);
 
   function jumpToLatest() {
     stickRef.current = true;
@@ -156,6 +255,8 @@ export function ChatThread({
   const hasStreamingAssistant = messages.some(
     (message) => message.role === "assistant" && message.metadata?.streaming === true,
   );
+  const replyIdx = replyMessageIndex(messages);
+  const questionIdx = lastUserMessageIndex(messages);
 
   return (
     <div className="chat-thread" ref={threadRef}>
@@ -167,6 +268,8 @@ export function ChatThread({
         return (
           <article
             key={message.id}
+            data-chat-reply={messageIndex === replyIdx ? "true" : undefined}
+            data-chat-question={messageIndex === questionIdx ? "true" : undefined}
             className={
               message.role === "user" ? "chat-message chat-message-user" : "chat-message chat-message-assistant"
             }
@@ -330,7 +433,12 @@ export function ChatThread({
         );
       })}
       {busy && !hasStreamingAssistant ? (
-        <article className="chat-message chat-message-assistant" aria-live="polite" aria-busy="true">
+        <article
+          className="chat-message chat-message-assistant"
+          aria-live="polite"
+          aria-busy="true"
+          data-chat-reply={replyIdx === -1 ? "true" : undefined}
+        >
           <p className="chat-message-role">Agent</p>
           <div className="chat-message-body">
             <p className="muted">{statusLabel ?? "Processing your engineering request…"}</p>
