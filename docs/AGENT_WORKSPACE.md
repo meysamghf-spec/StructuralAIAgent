@@ -1,6 +1,6 @@
 # Cursor-like Agent Workspace
 
-StructuralAIAgent remains a **chat-first** structural engineering product. The workspace now surfaces real agent execution as structured progress, tools, context, and approval — without becoming a generic IDE and without replacing the existing orchestration stack.
+SAAI remains a **chat-first** structural engineering product. The workspace now surfaces real agent execution as structured progress, tools, context, and approval — without becoming a generic IDE and without replacing the existing orchestration stack.
 
 ## Architecture
 

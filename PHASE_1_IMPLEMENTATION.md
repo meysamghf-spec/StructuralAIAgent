@@ -1,6 +1,6 @@
 # Phase 1 — Implementation History
 
-**Project:** StructuralAIAgent — Engineering AI Platform  
+**Project:** SAAI — Engineering AI Platform  
 **Authoritative architecture (frozen):** `PHASE_0_ARCHITECTURE_ASSESSMENT.md` (AG-01 through AG-75)  
 **Product specification:** `MASTER PROMPT V2.md`
 

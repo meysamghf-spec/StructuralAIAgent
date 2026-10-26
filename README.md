@@ -1,4 +1,4 @@
-# StructuralAIAgent
+# SAAI
 
 Chat-first structural engineering assistant. The current local product is a runnable Demo: register/login, projects, chat, file upload, project memory, agents/Agent Builder, and a graphical RC beam analysis result.
 

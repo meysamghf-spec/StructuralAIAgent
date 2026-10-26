@@ -54,7 +54,7 @@ UI: `/workspace/admin/platform-issues`.
 Set `PLATFORM_ISSUE_WEBHOOK_URL` (+ `PLATFORM_ISSUE_WEBHOOK_SECRET`, `PLATFORM_ISSUE_WEBHOOK_RETRIES`).
 ```json
 {"schema_version":1,"event":"platform_issue.created|platform_issue.updated","delivery_id":"uuid","sent_at":"ISO-8601",
- "product":"StructuralAIAgent",
+ "product":"structuralai",
  "issue":{"id":"","title":"","summary":"","category":"","severity":"low|medium|high|critical",
   "source":"user_report|auto_detected|admin","status":"open|triaged|fix_in_progress|fix_ready|awaiting_approval|resolved|rejected|wontfix",
   "page":"","conversation_id":"","project_id":"","user_message":"","assistant_excerpt":"","error_text":"",
