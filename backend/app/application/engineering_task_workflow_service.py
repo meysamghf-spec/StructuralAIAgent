@@ -39,6 +39,10 @@ _COMPLEX_DELIVERABLE_TERMS = (
     "architectural",
 )
 
+# Handler capability statuses meaning "I only asked for / listed missing inputs; no engineering work ran".
+_WAITING_FOR_INPUT_CAPABILITY_STATUSES = frozenset({"MISSING_REQUIRED_INPUT", "WAITING_FOR_INPUT"})
+MODEL_INPUT_MISSING = "Structural model (required inputs)"
+
 _BUILDING_TERMS = ("building", "story", "stories", "frame", "reinforced concrete")
 
 _CRITICAL_INPUTS = (
@@ -315,6 +319,7 @@ class EngineeringTaskWorkflowService:
             task.execution_id = execution_id
 
         primary_step = self._find_primary_step(task, agent_type)
+        waiting_for_input = False
         if primary_step is not None:
             if execution_status == AgentExecutionStatus.BLOCKED:
                 primary_step.status = WorkflowStepStatus.BLOCKED
@@ -335,6 +340,12 @@ class EngineeringTaskWorkflowService:
                 }:
                     primary_step.status = WorkflowStepStatus.UNSUPPORTED
                     primary_step.limitations = [agent_result.structured_output.get("status_message", capability_status)]
+                elif capability_status in _WAITING_FOR_INPUT_CAPABILITY_STATUSES:
+                    # The handler only returned a prerequisites report / question: no engineering work was run.
+                    primary_step.status = WorkflowStepStatus.BLOCKED
+                    primary_step.missing_inputs = [MODEL_INPUT_MISSING]
+                    primary_step.blocking_reason = "Waiting for the structural model"
+                    waiting_for_input = True
                 else:
                     primary_step.status = WorkflowStepStatus.EXECUTED
                 primary_step.execution_result = {
@@ -344,11 +355,26 @@ class EngineeringTaskWorkflowService:
             else:
                 primary_step.status = WorkflowStepStatus.PLANNED
 
+        if primary_step is not None and primary_step.status != WorkflowStepStatus.EXECUTED:
+            # "Validate and record results" must not read as done while the specialist step has produced nothing.
+            for step in task.steps:
+                if (
+                    step.step_number > primary_step.step_number
+                    and step.capability == "project.validate"
+                    and step.status == WorkflowStepStatus.EXECUTED
+                ):
+                    step.status = WorkflowStepStatus.PLANNED
+                    step.execution_result = None
+
         if agent_result is not None:
             task.artifacts.extend(self._artifacts_from_agent_result(task, agent_type, agent_result))
 
         if task.status != EngineeringTaskStatus.WAITING_FOR_APPROVAL:
             task.status = self._derive_task_status(task, execution_status=execution_status)
+            if waiting_for_input:
+                task.status = EngineeringTaskStatus.WAITING_FOR_INPUT
+                if MODEL_INPUT_MISSING not in task.missing_required_inputs:
+                    task.missing_required_inputs = [*task.missing_required_inputs, MODEL_INPUT_MISSING]
         task.touch()
         return task
 

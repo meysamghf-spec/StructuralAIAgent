@@ -10,6 +10,7 @@ from app.application.exceptions import ProjectNotFoundError
 from app.application.file_registry_service import FileRegistryService
 from app.application.project_memory_service import ProjectMemoryService
 from app.application.project_service import PemService, ProjectService
+from app.domain.models.pem import effective_unit_configuration
 from app.domain.models.project_context import (
     CadDrawingSummary,
     EngineeringResultSummary,
@@ -97,7 +98,9 @@ class ProjectContextAssemblyService:
             pem_version=pem_meta.version if pem_meta else None,
             pem_snapshot_id=pem_meta.id if pem_meta else None,
             code_configuration=pem.code_configuration if pem else None,
-            unit_configuration=pem.unit_configuration if pem else None,
+            unit_configuration=(
+                effective_unit_configuration(pem.unit_configuration, pem.code_configuration) if pem else None
+            ),
             memory_total_count=memory_context.total_count,
             memory_counts_by_type=memory_context.counts_by_type,
             memories=memory_context.memories,

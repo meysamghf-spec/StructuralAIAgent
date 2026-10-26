@@ -7,14 +7,36 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.application.frame3d_followup import DEFAULTS as _FRAME_DEFAULTS
+
+_FA_DIGITS = str.maketrans("0123456789.", "۰۱۲۳۴۵۶۷۸۹٫")
+
+
+def _num(v: float) -> str:
+    return f"{v:g}"
+
+
+def _fa(v: Any) -> str:
+    return str(v).translate(_FA_DIGITS)
+
+
+# Single source of truth: the same DEFAULTS that ``frame3d_followup.apply_defaults`` applies on "assume defaults".
+_D = _FRAME_DEFAULTS
+_BAYS_EN = f"{_D['bays_x']}x{_D['bays_y']} bays of {_num(_D['bay_x_m'])} m"
+_BAYS_FA = f"{_fa(_D['bays_x'])}×{_fa(_D['bays_y'])} دهانه {_fa(_num(_D['bay_x_m']))} متری"
+
+# Example command shown to the user: it describes exactly the frame the defaults produce.
+EXAMPLE_COMMAND_EN = f"optimize a {_D['storeys']}-storey frame, {_BAYS_EN}, zone high, soil II"
+EXAMPLE_COMMAND_FA = f"قاب {_fa(_D['storeys'])} طبقه با {_BAYS_FA}، پهنه خطر زیاد، خاک نوع ۲ را بهینه کن"
+
 AUTO_ASSUMPTIONS_EN = [
-    "4 storeys, 3x3 bays of 5 m, storey height 3.2 m",
+    f"{_D['storeys']} storeys, {_BAYS_EN}, storey height {_num(_D['storey_height_m'])} m",
     "columns 50x50 cm, beams 40x50 cm (typical RC intermediate moment frame)",
     "Iranian codes: Standard 2800 (4th ed.) seismic, Mabhas 6 loads (D, L, E combinations), Mabhas 9 design",
     "allowed sections: the standard catalogue of 5 cm steps (columns 30-90 cm, beams 25x30 to 50x80 cm)",
 ]
 AUTO_ASSUMPTIONS_FA = [
-    "۴ طبقه، ۳×۳ دهانه ۵ متری، ارتفاع طبقه ۳.۲ متر",
+    f"{_fa(_D['storeys'])} طبقه، {_BAYS_FA}، ارتفاع طبقه {_fa(_num(_D['storey_height_m']))} متر",
     "ستون ۵۰×۵۰ و تیر ۴۰×۵۰ سانتی‌متر (قاب خمشی بتنی متوسط معمول)",
     "آیین‌نامه‌های ایران: استاندارد ۲۸۰۰ (ویرایش ۴) برای زلزله، مبحث ۶ برای بارها و ترکیب‌ها، مبحث ۹ برای طراحی",
     "مقاطع مجاز: کاتالوگ استاندارد با گام ۵ سانتی‌متر (ستون ۳۰ تا ۹۰، تیر ۲۵×۳۰ تا ۵۰×۸۰)",
@@ -26,8 +48,8 @@ def _step(key, done, en, fa, detail_en, detail_fa, action=None, optional=False):
             "detail": {"en": detail_en, "fa": detail_fa}, "action": action}
 
 
-def _action(kind, en, fa, href=None, command=None):
-    return {"kind": kind, "label": {"en": en, "fa": fa}, "href": href, "command": command}
+def _action(kind, en, fa, href=None, command=None, command_fa=None):
+    return {"kind": kind, "label": {"en": en, "fa": fa}, "href": href, "command": command, "command_fa": command_fa}
 
 
 def checklist_for_readiness(report: dict[str, Any], project_id: str | None = None) -> dict[str, Any]:
@@ -103,10 +125,10 @@ def checklist_for_chat(*, has_frame: bool, partial_missing: list[str] | None = N
                        "No frame described yet" + (f" (missing: {', '.join(partial_missing)})" if partial_missing else "") + ".")
     model_detail_fa = ("قاب توصیف شده است." if has_frame else
                        "هنوز قابی توصیف نشده" + (f" (کم: {'، '.join(partial_missing)})" if partial_missing else "") + ".")
-    cmd = "optimize a 3-storey frame, 2x2 bays of 5 m, zone high, soil II"
+    cmd = EXAMPLE_COMMAND_EN
     steps = [
         _step("model", has_frame, "Structural model (storeys, bays, spans)", "مدل سازه (طبقات، دهانه‌ها)", model_detail_en, model_detail_fa,
-              None if has_frame else _action("chat", "Describe the frame", "توصیف قاب", command=cmd)),
+              None if has_frame else _action("chat", "Describe the frame", "توصیف قاب", command=cmd, command_fa=EXAMPLE_COMMAND_FA)),
         _step("loads", True, "Loads and combinations", "بارها و ترکیب بارها",
               "Mabhas 6 loads and the 2800 combinations are applied automatically.",
               "بارهای مبحث ۶ و ترکیب‌های ۲۸۰۰ به‌صورت خودکار اعمال می‌شوند."),
@@ -129,7 +151,7 @@ def checklist_markdown(check: dict[str, Any], lang: str = "en", *, extra_assumpt
         lines.append(f"- {mark} **{s['label']['fa' if fa else 'en']}** — {s['detail']['fa' if fa else 'en']}")
         a = s.get("action")
         if a and not s["done"]:
-            how = a.get("command") or a.get("href") or ""
+            how = (a.get("command_fa") if fa else None) or a.get("command") or a.get("href") or ""
             lines.append(f"  - ↳ {a['label']['fa' if fa else 'en']}: `{how}`")
     if not check["ready"]:
         lines += ["", ("برای تکمیل خودکار بنویسید: «**پیش‌فرض‌ها را فرض کن**». فرض‌ها:" if fa

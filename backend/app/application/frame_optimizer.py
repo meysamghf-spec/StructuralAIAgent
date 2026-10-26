@@ -415,6 +415,31 @@ def pending_optimize_text(text: str, previous_user_texts: list[str]) -> str | No
     return None
 
 
+_CHECKLIST_MARKERS = ("بهینه‌سازی: پیش‌نیازها", "Optimization prerequisites")
+
+
+def is_optimization_checklist(assistant_text: str | None) -> bool:
+    """True when an assistant message is the «optimization prerequisites» checklist (a frame is still missing)."""
+    t = assistant_text or ""
+    return any(m in t for m in _CHECKLIST_MARKERS)
+
+
+def merge_assume_with_checklist(text: str, previous_user_texts: list[str], last_assistant_text: str | None) -> str:
+    """Reply «assume defaults» to the optimization checklist -> "<optimize request> ; <reply>".
+
+    ``frame3d_followup.merge_with_pending`` only merges when the earlier request mentions a frame; «بهینه‌سازی کن»
+    alone does not, so the reply would be routed as a generic project question. Here the previous *assistant*
+    message must be the checklist, which makes the pending optimization request unambiguous. Other texts
+    are returned unchanged.
+    """
+    from app.application import frame3d_followup as fu
+
+    if not fu.is_assume_reply(text) or is_optimize_request(text) or not is_optimization_checklist(last_assistant_text):
+        return text
+    merged = pending_optimize_text(text, previous_user_texts)
+    return merged if merged else text
+
+
 def missing_frame_checklist(text: str) -> str:
     """Replaces the vague 'describe the frame first': a per-step checklist with the exact fix for each step."""
     from app.application import optimization_checklist as oc
