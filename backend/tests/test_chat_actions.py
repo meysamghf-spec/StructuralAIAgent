@@ -139,6 +139,7 @@ def test_downloads_respect_the_plan_exports():
     assert spec["zip"] is False and {i["name"] for i in spec["items"]} == {"all", "view3d", "report_pdf"} and withheld
     text, meta = ca.downloads_reply(spec, {"storeys": 3}, fa=True, withheld=withheld)
     assert "طرح" in text and meta["chat_downloads"]["zip"] is False
+    assert all(not i["label"].isascii() for i in meta["chat_downloads"]["items"])
 
     spec, withheld = ca.apply_plan(zip_spec, ["e2k", "f2k", "s2k", "dxf"])
     assert spec["zip"] is True and not withheld

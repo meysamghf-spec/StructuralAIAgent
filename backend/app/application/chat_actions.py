@@ -113,7 +113,7 @@ def _export_allowed(item: dict[str, str], exports: Any) -> bool:
     return True
 
 
-def apply_plan(spec: dict[str, Any], exports: Any) -> tuple[dict[str, Any], list[str]]:
+def apply_plan(spec: dict[str, Any], exports: Any, fa: bool = False) -> tuple[dict[str, Any], list[str]]:
     """Keep only what the account's plan can export (the download endpoints would answer 402 otherwise).
 
     -> (spec, names of the withheld outputs). `exports` is the plan's "exports" limit (list / True / None = unlimited)."""
@@ -122,9 +122,9 @@ def apply_plan(spec: dict[str, Any], exports: Any) -> tuple[dict[str, Any], list
     if spec["zip"]:
         if "dxf" in set(exports or []):
             return spec, []
-        return {"zip": False, "items": [dict(i) for i in _PLAN_FALLBACK]}, ["model files (ETABS/SAFE/SAP2000)", "DXF/PDF drawings"]
+        return {"zip": False, "items": [dict(i) for i in _PLAN_FALLBACK]}, (["فایل‌های مدل (ETABS/SAFE/SAP2000)", "نقشه‌های DXF/PDF"] if fa else ["model files (ETABS/SAFE/SAP2000)", "DXF/PDF drawings"])
     kept = [i for i in spec["items"] if _export_allowed(i, exports)]
-    withheld = [i["label"] for i in spec["items"] if not _export_allowed(i, exports)]
+    withheld = [(_FA_LABEL.get(i["name"]) if fa else None) or i["label"] for i in spec["items"] if not _export_allowed(i, exports)]
     if withheld and not kept:
         kept = [dict(i) for i in _PLAN_FALLBACK]
     return {"zip": False, "items": kept}, withheld
@@ -149,8 +149,10 @@ def downloads_reply(spec: dict[str, Any], inputs: dict[str, Any], *, fa: bool, a
         lines += ["", ("طرح فعلی شما این خروجی‌ها را شامل نمی‌شود: " if lang_fa else "Your current plan doesn't include: ")
                   + ", ".join(withheld) + (". به جای آن‌ها بقیهٔ خروجی‌ها آماده است؛ برای دریافتشان طرح را ارتقا دهید."
                                            if lang_fa else ". Everything else is ready — upgrade the plan to get them.")]
+    shown = [{**i, "label": (_FA_FIG.get(i["name"]) if i["kind"] == "figure" else _FA_LABEL.get(i["name"])) or i["label"]}
+             for i in spec["items"]] if lang_fa else spec["items"]
     meta = {"mode": "rule_based", "intent": "chat_downloads",
-            "chat_downloads": {"zip": spec["zip"], "items": spec["items"], "inputs": inputs, "project_id": project_id,
+            "chat_downloads": {"zip": spec["zip"], "items": shown, "inputs": inputs, "project_id": project_id,
                                "lang": "fa" if lang_fa else "en", "assumed": assumed or []}}
     return "\n".join(lines), meta
 

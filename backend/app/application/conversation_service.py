@@ -537,7 +537,7 @@ class ConversationService:
                     inputs, assumed = ca.default_frame_inputs(fa)
                 if fa:
                     inputs = {**inputs, "lang": "fa"}
-                spec, withheld = ca.apply_plan(spec, self._plan_exports(account))
+                spec, withheld = ca.apply_plan(spec, self._plan_exports(account), fa)
                 return ca.downloads_reply(spec, inputs, fa=fa, assumed=assumed, withheld=withheld,
                                           project_id=str(conversation.project_id) if conversation.project_id else None)
             cmd = ca.parse_project_command(text)
