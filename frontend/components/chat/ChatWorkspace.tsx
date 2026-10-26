@@ -157,17 +157,14 @@ export default function ChatWorkspace() {
     return (
       <section className="panel-stack chat-guest">
         <header className="page-header">
-          <p className="eyebrow">Structural Engineering AI</p>
-          <h2>Chat-first structural engineering workspace</h2>
-          <p className="subtitle">
-            Tell the AI what you need, attach ETABS models, PDFs, drawings, and spreadsheets,
-            and run engineering workflows from one conversation.
-          </p>
+          <p className="eyebrow">{t("Chat with your structural AI")}</p>
+          <h2>{t("Chat-first, AI-driven structural engineering")}</h2>
+          <p className="subtitle">{t("Analysis, design, validation, approval and memory — all in one conversation.")}</p>
         </header>
         <div className="card">
           <p>
             <Link href="/login">Sign in</Link> or <Link href="/register">create an account</Link>{" "}
-            to start chatting with your project context, files, and engineering agents.
+            to start chatting.
           </p>
         </div>
       </section>

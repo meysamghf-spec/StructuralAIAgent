@@ -153,11 +153,10 @@ def test_chat_frame3d_export_follow_up_and_endpoint(api_client: TestClient) -> N
         "/api/v1/chat", json={"message": "خروجی ایتبس بده", "project_id": project_id}, headers=_headers(token)
     )
     assert follow.status_code == 201
-    results = follow.json()["assistant_message"]["metadata"].get("engineering_results") or {}
-    assert results.get("kind") == "frame3d_analysis"
-    assert results.get("status") == "completed"
-    assert results.get("export_requested") == ["e2k"]
-    assert results.get("model_from_project_memory") is True
+    # chat-first: an export request is answered by the chat-actions layer with a working download for the model in memory
+    downloads = follow.json()["assistant_message"]["metadata"].get("chat_downloads") or {}
+    assert [i["name"] for i in downloads.get("items", [])] == ["e2k"]
+    assert downloads["inputs"]["storeys"] == inputs["storeys"] and not downloads["assumed"]
     exported = api_client.post(
         "/api/v1/frame3d/export", json={"format": "e2k", "inputs": inputs}, headers=_headers(token)
     )

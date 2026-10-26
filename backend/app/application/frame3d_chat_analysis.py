@@ -980,7 +980,7 @@ def _build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None 
     elif is_frame3d_request(user_request):
         inp = parse_frame3d_request(user_request)
         model_changes = fu.apply_edits(inp, {k: v for k, v in fu.model_edits(user_request).items() if k in fu.GEOMETRY_KEYS})
-    elif prior_spec and (fu.is_model_edit(user_request) or fu.is_param_edit(user_request)) and not export_formats:
+    elif prior_spec and (fu.is_model_edit(user_request) or (fu.is_param_edit(user_request) and not wants_foundation(user_request))) and not export_formats:
         inp = inputs_from_dict(prior_spec); from_memory = True
         follow = parse_frame3d_request(user_request)
         edits = {k: getattr(follow, k) for k in follow.parsed if k not in ("storeys", "bays_x", "bays_y") or getattr(follow, k) is not None}

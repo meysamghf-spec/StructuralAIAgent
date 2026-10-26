@@ -511,6 +511,18 @@ class ConversationService:
         runs.sort(key=lambda r: r["created_at"], reverse=True)
         return next((r["inputs"] for r in runs if r.get("kind") == "frame3d_analysis" and r.get("inputs")), None)
 
+    @staticmethod
+    def _plan_exports(account) -> Any:
+        """The account plan's "exports" allowance (None when billing is not enforced)."""
+        try:
+            from app.application.billing import service as billing
+
+            if not billing.enforcement_enabled() or not getattr(account, "account_id", None):
+                return None
+            return billing.current_plan(account.account_id)["limits"].get("exports")
+        except Exception:  # noqa: BLE001 - never block a download answer on a billing lookup
+            return None
+
     def _maybe_chat_action(self, conversation, account: AuthenticatedAccount, text: str) -> tuple[str, dict] | None:
         """Chat-first commands for what the UI can do besides engineering edits: downloads, projects, assistants, approvals."""
         from app.application import chat_actions as ca
@@ -522,10 +534,11 @@ class ConversationService:
                 inputs = self._latest_frame_inputs(conversation, account)
                 assumed: list[str] = []
                 if inputs is None:
-                    inputs, assumed = ca.default_frame_inputs()
+                    inputs, assumed = ca.default_frame_inputs(fa)
                 if fa:
                     inputs = {**inputs, "lang": "fa"}
-                return ca.downloads_reply(spec, inputs, fa=fa, assumed=assumed,
+                spec, withheld = ca.apply_plan(spec, self._plan_exports(account))
+                return ca.downloads_reply(spec, inputs, fa=fa, assumed=assumed, withheld=withheld,
                                           project_id=str(conversation.project_id) if conversation.project_id else None)
             cmd = ca.parse_project_command(text)
             if cmd is not None:

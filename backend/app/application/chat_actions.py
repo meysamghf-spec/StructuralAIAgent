@@ -64,6 +64,9 @@ def parse_download(text: str) -> dict[str, Any] | None:
         return None
     if not re.search(_DL_VERB, t):
         return None
+    # reading / extracting from documents is not a request for outputs ("extract requirements from the specification PDF")
+    if re.search(r"\b(?:extract|summari[sz]e|read|parse|review|ocr)\b|استخراج|خلاصه|بخوان|بررسی کن", t) and not re.search(r"download|دانلود|\bzip\b|زیپ", t):
+        return None
     # model-building prompts ("3 storey frame ... export to ETABS") are handled by the frame engine, not here
     from app.application.frame3d_chat_analysis import is_frame3d_request
 
@@ -92,8 +95,43 @@ def parse_download(text: str) -> dict[str, Any] | None:
     return None
 
 
+_PLAN_FALLBACK = [
+    {"kind": "table", "name": "all", "format": "xlsx", "label": "All tables (Excel)"},
+    {"kind": "figure", "name": "view3d", "format": "png", "label": "3D view (PNG)"},
+    {"kind": "report", "name": "report_pdf", "format": "pdf", "label": "Calculation report (PDF)"},
+]
+
+
+def _export_allowed(item: dict[str, str], exports: Any) -> bool:
+    if exports is True or exports is None:
+        return True
+    allowed = set(exports or [])
+    if item["kind"] == "model":
+        return item["name"] in allowed
+    if item["kind"] == "drawing":
+        return "dxf" in allowed
+    return True
+
+
+def apply_plan(spec: dict[str, Any], exports: Any) -> tuple[dict[str, Any], list[str]]:
+    """Keep only what the account's plan can export (the download endpoints would answer 402 otherwise).
+
+    -> (spec, names of the withheld outputs). `exports` is the plan's "exports" limit (list / True / None = unlimited)."""
+    if exports is True or exports is None:
+        return spec, []
+    if spec["zip"]:
+        if "dxf" in set(exports or []):
+            return spec, []
+        return {"zip": False, "items": [dict(i) for i in _PLAN_FALLBACK]}, ["model files (ETABS/SAFE/SAP2000)", "DXF/PDF drawings"]
+    kept = [i for i in spec["items"] if _export_allowed(i, exports)]
+    withheld = [i["label"] for i in spec["items"] if not _export_allowed(i, exports)]
+    if withheld and not kept:
+        kept = [dict(i) for i in _PLAN_FALLBACK]
+    return {"zip": False, "items": kept}, withheld
+
+
 def downloads_reply(spec: dict[str, Any], inputs: dict[str, Any], *, fa: bool, assumed: list[str] | None = None,
-                    project_id: str | None = None) -> tuple[str, dict[str, Any]]:
+                    project_id: str | None = None, withheld: list[str] | None = None) -> tuple[str, dict[str, Any]]:
     lang_fa = fa
     if spec["zip"]:
         head = ("همهٔ خروجی‌ها در یک فایل ZIP آماده است: جداول (Excel/CSV)، نمودارها، مدل‌های ETABS/SAFE/SAP2000، نقشه‌های DXF و PDF، و گزارش محاسبات."
@@ -106,22 +144,32 @@ def downloads_reply(spec: dict[str, Any], inputs: dict[str, Any], *, fa: bool, a
     if assumed:
         lines += ["", ("فرض‌ها: مدلی در این گفتگو/پروژه نبود، پس با مقادیر پیش‌فرض ساخته شد — " if lang_fa else
                        "Assumptions: no model existed in this chat/project, so the files use typical defaults — ") + ", ".join(assumed)
-                  + (" . می‌توانید مدل را عوض کنید و دوباره درخواست بدهید." if lang_fa else ". Change the model and ask again to regenerate.")]
+                  + ("؛ می‌توانید مدل را عوض کنید و دوباره درخواست بدهید." if lang_fa else ". Change the model and ask again to regenerate.")]
+    if withheld:
+        lines += ["", ("طرح فعلی شما این خروجی‌ها را شامل نمی‌شود: " if lang_fa else "Your current plan doesn't include: ")
+                  + ", ".join(withheld) + (". به جای آن‌ها بقیهٔ خروجی‌ها آماده است؛ برای دریافتشان طرح را ارتقا دهید."
+                                           if lang_fa else ". Everything else is ready — upgrade the plan to get them.")]
     meta = {"mode": "rule_based", "intent": "chat_downloads",
             "chat_downloads": {"zip": spec["zip"], "items": spec["items"], "inputs": inputs, "project_id": project_id,
                                "lang": "fa" if lang_fa else "en", "assumed": assumed or []}}
     return "\n".join(lines), meta
 
 
-def default_frame_inputs() -> tuple[dict[str, Any], list[str]]:
+def default_frame_inputs(fa: bool = False) -> tuple[dict[str, Any], list[str]]:
     from app.application.frame3d_chat_analysis import Frame3dInputs
 
     inp = Frame3dInputs()
     assumed = fu.apply_defaults(inp)
     d = {k: v for k, v in asdict(inp).items() if k != "parsed"}
-    names = {"storeys": f"{inp.storeys} storeys", "bays_x": f"{inp.bays_x} bays X", "bays_y": f"{inp.bays_y} bays Y",
-             "bay_x_m": f"{inp.bay_x_m:g} m bays", "storey_height_m": f"{inp.storey_height_m:g} m storey height"}
-    return d, [names[k] for k in ("storeys", "bays_x", "bays_y", "bay_x_m", "storey_height_m") if k in names] + ["Iranian codes (2800 / Mabhas 9)"]
+    if fa:
+        names = {"storeys": f"{inp.storeys} طبقه", "bays_x": f"{inp.bays_x} دهانه در جهت X", "bays_y": f"{inp.bays_y} دهانه در جهت Y",
+                 "bay_x_m": f"دهانه‌های {inp.bay_x_m:g} متری", "storey_height_m": f"ارتفاع طبقه {inp.storey_height_m:g} متر"}
+        codes = "آیین‌نامه‌های ایران (۲۸۰۰ / مبحث ۹)"
+    else:
+        names = {"storeys": f"{inp.storeys} storeys", "bays_x": f"{inp.bays_x} bays X", "bays_y": f"{inp.bays_y} bays Y",
+                 "bay_x_m": f"{inp.bay_x_m:g} m bays", "storey_height_m": f"{inp.storey_height_m:g} m storey height"}
+        codes = "Iranian codes (2800 / Mabhas 9)"
+    return d, [names[k] for k in ("storeys", "bays_x", "bays_y", "bay_x_m", "storey_height_m") if k in names] + [codes]
 
 
 # ------------------------------------------------------------------------------------------- projects

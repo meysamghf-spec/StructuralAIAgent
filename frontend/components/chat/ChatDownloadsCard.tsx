@@ -29,7 +29,7 @@ export function ChatDownloadsCard({ downloads }: { downloads: ChatDownloads }) {
     <div className="chat-downloads" dir={fa ? "rtl" : "ltr"} data-testid="chat-downloads">
       <div className="chat-downloads-buttons">
         {downloads.zip || downloads.items.length > 3 ? (
-          <button type="button" className="btn btn-primary" disabled={busy !== null} onClick={() => void run("zip", () => runChatDownloads(downloads))}>
+          <button type="button" className="button" disabled={busy !== null} onClick={() => void run("zip", () => runChatDownloads(downloads))}>
             {busy === "zip" ? (fa ? "در حال آماده‌سازی…" : "Preparing…") : fa ? "دانلود همه (ZIP)" : "Download all (ZIP)"}
           </button>
         ) : null}
@@ -38,7 +38,7 @@ export function ChatDownloadsCard({ downloads }: { downloads: ChatDownloads }) {
               <button
                 type="button"
                 key={`${item.kind}-${item.name}`}
-                className="btn btn-secondary"
+                className="button secondary"
                 disabled={busy !== null}
                 onClick={() => void run(item.name, () => runChatDownloadItem(downloads, item))}
               >

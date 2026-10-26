@@ -31,7 +31,7 @@ def test_parse_download(text, name, zip_):
         assert spec["items"][0]["name"] == name
 
 
-@pytest.mark.parametrize("text", ["3 storey RC frame, export to ETABS", "what is drift?", "show me the results"])
+@pytest.mark.parametrize("text", ["3 storey RC frame, export to ETABS", "what is drift?", "show me the results", "Extract requirements from the specification PDF and summarize design parameters."])
 def test_parse_download_ignores_other_requests(text):
     assert ca.parse_download(text) is None
 
@@ -129,3 +129,23 @@ def test_short_edits_route_to_frame_engine_only_with_a_model_in_context():
     for text in ("بتن را C30 کن", "column section 60x60", "زون زلزله را خیلی زیاد کن", "soil type III"):
         with frame_context(True):
             assert score_agent_intents(text)[0].agent_type == EngineeringAgentType.ANALYSIS_AGENT, text
+
+
+def test_downloads_respect_the_plan_exports():
+    from app.application import chat_actions as ca
+
+    zip_spec = {"zip": True, "items": []}
+    spec, withheld = ca.apply_plan(zip_spec, [])  # free plan: no model/DXF exports
+    assert spec["zip"] is False and {i["name"] for i in spec["items"]} == {"all", "view3d", "report_pdf"} and withheld
+    text, meta = ca.downloads_reply(spec, {"storeys": 3}, fa=True, withheld=withheld)
+    assert "طرح" in text and meta["chat_downloads"]["zip"] is False
+
+    spec, withheld = ca.apply_plan(zip_spec, ["e2k", "f2k", "s2k", "dxf"])
+    assert spec["zip"] is True and not withheld
+    spec, withheld = ca.apply_plan({"zip": False, "items": [
+        {"kind": "model", "name": "e2k", "format": "e2k", "label": "ETABS model (.e2k)"},
+        {"kind": "report", "name": "report_pdf", "format": "pdf", "label": "Calculation report (PDF)"}]}, [])
+    assert [i["name"] for i in spec["items"]] == ["report_pdf"] and withheld == ["ETABS model (.e2k)"]
+    assert ca.apply_plan(zip_spec, None) == (zip_spec, [])
+    _, assumed = ca.default_frame_inputs(True)
+    assert "طبقه" in assumed[0] and "storey" not in "".join(assumed)
