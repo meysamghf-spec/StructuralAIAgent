@@ -153,7 +153,7 @@ def test_downloads_respect_the_plan_exports():
 
 
 @pytest.mark.parametrize("text", [
-    "detail the rebar", "Rebar detailing please", "detail the beams", "دیتیلینگ آرماتور را بده", "جزئیات‌سازی انجام بده", "دیتیلینگ",
+    "detail the rebar", "Rebar detailing please", "detail the rebars", "دیتیلینگ آرماتور را بده", "جزئیات‌سازی انجام بده", "دیتیلینگ",
 ])
 def test_detailing_command_maps_to_rebar_dxf(text):
     spec = ca.parse_download(text)

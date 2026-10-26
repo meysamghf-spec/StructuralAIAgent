@@ -31,7 +31,7 @@ def is_fa(text: str) -> bool:
 _DL_VERB = (r"download|دانلود|export|اکسپورت|get me|give me|send me|generate|produce|save|\bzip\b|زیپ|بده|بدی|بگیر|بفرست|بساز|تهیه کن|"
             r"بزن|درآور|دراور|خروجی بگیر|\bpdf\b|\bbede\b|\bbegir\b|\bbede(?:h)?\b|\bdownload\b")
 # "detail the rebar" / "دیتیلینگ آرماتور را بده": the Detailing step that follows Design (maps to the rebar DXF sheets)
-_DETAIL_CMD = (r"\bdetail(?:ing)? (?:the |my |all )?(?:rebars?|reinforcement|bars|members|beams|columns)\b|\brebar detailing\b|"
+_DETAIL_CMD = (r"\bdetail(?:ing)? (?:the |my |all )?(?:rebars?|reinforcement|bars)\b|\brebar detailing\b|"
                r"دیتیل(?:ینگ)?|جزئیات ?سازی|جزییات ?سازی")
 _DETAIL_QUESTION = (r"[?؟]\s*$|^(?:what|why|how|when|which|is|are|does|do|can you explain|explain)\b|چیست|چطور|چگونه|چرا|یعنی چه|توضیح بده")
 _ALL_NOUN = (r"(?:all|every|everything|whole|complete|full)\b.{0,24}(?:output|result|file|deliverable|package|document)s?|"
