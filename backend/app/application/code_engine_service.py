@@ -56,7 +56,7 @@ class CodeEngineService:
         conflicts = self._compatibility.detect_conflicts(configuration)
         warnings = [
             "Code configuration uses SOFTWARE_DEFAULT profile; confirm jurisdictionally adopted codes."
-        ] if configuration.profile_type.value == "SOFTWARE_DEFAULT" else []
+        ] if (configuration.profile_type.value == "SOFTWARE_DEFAULT" and not _is_iran_default_profile(configuration)) else []
 
         has_errors = any(item.severity == "ERROR" for item in conflicts)
         return CodeConfigurationValidationResult(
@@ -93,3 +93,20 @@ class CodeEngineService:
         if plugin is None:
             raise CodePluginNotFoundError(plugin_id=plugin_id)
         return plugin
+
+
+IRAN_DEFAULT_FAMILIES = ("Mabhas 6", "Standard 2800", "Mabhas 9", "Mabhas 10")
+
+
+def _is_iran_default_profile(configuration: CodeConfiguration) -> bool:
+    """The platform's Iranian profile (Mabhas 6/9/10 + Standard 2800) is the adopted national set, so it is not
+    an unreviewed 'software default' that needs a jurisdiction confirmation."""
+    if configuration.jurisdiction.value != "IRAN":
+        return False
+    families = (
+        configuration.loading_standard.family,
+        configuration.seismic_standard.family if configuration.seismic_standard else "",
+        configuration.concrete_standard.family if configuration.concrete_standard else "",
+        configuration.steel_standard.family if configuration.steel_standard else "",
+    )
+    return families == IRAN_DEFAULT_FAMILIES

@@ -13,7 +13,7 @@ def test_api_validate_project(api_client: TestClient) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["project_id"] == project_id
-    assert body["overall_status"] == "REQUIRES_ENGINEER_REVIEW"
+    assert body["overall_status"] == "PASS"  # Iranian national profile is the default, not an unreviewed software default
 
 
 def test_api_validate_project_404(api_client: TestClient) -> None:
