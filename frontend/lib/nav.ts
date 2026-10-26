@@ -23,6 +23,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/workspace/traceability", label: "Traceability" },
   { href: "/workspace/upgrades", label: "Upgrades" },
   { href: "/workspace/ai", label: "AI Assistant" },
+  { href: "/workspace/admin/platform-issues", label: "Platform Issues" },
 ];
 
 export function visibleNavItems(): NavItem[] {

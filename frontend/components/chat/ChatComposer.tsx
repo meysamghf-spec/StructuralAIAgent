@@ -4,7 +4,7 @@ import { AttachmentChip } from "./AttachmentChip";
 import type { PendingAttachment } from "@/lib/chat";
 import { canSendMessage, handleComposerKeyDown, sendBlockReason } from "@/lib/chat";
 import { AGENT_CHAT_MODES, ENGINEERING_FILE_ACCEPT, type AgentChatMode } from "@/lib/chat-types";
-import { FormEvent, useRef, useState, type RefObject } from "react";
+import { FormEvent, useEffect, useRef, useState, type RefObject } from "react";
 
 type ChatComposerProps = {
   content: string;
@@ -18,6 +18,7 @@ type ChatComposerProps = {
   onContentChange: (value: string) => void;
   onModeChange?: (mode: AgentChatMode) => void;
   onSend: () => void;
+  onStop?: () => void;
   onPickFiles: (files: FileList | File[]) => void;
   onRemoveAttachment: (localId: string) => void;
 };
@@ -34,6 +35,7 @@ export function ChatComposer({
   onContentChange,
   onModeChange,
   onSend,
+  onStop,
   onPickFiles,
   onRemoveAttachment,
 }: ChatComposerProps) {
@@ -41,6 +43,15 @@ export function ChatComposer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = inputRef ?? localInputRef;
   const [dragActive, setDragActive] = useState(false);
+  useEffect(() => {
+    // Auto-growing composer: grow with content up to ~8 lines, then scroll.
+    const el = textareaRef.current;
+    if (!el) {
+      return;
+    }
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
+  }, [content, textareaRef]);
   const resolvedHintId = hintId ?? "chat-composer-hint";
 
   function handleSubmit(event: FormEvent) {
@@ -116,7 +127,7 @@ export function ChatComposer({
         <textarea
           ref={textareaRef}
           className="input chat-composer-input"
-          rows={isProminent ? 4 : 3}
+          rows={isProminent ? 3 : 1}
           placeholder={
             isProminent
               ? "Tell StructuralAIAgent what you want to accomplish…"
@@ -175,8 +186,20 @@ export function ChatComposer({
               ))}
             </select>
           </label>
+          {busy && onStop ? (
+            <button
+              className="button chat-composer-send chat-composer-stop"
+              type="button"
+              onClick={onStop}
+              aria-label="Stop generating"
+              data-testid="chat-stop"
+            >
+              ■ Stop
+            </button>
+          ) : null}
           <button
             className="button chat-composer-send"
+            hidden={Boolean(busy && onStop)}
             type="submit"
             disabled={busy || !canSendMessage(content, attachments)}
             aria-label={busy ? "Sending message" : "Send message"}

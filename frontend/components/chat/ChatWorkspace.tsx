@@ -111,6 +111,7 @@ export default function ChatWorkspace() {
     onContentChange: chat.setContent,
     onModeChange: chat.setMode,
     onSend: () => void chat.handleSend(),
+    onStop: chat.handleStop,
     onPickFiles: (files: FileList | File[]) => {
       void chat.handlePickFiles(files).then(() => {
         setFilesRefreshToken((value) => value + 1);
@@ -202,6 +203,8 @@ export default function ChatWorkspace() {
         onNewChat={() => void chat.handleNewChat()}
         onSelectConversation={(id) => void chat.handleSelectConversation(id)}
         onDeleteConversation={(id) => void chat.handleDeleteConversation(id)}
+        onRenameConversation={(id, title) => void chat.handleRenameConversation(id, title)}
+        selectedProjectId={selectedProjectId || ""}
         userLabel={user?.display_name ?? user?.email ?? "User"}
         userEmail={user?.email ?? ""}
         onLogout={handleLogout}
@@ -355,6 +358,7 @@ export default function ChatWorkspace() {
                 projectId={selectedProjectId || null}
                 projectName={selectedProject?.name ?? null}
                 onApprovalResolved={() => void chat.handleApprovalResolved()}
+                onRegenerate={() => void chat.handleRegenerate()}
               />
             </div>
             <ChatComposer variant="default" {...composerProps} />

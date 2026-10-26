@@ -8,6 +8,7 @@ import {
   getConversation,
   listConversationMessages,
   listConversations,
+  renameConversation as apiRenameConversation,
   sendChatMessage,
   streamChatMessage,
   uploadConversationAttachment,
@@ -32,7 +33,7 @@ import { attachExistingProjectFile } from "@/lib/project-files";
 import type { ProjectFileSummary } from "@/lib/api";
 import { STREAMING_CAPABILITIES, type AgentChatMode, type ExecutionPhase } from "@/lib/chat-types";
 import { mapBackendMessage } from "@/lib/chat-mappers";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type UseChatOptions = {
   isAuthenticated: boolean;
@@ -62,6 +63,8 @@ export function useChat({
   const [bootstrapping, setBootstrapping] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const stoppedRef = useRef(false);
 
   const statusLabel = useMemo(() => {
     if (executionPhase === "uploading") {
@@ -160,10 +163,27 @@ export function useChat({
       };
       const assistantOptimisticId = optimisticAssistantId(request.optimisticMessageId);
       let response;
+      const controller = new AbortController();
+      abortRef.current = controller;
+      stoppedRef.current = false;
       if (STREAMING_CAPABILITIES.supported) {
         try {
           response = await streamChatMessage(payload, {
+            signal: controller.signal,
             onEvent: (event) => {
+              if (event.type === "agent_run.token") {
+                const delta = typeof event.data.delta === "string" ? event.data.delta : "";
+                if (delta) {
+                  setMessages((current) =>
+                    current.map((message) =>
+                      message.id === assistantOptimisticId
+                        ? { ...message, content: message.content + delta, metadata: { ...message.metadata, streaming: true, token_streaming: true } }
+                        : message,
+                    ),
+                  );
+                }
+                return;
+              }
               setMessages((current) =>
                 current.map((message) => {
                   if (message.id !== assistantOptimisticId) {
@@ -184,8 +204,10 @@ export function useChat({
             },
           });
         } catch (streamError) {
+          if (controller.signal.aborted) {
+            throw streamError;
+          }
           response = await sendChatMessage(payload);
-          void streamError;
         }
       } else {
         response = await sendChatMessage(payload);
@@ -203,12 +225,84 @@ export function useChat({
       setRetryRequest(null);
       await refreshConversations();
     } catch (err) {
-      setExecutionPhase("error");
-      setError(formatChatError(err));
-      setRetryRequest(request);
+      if (stoppedRef.current) {
+        // User pressed Stop: keep what was streamed so far, mark it, and resync from the server shortly.
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === optimisticAssistantId(request.optimisticMessageId)
+              ? { ...message, metadata: { ...message.metadata, streaming: false, stopped: true } }
+              : message,
+          ),
+        );
+        const convId = request.conversation_id ?? null;
+        if (convId) {
+          setTimeout(() => {
+            void loadMessages(convId).catch(() => undefined);
+          }, 2500);
+        }
+      } else {
+        setExecutionPhase("error");
+        setError(formatChatError(err));
+        setRetryRequest(request);
+      }
     } finally {
+      abortRef.current = null;
       setBusy(false);
       setExecutionPhase("idle");
+    }
+  }
+
+  function handleStop() {
+    if (!abortRef.current) {
+      return;
+    }
+    stoppedRef.current = true;
+    abortRef.current.abort();
+  }
+
+  /** Re-ask the last user message (ChatGPT-style "Regenerate"). */
+  async function handleRegenerate() {
+    if (busy) {
+      return;
+    }
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    if (!lastUser || !lastUser.content.trim()) {
+      return;
+    }
+    setError(null);
+    const optimisticId = createOptimisticMessageId();
+    const conversationId = activeConversationId ?? "pending";
+    setMessages((current) => [
+      ...current,
+      buildOptimisticUserMessage(optimisticId, conversationId, lastUser.content, []),
+      buildOptimisticAssistantMessage(optimisticId, conversationId),
+    ]);
+    await submitChatRequest(
+      {
+        message: lastUser.content,
+        conversation_id: activeConversationId ?? undefined,
+        project_id: selectedProjectId || undefined,
+        attachments: [],
+        mode,
+        optimisticMessageId: optimisticId,
+        pendingAttachments: [],
+      },
+      { isRetry: false },
+    );
+  }
+
+  async function handleRenameConversation(conversationId: string, title: string) {
+    const clean = title.trim();
+    if (!clean) {
+      return;
+    }
+    try {
+      const updated = await apiRenameConversation(conversationId, clean);
+      setConversations((current) =>
+        current.map((item) => (item.id === conversationId ? { ...item, title: updated.title } : item)),
+      );
+    } catch (err) {
+      setError(formatChatError(err));
     }
   }
 
@@ -411,6 +505,9 @@ export function useChat({
   }
 
   return {
+    handleStop,
+    handleRegenerate,
+    handleRenameConversation,
     conversations,
     activeConversationId,
     messages,

@@ -13,8 +13,14 @@ function InlineText({ text }: { text: string }) {
       {parts.map((part, index) =>
         typeof part === "string" ? (
           <span key={index}>{part}</span>
-        ) : (
+        ) : "bold" in part ? (
           <strong key={index}>{part.bold}</strong>
+        ) : "italic" in part ? (
+          <em key={index}>{part.italic}</em>
+        ) : "code" in part ? (
+          <code key={index} className="chat-md-inline-code">{part.code}</code>
+        ) : (
+          <a key={index} href={part.href} target="_blank" rel="noopener noreferrer">{part.link}</a>
         ),
       )}
     </>
@@ -33,6 +39,26 @@ export function MessageContent({ content }: MessageContentProps) {
             <Tag key={index} className="chat-message-heading">
               <InlineText text={block.text} />
             </Tag>
+          );
+        }
+        if (block.type === "code") {
+          return (
+            <div key={index} className="chat-md-code" dir="ltr">
+              <div className="chat-md-code-head">
+                <span>{block.lang || "code"}</span>
+                <button type="button" className="chat-md-code-copy" onClick={() => void navigator.clipboard?.writeText(block.text)}>
+                  Copy
+                </button>
+              </div>
+              <pre><code>{block.text}</code></pre>
+            </div>
+          );
+        }
+        if (block.type === "quote") {
+          return (
+            <blockquote key={index} className="chat-md-quote" dir="auto">
+              <InlineText text={block.text} />
+            </blockquote>
           );
         }
         if (block.type === "table") {
@@ -83,7 +109,7 @@ export function MessageContent({ content }: MessageContentProps) {
           return <p key={index} className="chat-message-spacer">&nbsp;</p>;
         }
         return (
-          <p key={index}>
+          <p key={index} dir="auto">
             <InlineText text={block.text} />
           </p>
         );

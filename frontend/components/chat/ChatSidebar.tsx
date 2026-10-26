@@ -27,6 +27,8 @@ type ChatSidebarProps = {
   onNewChat: () => void;
   onSelectConversation: (conversationId: string) => void;
   onDeleteConversation: (conversationId: string) => void;
+  onRenameConversation?: (conversationId: string, title: string) => void;
+  selectedProjectId?: string;
   userLabel: string;
   userEmail: string;
   onLogout: () => void;
@@ -49,15 +51,35 @@ export function ChatSidebar({
   onNewChat,
   onSelectConversation,
   onDeleteConversation,
+  onRenameConversation,
+  selectedProjectId = "",
   userLabel,
   userEmail,
   onLogout,
 }: ChatSidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
-  const filteredConversations = useMemo(
-    () => filterConversations(conversations, searchQuery),
-    [conversations, searchQuery],
+  const [scopeAll, setScopeAll] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draftTitle, setDraftTitle] = useState("");
+  const scoped = useMemo(
+    () =>
+      selectedProjectId && !scopeAll
+        ? conversations.filter((item) => item.project_id === selectedProjectId)
+        : conversations,
+    [conversations, selectedProjectId, scopeAll],
   );
+  const filteredConversations = useMemo(
+    () => filterConversations(scoped, searchQuery),
+    [scoped, searchQuery],
+  );
+
+  function commitRename(id: string) {
+    const title = draftTitle.trim();
+    setEditingId(null);
+    if (title && onRenameConversation) {
+      onRenameConversation(id, title);
+    }
+  }
 
   const swipe = useDrawerDismiss(open, onClose);
 
@@ -114,6 +136,16 @@ export function ChatSidebar({
             />
           </label>
           <p className="chat-sidebar-label">Recent conversations</p>
+          {selectedProjectId ? (
+            <div className="chat-scope-toggle" role="group" aria-label="Conversation scope">
+              <button type="button" className={!scopeAll ? "active" : ""} onClick={() => setScopeAll(false)}>
+                This project
+              </button>
+              <button type="button" className={scopeAll ? "active" : ""} onClick={() => setScopeAll(true)}>
+                All
+              </button>
+            </div>
+          ) : null}
           <ul className="chat-conversation-list">
             {filteredConversations.length === 0 ? (
               <li className="muted chat-empty">
@@ -122,17 +154,54 @@ export function ChatSidebar({
             ) : (
               filteredConversations.map((conversation) => (
                 <li key={conversation.id}>
-                  <button
-                    type="button"
-                    className={
-                      conversation.id === activeConversationId
-                        ? "chat-conversation-item active"
-                        : "chat-conversation-item"
-                    }
-                    onClick={() => onSelectConversation(conversation.id)}
-                  >
-                    {conversation.title}
-                  </button>
+                  {editingId === conversation.id ? (
+                    <input
+                      className="input chat-conversation-rename"
+                      autoFocus
+                      aria-label="Rename conversation"
+                      dir="auto"
+                      value={draftTitle}
+                      maxLength={120}
+                      onChange={(event) => setDraftTitle(event.target.value)}
+                      onBlur={() => commitRename(conversation.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") commitRename(conversation.id);
+                        if (event.key === "Escape") setEditingId(null);
+                      }}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      dir="auto"
+                      className={
+                        conversation.id === activeConversationId
+                          ? "chat-conversation-item active"
+                          : "chat-conversation-item"
+                      }
+                      onClick={() => onSelectConversation(conversation.id)}
+                      onDoubleClick={() => {
+                        if (onRenameConversation) {
+                          setDraftTitle(conversation.title);
+                          setEditingId(conversation.id);
+                        }
+                      }}
+                    >
+                      {conversation.title}
+                    </button>
+                  )}
+                  {onRenameConversation && editingId !== conversation.id ? (
+                    <button
+                      type="button"
+                      className="chat-conversation-rename-button"
+                      aria-label="Rename conversation"
+                      onClick={() => {
+                        setDraftTitle(conversation.title);
+                        setEditingId(conversation.id);
+                      }}
+                    >
+                      ✎
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="chat-conversation-delete"

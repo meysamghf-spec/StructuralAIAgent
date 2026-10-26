@@ -84,6 +84,13 @@ export async function getConversation(conversationId: string): Promise<ChatConve
   return chatFetch<ChatConversation>(`/api/v1/conversations/${conversationId}`);
 }
 
+export async function renameConversation(conversationId: string, title: string): Promise<ChatConversation> {
+  return chatFetch<ChatConversation>(`/api/v1/conversations/${conversationId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ title }),
+  });
+}
+
 export async function deleteConversation(conversationId: string): Promise<void> {
   await chatFetch<void>(`/api/v1/conversations/${conversationId}`, { method: "DELETE" });
 }

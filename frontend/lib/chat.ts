@@ -19,7 +19,9 @@ export type MessageBlock =
   | { type: "heading"; text: string; level?: number }
   | { type: "table"; header: string[]; rows: string[][]; align: Array<"left" | "right" | "center" | null> }
   | { type: "ordered-item"; text: string; n: string }
-  | { type: "list-item"; text: string };
+  | { type: "list-item"; text: string }
+  | { type: "code"; lang: string; text: string }
+  | { type: "quote"; text: string };
 
 export function filterConversations<T extends { title: string }>(
   conversations: T[],
@@ -50,6 +52,22 @@ export function parseMessageContent(content: string): MessageBlock[] {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const trimmed = line.trim();
+    const fence = /^```\s*([\w+-]*)\s*$/.exec(trimmed);
+    if (fence) {
+      // fenced code block; an unclosed fence (still streaming) swallows the rest of the text
+      const body: string[] = [];
+      i++;
+      while (i < lines.length && !/^```\s*$/.test(lines[i].trim())) {
+        body.push(lines[i]);
+        i++;
+      }
+      blocks.push({ type: "code", lang: fence[1], text: body.join("\n") });
+      continue;
+    }
+    if (/^>\s?/.test(trimmed)) {
+      blocks.push({ type: "quote", text: trimmed.replace(/^>\s?/, "") });
+      continue;
+    }
     if (trimmed.includes("|") && i + 1 < lines.length && TABLE_SEPARATOR.test(lines[i + 1]) && lines[i + 1].includes("-")) {
       const header = splitRow(trimmed);
       const align = splitRow(lines[i + 1]).map((c) =>
@@ -85,16 +103,29 @@ export function parseMessageContent(content: string): MessageBlock[] {
   return blocks;
 }
 
-export function renderInlineMarkdown(text: string): Array<string | { bold: string }> {
-  const parts: Array<string | { bold: string }> = [];
-  const pattern = /\*\*(.+?)\*\*/g;
+export type InlinePart =
+  | string
+  | { bold: string }
+  | { italic: string }
+  | { code: string }
+  | { link: string; href: string };
+
+/** Inline markdown: **bold**, *italic*, `code`, [text](https://…). `$…$` math is left untouched (LaTeX-safe). */
+export function renderInlineMarkdown(text: string): InlinePart[] {
+  const parts: InlinePart[] = [];
+  const pattern =
+    /(\$[^$\n]+\$|\\\([^)\n]+\\\))|`([^`\n]+)`|\*\*(.+?)\*\*|(?<![\w*])\*(?!\s)([^*\n]+?)\*(?![\w*])|\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(text)) !== null) {
     if (match.index > lastIndex) {
       parts.push(text.slice(lastIndex, match.index));
     }
-    parts.push({ bold: match[1] });
+    if (match[1] !== undefined) parts.push(match[1]);
+    else if (match[2] !== undefined) parts.push({ code: match[2] });
+    else if (match[3] !== undefined) parts.push({ bold: match[3] });
+    else if (match[4] !== undefined) parts.push({ italic: match[4] });
+    else parts.push({ link: match[5], href: match[6] });
     lastIndex = match.index + match[0].length;
   }
   if (lastIndex < text.length) {
