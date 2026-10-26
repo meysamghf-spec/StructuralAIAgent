@@ -26,10 +26,12 @@ export default function ChatWorkspace() {
   const [filesRefreshToken, setFilesRefreshToken] = useState(0);
   const [assistant, setAssistant] = useState<string | null>(null);
   const [urlProject, setUrlProject] = useState<string | null>(null);
+  const [urlPrompt, setUrlPrompt] = useState<string | null>(null);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setAssistant(params.get("assistant"));
     setUrlProject(params.get("project"));
+    setUrlPrompt(params.get("prompt"));
   }, []);
   const {
     projects,
@@ -46,6 +48,11 @@ export default function ChatWorkspace() {
     setSelectedProjectId,
     assistant,
   });
+  const setChatContent = chat.setContent;
+  useEffect(() => {
+    // ?prompt=… (e.g. from the Optimization checklist) pre-fills the composer; the user still presses Send.
+    if (urlPrompt) setChatContent(urlPrompt.slice(0, 2000));
+  }, [urlPrompt, setChatContent]);
   const projectFiles = useProjectFiles(selectedProjectId || null, filesRefreshToken);
 
   useEffect(() => {

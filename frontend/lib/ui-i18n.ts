@@ -38,6 +38,9 @@ export const UI_FA: Record<string, string> = {
   "Lateral system": "سیستم باربر جانبی", "C (if assumed)": "C (در صورت فرض)", "Allowable bearing": "تنش مجاز خاک",
   "Import from last chat frame": "دریافت از آخرین قاب گفتگو", "Reset to defaults": "بازگشت به پیش‌فرض",
   "Run analysis + design": "اجرای تحلیل و طراحی", "Running…": "در حال اجرا…", "Saved to this project.": "برای این پروژه ذخیره شد.",
+  "This model is incomplete": "این مدل ناقص است",
+  "Some required inputs are missing. I can complete them with typical values (4 storeys, 3×3 bays of 5 m, 3.2 m storey height, Iranian codes) and re-run; the assumptions are listed in the result.": "برخی ورودی‌های لازم کم است. می‌توانم با مقادیر معمول (۴ طبقه، ۳×۳ دهانه ۵ متری، ارتفاع طبقه ۳.۲ متر، آیین‌نامه‌های ایران) کامل کنم و دوباره اجرا کنم؛ فرض‌ها در نتیجه فهرست می‌شوند.",
+  "Complete with defaults and run": "تکمیل با پیش‌فرض‌ها و اجرا",
   "No 3D frame result yet. Build one on the Model page or describe a frame in the chat.":
     "هنوز نتیجهٔ قاب سه‌بعدی وجود ندارد. در صفحهٔ مدل یک قاب بسازید یا آن را در گفتگو توصیف کنید.",
   "No chat frame found for this project yet.": "هنوز قابی در گفتگوی این پروژه ثبت نشده است.",

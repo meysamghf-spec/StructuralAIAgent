@@ -2886,3 +2886,16 @@ a.button,
 .assistant-strip-badge { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.1rem 0.5rem; border-radius: 999px; background: #0369a1; color: #fff; }
 .assistant-strip-starters { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.6rem; }
 .assistant-starter { font-size: 0.85rem; text-align: start; white-space: normal; }
+
+/* Optimization prerequisite checklist */
+.optimization-checklist { margin: 0.75rem 0; display: grid; gap: 0.5rem; }
+.optimization-checklist h4 { margin: 0; }
+.checklist-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+.checklist-step { display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.5rem 0.65rem; border: 1px solid var(--border, #d8dde6); border-radius: 10px; min-width: 0; overflow-wrap: anywhere; }
+.checklist-step.missing { border-color: #e0a3a3; background: rgba(220, 38, 38, 0.05); }
+.checklist-step.done { opacity: 0.85; }
+.checklist-step .button { margin-top: 0.35rem; display: inline-block; }
+.checklist-auto { border: 1px dashed var(--border, #c4cad6); border-radius: 10px; padding: 0.5rem 0.75rem; }
+.checklist-auto summary { cursor: pointer; font-weight: 600; }
+.checklist-auto ul { margin: 0.5rem 0; padding-inline-start: 1.2rem; }
+.frame3d-repair { border: 1px solid #e3c27a; background: rgba(245, 158, 11, 0.08); border-radius: 10px; padding: 0.6rem 0.8rem; margin: 0.6rem 0; }
