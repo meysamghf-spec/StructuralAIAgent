@@ -9,6 +9,12 @@ from __future__ import annotations
 
 # (month, id, English, Persian, refs)
 WHATS_NEW: list[tuple[str, str, str, str, tuple[str, ...]]] = [
+    ("2026-10", "pdelta-and-spectrum",
+     "The 3D frame analysis now includes P-Δ (second-order) analysis, applied automatically for Standard 2800 projects when the stability index is above 0.1 "
+     "(or on request), and a completed response-spectrum analysis with CQC combination and 5% accidental torsion.",
+     "تحلیل قاب سه‌بعدی اکنون تحلیل P-Δ (مرتبه دوم) را دارد؛ در پروژه‌های استاندارد ۲۸۰۰ وقتی شاخص پایداری بیش از ۰٫۱ باشد (یا به درخواست) خودکار اعمال می‌شود، "
+     "و تحلیل طیفی کامل با ترکیب CQC و خروج از مرکزیت اتفاقی ۵٪ دارد.",
+     ("p_delta", "response_spectrum_completion")),
     ("2026-10", "assistant-knows-platform",
      "The assistant now knows the whole platform (pages, plans, payment, exports, limits), explains how-to questions instead of running them, "
      "and can diagnose errors you paste and offer to file a platform issue.",

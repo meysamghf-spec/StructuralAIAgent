@@ -32,7 +32,7 @@ export const UI_FA: Record<string, string> = {
   Chat: "گفتگو", Projects: "پروژه‌ها", "New Project": "پروژهٔ جدید", Model: "مدل", Files: "فایل‌ها", Memory: "حافظه", Learning: "یادگیری",
   Assistants: "دستیارها", "Assistant Builder": "سازندهٔ دستیار", Approvals: "تأییدها", Analysis: "تحلیل",
   Results: "نتایج", Design: "طراحی", Optimization: "بهینه‌سازی", Integrations: "اتصال نرم‌افزارها", CAD: "نقشه (CAD)",
-  Validation: "اعتبارسنجی", Reports: "گزارش‌ها", Traceability: "ردیابی", Upgrades: "ارتقا", "AI Assistant": "دستیار هوشمند", "Platform Issues": "مشکلات پلتفرم",
+  Validation: "اعتبارسنجی", Reports: "گزارش‌ها", Traceability: "ردیابی", Upgrades: "ارتقا", "AI Assistant": "دستیار هوشمند", "Platform Issues": "مشکلات پلتفرم", Foundation: "فونداسیون",
   "Signed in": "وارد شده", "Sign out": "خروج", "Sign in": "ورود", "Project chat": "گفتگوی پروژه", "Open chat": "باز کردن گفتگو",
   "Close chat": "بستن گفتگو", "No project selected": "پروژه‌ای انتخاب نشده", Project: "پروژه",
   "Quick 3D frame model": "مدل سریع قاب سه‌بعدی", Geometry: "هندسه", Sections: "مقاطع", Materials: "مصالح", Loads: "بارها",

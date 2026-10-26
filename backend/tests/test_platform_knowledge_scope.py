@@ -27,7 +27,8 @@ def fa(request) -> bool:
 def test_capability_matrix_has_the_owner_stated_statuses(fa: bool) -> None:
     status = {i: k for i, _e, _f, k in pk.CAPABILITY_MATRIX}
     assert {status[i] for i in ("modal_analysis", "spectrum_2800", "equivalent_static", "mabhas9_concrete")} == {"yes"}
-    assert {status[i] for i in ("p_delta", "response_spectrum_completion", "mabhas10_steel")} == {"in_progress"}
+    assert {status[i] for i in ("p_delta", "response_spectrum_completion")} == {"yes"}
+    assert status["mabhas10_steel"] == "in_progress"
     assert {status[i] for i in ("time_history", "pushover", "nonlinear")} == {"no"}
     assert status["us_codes"] == "partial"
     assert {status[i] for i in ("export_e2k", "export_f2k", "export_s2k", "export_dxf")} == {"unconfirmed"}

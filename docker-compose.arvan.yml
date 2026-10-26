@@ -1,0 +1,72 @@
+# Single-VPS production stack: Caddy (HTTPS, automatic Let's Encrypt) -> frontend + backend, PostgreSQL, file volume.
+# Usage:  cp .env.production.example .env.production  (edit)  then
+#         docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+name: structuralaiaagent
+
+services:
+  db:
+    image: ${REGISTRY:-}postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-structuralaiaagent}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app} -d ${POSTGRES_DB:-structuralaiaagent}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # small VPS: keep Postgres modest
+    command: ["postgres", "-c", "shared_buffers=128MB", "-c", "max_connections=40"]
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      args:
+        REGISTRY: ${REGISTRY:-}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-structuralaiaagent}
+      FILE_STORAGE_ROOT: /data/files
+      RUN_MIGRATIONS_ON_STARTUP: "true"
+      TRUST_PROXY_HEADERS: "true"
+      TRUSTED_PROXY_HOSTS: ${TRUSTED_PROXY_HOSTS:-172.16.0.0/12}
+    volumes:
+      - file_storage:/data/files
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        REGISTRY: ${REGISTRY:-}
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org/}
+        NEXT_PUBLIC_API_URL: ""
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  file_storage:

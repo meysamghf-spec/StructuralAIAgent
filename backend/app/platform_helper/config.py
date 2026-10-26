@@ -26,7 +26,7 @@ PRESETS: dict[str, tuple[str, str, bool]] = {
     # Key-less (anonymous) — works from the Germany VPS, GPT-OSS-20B; shared anonymous rate limit, no SLA.
     "pollinations": ("https://text.pollinations.ai/openai", "openai-fast", True),
     # Free API keys (no card): best quality / limits first.
-    "gemini": ("https://generativelanguage.googleapis.com/v1beta/openai", "gemini-2.5-flash", False),
+    "gemini": ("https://generativelanguage.googleapis.com/v1beta/openai", "gemini-3.5-flash", False),
     "groq": ("https://api.groq.com/openai/v1", "openai/gpt-oss-120b", False),
     "openrouter": ("https://openrouter.ai/api/v1", "openrouter/free", False),
     "nvidia": ("https://integrate.api.nvidia.com/v1", "nvidia/nemotron-3-super-120b-a12b", False),
