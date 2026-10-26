@@ -21,9 +21,9 @@ export default function MemoryWorkspaceClient() {
       return;
     }
     const response = await getProjectMemoryContext(projectId);
-    setMemories(response.memories);
-    setTotalCount(response.total_count);
-    setCountsByType(response.counts_by_type);
+    setMemories(Array.isArray(response?.memories) ? response.memories : []);
+    setTotalCount(response?.total_count ?? 0);
+    setCountsByType(response?.counts_by_type ?? {});
   }, []);
 
   useEffect(() => {

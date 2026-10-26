@@ -39,7 +39,7 @@ export default function ReportsWorkspaceClient() {
       return;
     }
     const response = await listReports(projectId);
-    setReports(response.reports);
+    setReports(Array.isArray(response?.reports) ? response.reports : []);
   }, []);
 
   useEffect(() => {

@@ -21,7 +21,7 @@ export default function TraceabilityWorkspaceClient() {
       return;
     }
     const response = await getTraceabilityGraph(projectId);
-    setLinks(response.links);
+    setLinks(Array.isArray(response?.links) ? response.links : []);
   }, []);
 
   useEffect(() => {
