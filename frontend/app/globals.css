@@ -3112,3 +3112,8 @@ a.button,
 .detailing-badge.detailing-locked { background: #78350f; color: #fde68a; }
 .detailing-glance { margin: 0.25rem 0; }
 .detailing-glance p { margin: 0.2rem 0; overflow-wrap: anywhere; }
+
+/* The result card is a grid whose column can grow to the widest table; keep the Detailing block inside the viewport on phones. */
+@media (max-width: 640px) {
+  .detailing-step { width: min(100%, calc(100vw - 4.5rem)); box-sizing: border-box; }
+}
