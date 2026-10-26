@@ -119,7 +119,7 @@ def test_prompt_contains_rules_generated_block_and_user_context() -> None:
     ctx = {"plan": "Free (رایگان)", "project_selected": "none", "model_exists": "no"}
     svc.converse("چطور خروجی ETABS بگیرم؟", context=ctx)
     sp = captured["system"]
-    assert "Hard rules" in sp and "Generated platform facts" in sp and "/workspace/optimization" in sp
+    assert "Hard rules" in sp and "Generated platform facts" in sp and "ETABS" in sp and "capability matrix" in sp
     assert sp.index("Hard rules") < sp.index("Generated platform facts") < sp.index("Current session")
     assert "plan: Free" in sp and "model_exists: no" in sp
     assert "Reply in Persian" in sp

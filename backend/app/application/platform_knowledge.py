@@ -89,6 +89,138 @@ CHAT_COMMANDS: list[tuple[str, str]] = [
 ]
 
 
+# --------------------------------------------------------------------------------------------- identity / matrix / examples
+SLOGAN_EN = "Chat with your structural AI"
+SLOGAN_FA = "با هوش مصنوعی سازه‌ات گفتگو کن"
+
+# Capability matrix: (id, English, Persian, status). Status: yes | in_progress | partial | no | unconfirmed.
+# Owner-maintained: update here when a capability changes status (the test checks every id reaches the prompt).
+CAPABILITY_MATRIX: list[tuple[str, str, str, str]] = [
+    ("modal_analysis", "Modal (eigenvalue) analysis", "تحلیل مودال", "yes"),
+    ("spectrum_2800", "Standard 2800 design response spectrum", "طیف طراحی استاندارد ۲۸۰۰", "yes"),
+    ("equivalent_static", "Equivalent static seismic analysis (Standard 2800)", "تحلیل استاتیکی معادل زلزله (استاندارد ۲۸۰۰)", "yes"),
+    ("p_delta", "P-Δ (second-order) effects", "اثر P-Δ (مرتبه دوم)", "in_progress"),
+    ("response_spectrum_completion", "Completion of response-spectrum analysis (full combination and reporting)",
+     "تکمیل تحلیل طیفی (ترکیب کامل و گزارش)", "in_progress"),
+    ("time_history", "Time-history analysis", "تحلیل تاریخچه زمانی", "no"),
+    ("pushover", "Pushover analysis", "تحلیل پوش‌اور", "no"),
+    ("nonlinear", "Nonlinear analysis", "تحلیل غیرخطی", "no"),
+    ("mabhas9_concrete", "Concrete design to Iranian Mabhas 9", "طراحی بتن طبق مبحث ۹ ایران", "yes"),
+    ("mabhas10_steel", "Steel design to Iranian Mabhas 10", "طراحی فولاد طبق مبحث ۱۰ ایران", "in_progress"),
+    ("us_codes", "US codes (ACI concrete beam check, AISC steel beam check)", "آیین‌نامه‌های آمریکا (کنترل تیر بتنی ACI و تیر فولادی AISC)", "partial"),
+    ("export_e2k", "ETABS .e2k model file", "فایل مدل ETABS (e2k)", "unconfirmed"),
+    ("export_f2k", "SAFE .f2k model file", "فایل مدل SAFE (f2k)", "unconfirmed"),
+    ("export_s2k", "SAP2000 .s2k model file", "فایل مدل SAP2000 (s2k)", "unconfirmed"),
+    ("export_dxf", "DXF drawings", "نقشه‌های DXF", "unconfirmed"),
+]
+_STATUS_EN = {"yes": "YES (available)", "in_progress": "IN PROGRESS (not available yet)", "partial": "PARTIAL",
+              "no": "NO (not supported)", "unconfirmed": "EXISTS, NOT YET CONFIRMED in the real program"}
+_STATUS_FA = {"yes": "بله (موجود است)", "in_progress": "در حال توسعه (هنوز در دسترس نیست)", "partial": "نسبی",
+              "no": "خیر (پشتیبانی نمی‌شود)", "unconfirmed": "خروجی ساخته می‌شود ولی هنوز در نرم‌افزار واقعی تأیید نشده"}
+
+# Chat examples for every capability: (id, English title, Persian title, English example, Persian example)
+EXAMPLES: list[tuple[str, str, str, str, str]] = [
+    ("define_beam", "Beam analysis", "تحلیل تیر", "simply supported beam 6 m, uniform load 20 kN/m",
+     "تیر ساده با دهانه ۶ متر و بار گسترده ۲۰ کیلونیوتن بر متر"),
+    ("define_rc_beam", "RC beam design (Mabhas 9)", "طراحی تیر بتنی (مبحث ۹)", "design a reinforced concrete beam 30x50, 6 m, 25 kN/m",
+     "تیر بتن مسلح ۳۰×۵۰ با دهانه ۶ متر و بار ۲۵ را طراحی کن"),
+    ("define_frame", "Create and analyse a 3D frame", "ساخت و تحلیل قاب سه‌بعدی", "3D frame 4 stories, 3x3 bays, 5 m by 5 m, storey height 3.2 m",
+     "قاب سه‌بعدی ۴ طبقه، ۳×۳ دهانه ۵ متری، ارتفاع طبقه ۳.۲ متر"),
+    ("assume_defaults", "Let the platform fill missing inputs", "پر کردن ورودی‌های ناقص توسط پلتفرم", "assume defaults", "پیش‌فرض‌ها را فرض کن"),
+    ("edit_inputs", "Change inputs of the current model (re-runs the analysis with the new values)",
+     "تغییر ورودی‌های مدل فعلی (تحلیل با مقادیر جدید دوباره اجرا می‌شود)", "set storeys to 6 / bay x = 6 m / columns 50x50 / dead load 7",
+     "«تعداد طبقه را ۶ کن» / «دهانه x را ۶ متر کن» / «ستون‌ها ۵۰×۵۰» / «بار مرده ۷»"),
+    ("run_task", "Run any engineering task by describing it", "اجرای هر کار مهندسی با توصیف آن", "analyse the frame / design the members / check the beam",
+     "قاب را تحلیل کن / اعضا را طراحی کن / تیر را کنترل کن"),
+    ("optimization", "Frame optimization (paid plans)", "بهینه‌سازی قاب (پلن‌های پولی)", "optimize the frame for cost", "قاب را برای هزینه بهینه کن"),
+    ("download_outputs", "Download every output", "دانلود همه خروجی‌ها", "download all outputs", "همه خروجی‌ها را دانلود کن"),
+    ("export_models", "Export a model for ETABS / SAFE / SAP2000 or DXF drawings", "خروجی مدل برای ETABS / SAFE / SAP2000 یا نقشه DXF",
+     "export ETABS / export SAFE / export SAP2000 / export DXF", "«خروجی ETABS را بده» / SAFE / SAP2000 / DXF"),
+    ("drawings", "Structural drawing set", "مجموعه نقشه‌های سازه", "give me the structural drawing set", "نقشه‌های اجرایی را بده"),
+    ("projects_cmd", "Projects", "پروژه‌ها", "list my projects / open project <name>", "«پروژه‌هایم را نشان بده» / «پروژه <نام> را باز کن»"),
+    ("approvals_cmd", "Approvals", "تأییدها", "show pending approvals / approve / reject", "«تأییدهای در انتظار را نشان بده» / «تأیید کن» / «رد کن»"),
+    ("assistant_switch", "Switch to a specialised assistant", "رفتن به یک دستیار تخصصی", "switch to the optimization assistant",
+     "«دستیار بهینه‌سازی را انتخاب کن»"),
+    ("attach_files", "Attach files (paperclip in the composer)", "پیوست فایل (گیره در کادر پیام)", "attach a PDF/DXF/photo and say what you want",
+     "یک PDF/DXF/عکس پیوست کنید و بگویید چه می‌خواهید"),
+    ("report_problem", "Report a problem / see its status", "گزارش مشکل / پیگیری آن", "report a problem: <what happened> / issue status",
+     "«گزارش مشکل: <شرح>» / «وضعیت گزارش‌ها»"),
+]
+
+# Login / account options: (id, English, Persian)
+LOGIN_OPTIONS: list[tuple[str, str, str]] = [
+    ("login_password", "Email and password (create an account at /register, sign in at /login).",
+     "ایمیل و رمز عبور (ساخت حساب در /register، ورود در /login)."),
+    ("login_google", "Sign in with Google (button on the login page when the operator has enabled it; only your verified email and name are used).",
+     "ورود با گوگل (دکمه در صفحه ورود، وقتی فعال باشد؛ فقط ایمیل تأییدشده و نام شما استفاده می‌شود)."),
+    ("login_remember", "\"Remember me\" (ticked by default) keeps you signed in on this browser; untick it on shared computers.",
+     "«مرا به خاطر بسپار» (به‌طور پیش‌فرض فعال) شما را در این مرورگر وارد نگه می‌دارد؛ در رایانه مشترک آن را بردارید."),
+]
+PUBLIC_PAGES: list[tuple[str, str, str]] = [
+    ("/about", "About SAIA (public landing page)", "درباره سایا (صفحه معرفی عمومی)"),
+    ("/login", "Sign in", "ورود"), ("/register", "Create account", "ساخت حساب"),
+    ("/privacy", "Privacy policy", "سیاست حریم خصوصی"), ("/terms", "Terms of service", "شرایط استفاده"),
+]
+# Related products. TrafficLens is a separate sibling product (same assistant framework); stated by the owner, not part of SAIA's code.
+RELATED_PRODUCTS: list[tuple[str, str, str, str]] = [
+    ("trafficlens", "/traffic/", "TrafficLens: a separate product for traffic engineering at /traffic/. Its assistant is separate; "
+     "SAIA's assistant knows only SAIA details, so for TrafficLens questions point the user there.",
+     "TrafficLens: محصول جداگانه برای مهندسی ترافیک در /traffic/. دستیار آن جداست؛ دستیار سایا فقط سایا را می‌شناسد و برای پرسش‌های TrafficLens کاربر را به آنجا هدایت می‌کند."),
+]
+
+# "Diagnose errors": (id, trigger regex, cause EN, cause FA, what to do EN, what to do FA). Built from the platform's real error codes.
+DIAGNOSE: list[tuple[str, str, str, str, str, str]] = [
+    ("QUOTA_EXCEEDED", r"quota_exceeded|\b402\b|quota|plan limit|limit reached|سهمیه|به سقف|محدودیت پلن",
+     "Your plan's limit was reached (HTTP 402): projects, analyses per month, frame size or a locked feature.",
+     "به سقف پلن شما رسیده‌اید (کد ۴۰۲): تعداد پروژه، تحلیل ماهانه، اندازه قاب یا قابلیت قفل.",
+     "Open Upgrades (/workspace/upgrades) to see usage and upgrade, or reduce the model size.",
+     "صفحه «ارتقا» (/workspace/upgrades) را باز کنید تا مصرف را ببینید و ارتقا دهید، یا اندازه مدل را کم کنید."),
+    ("RATE_LIMITED", r"rate_limited|\b429\b|too many (sign-?in|attempts|requests)|تلاش‌?های? (زیاد|ناموفق)|ورود.*بیش از حد",
+     "Too many failed sign-in attempts from this address (HTTP 429); a temporary lock protects accounts.",
+     "تلاش‌های ناموفق ورود از این آدرس زیاد بوده (کد ۴۲۹)؛ قفل موقت برای حفاظت از حساب‌هاست.",
+     "Wait a few minutes and try again with the correct password.", "چند دقیقه صبر کنید و با رمز درست دوباره تلاش کنید."),
+    ("REQUIRES_ANALYSIS", r"requires_analysis|run analysis|نیاز به تحلیل|ابتدا تحلیل",
+     "Design/optimization needs a completed analysis of the current model first.",
+     "طراحی/بهینه‌سازی ابتدا به تحلیل کامل مدل فعلی نیاز دارد.",
+     "Run the analysis first (describe the model in chat, or the Analysis page), then retry.",
+     "ابتدا تحلیل را اجرا کنید (مدل را در چت توصیف کنید یا صفحه «تحلیل»)، سپس دوباره تلاش کنید."),
+    ("MISSING_REQUIRED_INPUT", r"missing_required_input|missing input|ورودی.*(ناقص|کم)|اطلاعات.*ناقص",
+     "A required input is missing (for example span, loads, storeys or bays).",
+     "یک ورودی لازم کم است (مثلاً دهانه، بار، تعداد طبقه یا دهانه‌ها).",
+     "Give the missing values, or type \"assume defaults\" / «پیش‌فرض‌ها را فرض کن».",
+     "مقادیر کم را بدهید یا بنویسید «پیش‌فرض‌ها را فرض کن»."),
+    ("UNSUPPORTED_CODE", r"unsupported_code|unsupported|پشتیبانی نمی|پشتیبانی‌?نمی",
+     "The requested code/check has no engine yet (see the capability matrix; US codes are partial).",
+     "برای آیین‌نامه/کنترل درخواستی هنوز موتوری نیست (ماتریس قابلیت‌ها را ببینید؛ آیین‌نامه‌های آمریکا نسبی‌اند).",
+     "Use a supported code (Iranian codes are the default) or ask what is supported.",
+     "از آیین‌نامه پشتیبانی‌شده استفاده کنید (پیش‌فرض: ایران) یا بپرسید چه چیزی پشتیبانی می‌شود."),
+    ("APPROVAL_409", r"\b409\b|conflict|already (approved|rejected|decided)|قبلا.*(تایید|رد)",
+     "The approval item already has a decision (HTTP 409), often from a double click or a second tab.",
+     "برای این مورد قبلاً تصمیم ثبت شده (کد ۴۰۹)، معمولاً به‌خاطر دوبار کلیک یا تب دیگر.",
+     "Refresh Approvals (/workspace/approvals) and read the item's current status.",
+     "صفحه «تأییدها» (/workspace/approvals) را تازه کنید و وضعیت فعلی مورد را بخوانید."),
+    ("AUTH_401_403", r"\b401\b|\b403\b|unauthori[sz]ed|forbidden|session expired|نشست.*منقضی|دسترسی.*(ندارید|مجاز)",
+     "Your session expired (401) or you do not have access to that project/page (403; some pages are admin-only).",
+     "نشست شما منقضی شده (۴۰۱) یا به آن پروژه/صفحه دسترسی ندارید (۴۰۳؛ برخی صفحه‌ها فقط مدیر).",
+     "Sign in again; ask the project owner for access if it is someone else's project.",
+     "دوباره وارد شوید؛ اگر پروژه دیگری است از مالک آن دسترسی بخواهید."),
+    ("EXPORT_LOCKED", r"export.*(locked|not available|plan)|خروجی.*(بسته|قفل|پلن)|e2k|f2k|s2k|dxf",
+     "ETABS/SAFE/SAP2000/DXF exports are locked on plans whose exports list does not include them.",
+     "خروجی ETABS/SAFE/SAP2000/DXF در پلن‌هایی که در فهرست خروجی‌شان نیست قفل است.",
+     "Check your plan (Current session) and Upgrades; tables, figures and the PDF report are always open.",
+     "پلن خود را بررسی کنید و از «ارتقا» استفاده کنید؛ جدول‌ها، تصاویر و گزارش PDF همیشه باز است."),
+    ("PAYMENT_PENDING", r"payment|paid|invoice|پرداخت|فاکتور|تراکنش|not (detected|activated)|فعال نشد",
+     "A crypto payment is only matched when the exact invoice amount arrives on the chosen network; invoices last 30 minutes (late payments are matched up to 24 hours) and need confirmations.",
+     "پرداخت رمزارزی فقط وقتی تطبیق می‌خورد که مبلغ دقیق فاکتور در شبکه انتخاب‌شده برسد؛ فاکتور ۳۰ دقیقه اعتبار دارد (پرداخت دیرهنگام تا ۲۴ ساعت تطبیق می‌خورد) و تأیید شبکه لازم است.",
+     "Use the recheck button on the Upgrades page; if the amount or network was wrong or time passed, file a platform issue with the invoice time and amount.",
+     "دکمه بازبینی در صفحه «ارتقا» را بزنید؛ اگر مبلغ/شبکه اشتباه بود یا زمان گذشته، با زمان و مبلغ فاکتور گزارش مشکل ثبت کنید."),
+    ("SLOW_TIMEOUT", r"timeout|timed out|slow|stuck|hang|کند|گیر کرد|تایم ?اوت|بالا نمی",
+     "Optimization has a ~35 s time budget in chat, and free-form AI replies may be slow when the language service is busy.",
+     "بهینه‌سازی در چت حدود ۳۵ ثانیه زمان دارد و پاسخ‌های آزاد هوش مصنوعی وقتی سرویس زبانی شلوغ است کند می‌شود.",
+     "Retry once; large frames are better optimized from the Optimization page.", "یک بار دوباره تلاش کنید؛ برای قاب‌های بزرگ از صفحه «بهینه‌سازی» استفاده کنید."),
+]
+
+
 def _fa_digits(v: Any) -> str:
     return str(v).translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
 
@@ -256,7 +388,9 @@ def section_vam(fa: bool) -> str:
             f"وضعیت‌ها: {ap}. در صفحه «تأییدها» یا در چت («تأییدهای در انتظار را نشان بده»، «تأیید کن»، «رد کن») تصمیم می‌گیرید. "
             f"هر اقدامی خودکار تأیید ندارد؛ فقط مواردِ سیاست تأیید.\n"
             f"حافظه (Memory): پرونده ماندگار هر پروژه از تصمیم‌ها و دانسته‌ها با نوع‌های: {mem}؛ گفت‌وگوهای پروژه هم به‌عنوان CONVERSATION ثبت می‌شود؛ "
-            f"صفحه «حافظه» برای جست‌وجو و مرور است.")
+            f"صفحه «حافظه» برای جست‌وجو و مرور است.\n"
+            f"صفحه‌ها: /workspace/validation ، /workspace/approvals ، /workspace/memory.")
+    pages_line = "Pages: /workspace/validation, /workspace/approvals, /workspace/memory."
     return (
         f"Validation: a report on project health (engineering model, code configuration, unit configuration, project name and structural-model "
         f"consistency); the overall status is one of {vs}, each finding has a severity and a fix; exports CSV/JSON/Markdown. It is a report, not a design guarantee.\n"
@@ -265,7 +399,7 @@ def section_vam(fa: bool) -> str:
         f"Statuses: {ap}. Decide on the Approvals page or in chat (\"show pending approvals\", \"approve\", \"reject\"). "
         f"Not every action is gated, only those the approval policy lists.\n"
         f"Memory: the durable per-project record of decisions and knowledge with types: {mem}; project chat turns are stored as CONVERSATION; "
-        f"the Memory page is for browsing and search.")
+        f"the Memory page is for browsing and search.\n" + pages_line)
 
 
 # --------------------------------------------------------------------------------------------- optimization / limits / pages
@@ -319,10 +453,94 @@ def section_engines(fa: bool) -> str:
             + ("\nدستورهای مستقیم چت:\n" if fa else "\nDirect chat commands:\n") + "\n".join(cmds))
 
 
-def build_platform_knowledge(fa: bool = True) -> str:
-    """The generated block for the system prompt. Bilingual labels; the model must answer in the user's language."""
-    secs = [section_pages(fa), section_engines(fa), section_plans(fa), section_payment(fa), section_exports(fa),
-            section_optimization(fa), section_vam(fa), section_assistants(fa), section_limits(fa)]
+def section_identity(fa: bool) -> str:
+    if fa:
+        return (f"سایا (SAIA): «{SLOGAN_FA}». سایا یک پلتفرم مهندسی سازه گفتگومحور است: نیاز را در چت می‌گویید و موتورهای محاسباتی قطعی کار را انجام می‌دهند؛ "
+                "تحلیل، طراحی، صحت‌سنجی مستقل، تأیید مهندس و حافظه پروژه. هوش مصنوعی فقط توضیح می‌دهد و مسیر می‌دهد، محاسبه نمی‌کند.")
+    return (f"SAIA: \"{SLOGAN_EN}\". SAIA is a chat-first structural engineering platform: you say what you need in chat and deterministic engines do "
+            "the work: analysis, design, independent validation, engineer approval and project memory. The AI only explains and routes; it does not calculate.")
+
+
+def section_matrix(fa: bool) -> str:
+    st = _STATUS_FA if fa else _STATUS_EN
+    rows = [f"- [{i}] {f if fa else e}: {st[k]}" for i, e, f, k in CAPABILITY_MATRIX]
+    head = "ماتریس صادقانه قابلیت‌ها (مرجع؛ چیزی را بیشتر از این ادعا نکنید):" if fa else "Honest capability matrix (authoritative; never claim more than this):"
+    tail = ("«در حال توسعه» یعنی هنوز در دسترس نیست؛ فقط وقتی در «تازه‌ها» اعلام شده باشد منتشر شده است." if fa else
+            "\"In progress\" means not available yet; it is released only once it appears in What's new.")
+    return head + "\n" + "\n".join(rows) + "\n" + tail
+
+
+def section_examples(fa: bool) -> str:
+    rows = [f"- [{i}] {f if fa else e}: «{ef if fa else ee}»" for i, e, f, ee, ef in EXAMPLES]
+    return ("دستورهای نمونه در چت (برای هر قابلیت):\n" if fa else "Example chat commands (one per capability):\n") + "\n".join(rows)
+
+
+def section_login(fa: bool) -> str:
+    rows = [f"- [{i}] {f if fa else e}" for i, e, f in LOGIN_OPTIONS]
+    pub = [f"- {h}: {f if fa else e}" for h, e, f in PUBLIC_PAGES]
+    rel = [f"- [{i}] {f if fa else e}" for i, _h, e, f in RELATED_PRODUCTS]
+    return (("ورود و حساب:\n" if fa else "Sign-in and account:\n") + "\n".join(rows)
+            + ("\nصفحه‌های عمومی (بدون ورود):\n" if fa else "\nPublic pages (no sign-in):\n") + "\n".join(pub)
+            + ("\nمحصولات مرتبط:\n" if fa else "\nRelated products:\n") + "\n".join(rel))
+
+
+def section_whats_new(fa: bool, limit: int = 6) -> str:
+    from app.application.platform_whats_new import WHATS_NEW
+
+    rows = [f"- {m} [{i}]: {f if fa else e}" for m, i, e, f, _r in WHATS_NEW[:limit]]
+    return ("تازه‌ها (فقط همین‌ها را به‌عنوان قابلیت جدید اعلام کنید):\n" if fa else
+            "What's new (announce only these as new):\n") + "\n".join(rows)
+
+
+def section_diagnose(fa: bool) -> str:
+    rows = [f"- [{i}] {f if fa else e} {('اقدام' if fa else 'Do')}: {df if fa else de}" for i, _rx, e, f, de, df in DIAGNOSE]
+    if fa:
+        head = ("عیب‌یابی خطا (صادقانه): وقتی کاربر خطایی گزارش می‌کند، با کمک این فهرست و متن خطا محتمل‌ترین علت را توضیح بده و قدم بعدی را بگو. "
+                "قطعی ادعا نکن؛ بگو «احتمالاً». دستیار نمی‌تواند کد را تغییر دهد، سایت را اصلاح یا سرور را راه‌اندازی کند و نباید چنین ادعایی بکند؛ "
+                "فقط می‌تواند علت را توضیح دهد و ثبت گزارش مشکل را پیشنهاد دهد (مدیر پلتفرم بررسی می‌کند و هر اصلاح فقط پس از تأیید مدیر اعمال می‌شود). "
+                "پیشنهاد: «برای ثبت گزارش بنویسید: «گزارش مشکل: <شرح>» یا فقط «گزارش کن»».")
+    else:
+        head = ("Error diagnosis (honest): when the user reports an error, use this list and the error text to explain the most likely cause and the next step. "
+                "Do not be certain; say \"probably\". The assistant CANNOT change code, fix the site or touch servers and must never claim it can; it can only "
+                "explain the cause and offer to file a platform issue (a platform admin reviews it and any fix is applied only after admin approval). "
+                "Offer: type \"report a problem: <what happened>\" or just \"report it\".")
+    return head + "\n" + "\n".join(rows)
+
+
+def diagnose_matches(message: str) -> list[tuple[str, str, str, str, str, str]]:
+    t = _norm(message)
+    return [row for row in DIAGNOSE if re.search(row[1], t, re.I)]
+
+
+_CORE = ("identity", "matrix", "limits", "whats_new")
+_SECTION_FN = {"identity": section_identity, "matrix": section_matrix, "limits": section_limits, "whats_new": section_whats_new,
+               "examples": section_examples, "pages": section_pages, "engines": section_engines, "plans": section_plans,
+               "payment": section_payment, "exports": section_exports, "optimization": section_optimization, "vam": section_vam,
+               "assistants": section_assistants, "login": section_login, "diagnose": section_diagnose}
+_TOPIC_SECTIONS: dict[str, tuple[str, ...]] = {
+    "limits": (), "capabilities": (), "billing": ("plans", "payment"), "optimization": ("optimization", "examples"),
+    "validation": ("vam",), "approval": ("vam",), "memory": ("vam",), "assistants": ("assistants",),
+    "outputs": ("exports", "examples"), "overview": ("pages", "engines", "examples"), "diagnose": ("diagnose",),
+    "login": ("login",), "whatsnew": (), "commands": ("examples",), "pages": ("pages",),
+}
+
+
+def selected_sections(message: str | None) -> list[str]:
+    """Section names for a question: the compact core + only the sections the question is about."""
+    if message is None:
+        return list(_SECTION_FN)
+    names = list(_CORE)
+    topics = match_topics(message) or ["overview"]
+    for t in topics:
+        for n in _TOPIC_SECTIONS.get(t, ()):
+            if n not in names:
+                names.append(n)
+    return names
+
+
+def build_platform_knowledge(fa: bool = True, message: str | None = None) -> str:
+    """The generated block for the system prompt. ``message=None`` -> everything; else only the sections the question needs."""
+    secs = [_SECTION_FN[n](fa) for n in selected_sections(message)]
     head = "## Generated platform facts (authoritative; from the product's own code and config)\n"
     return head + "\n\n".join(secs)
 
@@ -373,19 +591,31 @@ _TOPICS: list[tuple[str, str]] = [
     ("assistants", r"دستیار|assistants?|agents?|ایجنت|عامل ها"),
     ("outputs", r"etabs|ایتبس|ای ?تبس|e2k|\bsafe\b|سیف|sap ?2000|ساپ|s2k|f2k|dxf|اتوکد|autocad|خروجی|export|اکسپورت|دانلود|download|\bzip\b|زیپ|"
                r"\bpdf\b|اکسل|excel|نقشه"),
+    ("diagnose", r"خطا|ارور|باگ|کار نمی ?کن|نمی ?شود|نمیشه|مشکل|\berror\b|\bbug\b|failed|not working|doesn'?t work|broken|crash|\b(?:40[0-9]|42[0-9]|50[0-9])\b|"
+                 r"timeout|exception|traceback"),
+    ("capabilities", r"time ?history|pushover|nonlinear|non-linear|p-?delta|p-?Δ|second.order|response spectrum|spectrum|\bmodal\b|eigen|equivalent static|"
+                     r"mabhas|مبحث|aisc|\baci\b|\bcode\b|آیین ?نامه|طیف|مودال|غیرخطی|پوش ?اور|تاریخچه ?زمانی|استاتیکی معادل|مرتبه دوم|ایتبس واقعی|"
+                     r"real (?:etabs|program)|تایید نشده|پشتیبانی|support"),
+    ("login", r"log ?in|sign ?in|sign ?up|register|google|گوگل|remember me|به خاطر بسپار|رمز ?عبور|password|ورود(?![یا-ی])|ثبت ?نام|حساب کاربری|account"),
+    ("whatsnew", r"what'?s new|new features?|changelog|release notes|تازه|جدید|آپدیت|به ?روز ?رسانی"),
+    ("commands", r"دستور|command|example|مثال|چطور بنویسم|what (?:do|should) i (?:type|say)|تغییر ورود|change (?:the )?inputs?|edit (?:the )?model"),
+    ("pages", r"صفحه|\bpages?\b|\bmenu\b|منو|کجاست|where (?:is|can i)|about page|privacy|terms|حریم خصوصی|شرایط"),
     ("overview", r"چه کار|چه کارهایی|what can you|what do you|امکانات|قابلیت|صفحات|pages|features|راهنما|\bhelp\b|کمک|چیکار"),
 ]
 _TOPIC_RX = {k: re.compile(v) for k, v in _TOPICS}
+_DIAG_WORDS = _TOPICS[[k for k, _ in _TOPICS].index("diagnose")][1]
 _OFFER_FA = {"outputs": "اگر می‌خواهید همین الان اجرا شود، بنویسید: «خروجی ETABS را بده» یا «همه خروجی‌ها را دانلود کن».",
              "optimization": "برای اجرا همین‌جا بنویسید: «{ex}».",
              "approval": "برای دیدن صف: «تأییدهای در انتظار را نشان بده».",
              "billing": "برای ارتقا به صفحه «ارتقا» بروید: /workspace/upgrades.",
-             "validation": "برای دیدن گزارش پروژه به صفحه «صحت‌سنجی» بروید: /workspace/validation."}
+             "validation": "برای دیدن گزارش پروژه به صفحه «صحت‌سنجی» بروید: /workspace/validation.",
+             "diagnose": "برای ثبت گزارش بنویسید: «گزارش مشکل: <شرح خطا>» یا فقط «گزارش کن» تا همین خطا ثبت شود."}
 _OFFER_EN = {"outputs": "To run it now, type: \"export ETABS\" or \"download all outputs\".",
              "optimization": "To run it here, type: \"{ex}\".",
              "approval": "To see the queue: \"show pending approvals\".",
              "billing": "To upgrade, open the Upgrades page: /workspace/upgrades.",
-             "validation": "To see your project's report, open the Validation page: /workspace/validation."}
+             "validation": "To see your project's report, open the Validation page: /workspace/validation.",
+             "diagnose": "To file it, type \"report a problem: <what happened>\" or just \"report it\" to file this error."}
 
 
 def match_topics(message: str) -> list[str]:
@@ -394,6 +624,8 @@ def match_topics(message: str) -> list[str]:
     best = max(scores.values())
     if best == 0:
         return []
+    if scores.get("diagnose"):  # an error report is diagnosed first, whatever else it mentions
+        return ["diagnose"]
     top = [k for k, _ in _TOPICS if scores[k] == best]
     if "overview" in top and len(top) > 1:
         top.remove("overview")
@@ -448,7 +680,28 @@ def faq_topic_text(topic: str, fa: bool, message: str = "", ctx: dict[str, str] 
     elif topic == "assistants":
         parts = [section_assistants(fa)]
     elif topic == "limits":
-        parts = [section_limits(fa)]
+        parts = [section_limits(fa), section_matrix(fa)]
+    elif topic == "capabilities":
+        parts = [section_matrix(fa)]
+    elif topic == "login":
+        parts = [section_login(fa)]
+    elif topic == "whatsnew":
+        parts = [section_whats_new(fa)]
+    elif topic == "commands":
+        parts = [section_examples(fa)]
+    elif topic == "pages":
+        parts = [section_pages(fa)]
+    elif topic == "diagnose":
+        rows = diagnose_matches(message)
+        if rows:
+            parts = [("محتمل‌ترین علت:" if fa else "Most likely cause:") + "\n" + "\n".join(
+                f"- {f if fa else e}\n  {('اقدام' if fa else 'Do')}: {df if fa else de}" for _i, _rx, e, f, de, df in rows[:3])]
+        else:
+            parts = [("از این پیام نمی‌توانم علت را قطعی تشخیص دهم؛ علت‌های رایج:" if fa else
+                      "I cannot pin the cause from this message; common causes:") + "\n" + "\n".join(
+                f"- {f if fa else e}" for _i, _rx, e, f, _de, _df in DIAGNOSE)]
+        parts.append("من نمی‌توانم کد یا سایت را تغییر دهم یا اصلاح کنم؛ فقط می‌توانم علت را توضیح دهم و گزارش مشکل ثبت کنم تا مدیر پلتفرم بررسی کند."
+                     if fa else "I cannot change code or fix the site; I can only explain the cause and file an issue for the platform admin to review.")
     else:
         parts = [section_engines(fa), section_pages(fa)]
     gate = _gate_note(topic, ctx, fa)

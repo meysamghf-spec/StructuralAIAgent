@@ -14,7 +14,7 @@ def knowledge_hooks() -> dict:
     """Product knowledge injected into the (product-agnostic) helper: generated prompt block + static FAQ fallback."""
     from app.application import platform_knowledge as pk
 
-    return {"knowledge_provider": pk.build_platform_knowledge,
+    return {"knowledge_provider": lambda fa, message="": pk.build_platform_knowledge(fa, message),
             "faq_provider": lambda message, fa, ctx, allow_overview: pk.answer_faq(message, fa, ctx, allow_overview=allow_overview)}
 
 _service: HelperService | None = None

@@ -20,7 +20,7 @@ from app.platform_helper.prompt import build_system_prompt
 logger = logging.getLogger(__name__)
 
 TokenSink = Callable[[str], None]
-KnowledgeProvider = Callable[[bool], str]  # (fa) -> generated knowledge markdown
+KnowledgeProvider = Callable[[bool, str], str]  # (fa, message) -> generated knowledge markdown (sections chosen per question)
 FaqProvider = Callable[[str, bool, "dict[str, str] | None", bool], "str | None"]  # (message, fa, context, allow_overview)
 
 _STUB_HELP_FA = (
@@ -91,6 +91,9 @@ class HelperService:
                                     conversation_id=conversation_id, page=page, fa=fa)
         if intent.name == "issue_status":
             return self._issue_status(account_id, fa)
+        if intent.name == "report_it":
+            return self._report_it(list(history), message, account_id=account_id, project_id=project_id,
+                                   conversation_id=conversation_id, page=page, fa=fa)
         return self.converse(message, history, intent=intent.name, context=context, fa=fa, on_token=on_token)
 
     def converse(self, message: str, history: Iterable[tuple[str, str]] = (), *, intent: str = "platform_help",
@@ -99,7 +102,7 @@ class HelperService:
         extra = ""
         if self.knowledge_provider is not None:
             try:
-                extra = self.knowledge_provider(fa)
+                extra = self.knowledge_provider(fa, message)
             except Exception:  # noqa: BLE001 - never let the knowledge block break a reply
                 logger.exception("knowledge provider failed")
         msgs: list[dict[str, str]] = [{"role": "system", "content": build_system_prompt(
@@ -190,6 +193,18 @@ class HelperService:
                     + "A platform admin will review it; any fix is applied only after admin approval. "
                     "Type \"issue status\" to follow progress.")
         return HelperReply(text, "bug_report", issue_id=issue.id, metadata={"issue_status": issue.status})
+
+    def _report_it(self, history: list[tuple[str, str]], message: str, *, account_id: str, project_id: str, conversation_id: str,
+                   page: str, fa: bool) -> HelperReply:
+        """"report it" after a diagnosis: file the user's earlier error message (explicit request, so filing is fine)."""
+        prev = next((c for r, c in reversed(history) if r == "user" and classify(c).name == "diagnose"), "")
+        if not prev:
+            text = ("چه مشکلی را گزارش کنم؟ بنویسید: «گزارش مشکل: <شرح خطا>»." if fa else
+                    "What should I report? Type: \"report a problem: <what happened>\".")
+            return HelperReply(text, "report_it")
+        r = self._bug_report(Intent("bug_report", prev), prev, history, account_id=account_id, project_id=project_id,
+                             conversation_id=conversation_id, page=page, fa=fa)
+        return r
 
     def _issue_status(self, account_id: str, fa: bool) -> HelperReply:
         items = self.store.list(account_id=account_id or None, limit=8)

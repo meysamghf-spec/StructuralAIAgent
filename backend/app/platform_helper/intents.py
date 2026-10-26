@@ -1,6 +1,7 @@
 """Deterministic intent routing (no LLM needed). The LLM only talks; engines compute.
 
-Intents: ``engineering`` (leave to the platform engines), ``bug_report``, ``issue_status``, ``greeting``, ``platform_help``.
+Intents: ``engineering`` (leave to the platform engines), ``bug_report`` (explicit "report a problem: ..."), ``diagnose`` (an error the
+user describes: explain + offer to file), ``report_it`` ("report it"), ``issue_status``, ``greeting``, ``platform_help``.
 """
 
 from __future__ import annotations
@@ -24,6 +25,8 @@ _BUG_PREFIX = re.compile(r"^\s*(?:گزارش\s*(?:مشکل|باگ|خطا)|report
 _BUG_WORDS = re.compile(
     r"(\bbug\b|doesn'?t work|not working|isn'?t working|broken|crash|stack ?trace|\berror\b|failed|can'?t (approve|submit|send|open|upload)|"
     r"باگ|کار نمی ?کند|کار نمیکنه|کار نمی ?کنه|خراب|ارور|خطا|نمی ?شود|نمیشه|نمی ?تونم|نمیتونم|مشکل داره|ایراد)", re.I)
+_REPORT_IT = re.compile(r"^\s*(?:(?:yes|ok|okay|sure|please|بله|آره|اره|باشه|لطفا)[\s,،!.]*)*(?:report it|file it|file (?:an? )?(?:issue|report)|log it|"
+                        r"گزارش(?:ش)?(?: را| رو)? (?:کن|کنید|ثبت کن|بده)|ثبت(?:ش)?(?: کن| کنید)|گزارش مشکل)\s*[.!؟?]*\s*$", re.I)
 _STATUS = re.compile(r"(issue status|status of (my )?(issue|report)s?|my reports|وضعیت گزارش|گزارش(‌| )?های من|وضعیت مشکل)", re.I)
 _GREETING = re.compile(r"^\s*(hi|hello|hey|salam|slm|سلام|درود|وقت بخیر|صبح بخیر|عصر بخیر|thanks|thank you|مرسی|ممنون|تشکر)[\s!.،,؟?]*$", re.I)
 _HELP = re.compile(
@@ -56,7 +59,8 @@ _POLITE_CMD = re.compile(
 # Words that make an explain question about THE PLATFORM (not about structural engineering in general:
 # "what is structural drift?" stays a general-chat question).
 _PLATFORM_TOPIC = re.compile(
-    r"(export|download|zip\b|etabs|\bsafe\b|sap ?2000|\bdxf\b|\bpdf\b|excel|report|validation|approv|memory|billing|\bplans?\b|pricing|price|"
+    r"(export|download|zip\b|etabs|time ?history|pushover|nonlinear|p-?delta|spectrum|\bmodal\b|log ?in|sign ?in|sign ?up|google|traffic|what'?s new|"
+    r"تاریخچه ?زمانی|پوش ?اور|غیرخطی|طیف|مودال|ورود(?![یا-ی])|ثبت ?نام|گوگل|ترافیک|تازه|جدید|حریم|شرایط استفاده|\bsafe\b|sap ?2000|\bdxf\b|\bpdf\b|excel|report|validation|approv|memory|billing|\bplans?\b|pricing|price|"
     r"crypto|usdt|bitcoin|btc|upgrade|subscri|optimi[sz]|workspace|\bpage\b|\bproject|upload|\bassistants?\b|agents?\b|"
     r"capabilit|limitation|\b(?:can'?t|cannot|can) (?:it|you|saia|the (?:platform|app))\b|what can (?:it|you|saia)\b|what (?:it|you) can|saia|platform|"
     r"دانلود|خروجی|اعتبارسنجی|تایید|تأیید|حافظه|پرداخت|پلن|اشتراک|قیمت|کریپتو|رمزارز|ارتقا|بهینه|پروژه|صفحه|دستیار|عامل|آپلود|"
@@ -102,12 +106,15 @@ def classify(message: str) -> Intent:
         return Intent("bug_report", (m.group("rest") or "").strip())
     if _STATUS.search(n):
         return Intent("issue_status")
+    if _REPORT_IT.match(n):
+        return Intent("report_it")
     if _GREETING.match(n):
         return Intent("greeting")
     has_eng = bool(_ENGINEERING.search(n))
     if _BUG_WORDS.search(n) and len(n) < 400 and not _ENGINEERING_VERB.search(n):
         # a complaint about the product (not an engineering request that happens to contain "error")
-        return Intent("bug_report", raw)
+        # a problem the user describes: explain the likely cause and OFFER to file it (never file silently)
+        return Intent("diagnose", raw)
     if _HOWTO.match(n) and len(n) < 200:
         return Intent("platform_help")
     if is_platform_explain_question(n):
