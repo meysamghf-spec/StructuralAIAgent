@@ -326,3 +326,22 @@ def test_chat_aci_rc_beam_rejects_unauthorized_project(api_client: TestClient, m
     )
     assert response.status_code == 403
     get_settings.cache_clear()
+
+
+def test_chat_with_assistant_uses_summariser_after_a_run(api_client: TestClient) -> None:
+    token = _register(api_client)
+    project_id = _project(api_client, token)
+    spec = ("3-storey RC intermediate moment frame, 2x2 bays of 5 m, storey height 3.2 m, columns 40x40 cm, "
+            "beams 30x45 cm, f'c=30 MPa, fy=400 MPa, Standard 2800, high hazard, soil II")
+    first = api_client.post("/api/v1/chat", json={"message": spec, "project_id": project_id}, headers=_headers(token))
+    assert first.status_code in (200, 201)
+    conv = first.json()["conversation_id"]
+    second = api_client.post(
+        "/api/v1/chat",
+        json={"message": "summarize the load combinations", "conversation_id": conv, "assistant": "LOAD_ASSESSMENT_AGENT"},
+        headers=_headers(token),
+    )
+    assert second.status_code in (200, 201)
+    body = second.json()["assistant_message"]
+    assert "1.2D+1.6L" in body["content"]
+    assert body["metadata"]["assistant"] == "LOAD_ASSESSMENT_AGENT"

@@ -33,6 +33,7 @@ class ChatRequest(BaseModel):
     project_id: UUID | None = None
     attachments: list[UUID] = Field(default_factory=list)
     mode: ChatMode = ChatMode.AUTO
+    assistant: str | None = Field(default=None, max_length=64)
 
 
 class ChatResponse(BaseModel):

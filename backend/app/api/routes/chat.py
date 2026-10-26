@@ -57,6 +57,7 @@ def send_chat_message(
         attachment_file_ids=body.attachments,
         actor_id=actor_id,
         mode=body.mode.value,
+        assistant=body.assistant,
     )
 
     metadata = assistant_message.metadata or {}
@@ -113,6 +114,7 @@ def stream_chat_message(
                 attachment_file_ids=body.attachments,
                 actor_id=actor_id,
                 mode=body.mode.value,
+                assistant=body.assistant,
                 cancelled=cancelled,
             ):
                 yield encode_sse(event_type, payload)

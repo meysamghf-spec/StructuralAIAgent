@@ -78,6 +78,8 @@ _AGENT_WORKSPACE_LINKS: dict[EngineeringAgentType, str] = {
     EngineeringAgentType.STRUCTURAL_ENGINEERING_AGENT: "/workspace/agents",
 }
 
+from app.application import assistant_chat as _assistant_chat  # noqa: E402
+
 logger = logging.getLogger(__name__)
 
 
@@ -215,6 +217,7 @@ class ConversationService:
         attachment_file_ids: list[UUID] | None = None,
         actor_id: str,
         mode: str = "auto",
+        assistant: str | None = None,
         progress_sink: AgentRunProgressSink | None = None,
     ) -> tuple[ConversationMessage, ConversationMessage]:
         conversation = self._require_conversation(conversation_id, account)
@@ -296,6 +299,7 @@ class ConversationService:
             attachment_context=attachment_context_bundle,
             actor_id=actor_id,
             mode=mode,
+            assistant=assistant,
             progress_sink=progress_sink,
         )
 
@@ -333,6 +337,7 @@ class ConversationService:
         attachment_file_ids: list[UUID] | None = None,
         actor_id: str,
         mode: str = "auto",
+        assistant: str | None = None,
         cancelled: Event | None = None,
     ) -> Iterator[tuple[str, dict[str, Any]]]:
         events: Queue[tuple[str, dict[str, Any]] | None] = Queue()
@@ -353,6 +358,7 @@ class ConversationService:
                     attachment_file_ids=attachment_file_ids,
                     actor_id=actor_id,
                     mode=mode,
+                    assistant=assistant,
                     progress_sink=_QueueSink(),
                 )
             except Exception as exc:
@@ -427,8 +433,15 @@ class ConversationService:
         attachment_context: ChatAttachmentContextBundle | None,
         actor_id: str,
         mode: str = "auto",
+        assistant: str | None = None,
         progress_sink: AgentRunProgressSink | None = None,
     ) -> tuple[str, dict]:
+        agent_type = _assistant_chat.normalize_assistant(assistant)
+        if agent_type is not None:
+            reply = self._assistant_reply(conversation, account, agent_type, user_content, attachments)
+            if reply is not None:
+                reply[1]["selected_mode"] = mode or "auto"
+                return reply
         cad = self._maybe_run_autocad(conversation, account, user_content, attachments)
         if cad is not None:
             cad[1]["selected_mode"] = mode or "auto"
@@ -556,6 +569,34 @@ class ConversationService:
         return "\n".join(lines), {"mode": "rule_based", "intent": "structural_drawings",
                                   "structural_set": {"id": meta["id"], "sheets": meta["sheets"], "pdf": meta["pdf"],
                                                      "pdf_file_id": meta["pdf_file_id"], "notes": meta["notes"]}}
+
+    def _assistant_reply(self, conversation, account, agent_type: str, text: str, attachments):
+        """Answer from the selected assistant's summariser, or None to let the regular engines run."""
+        try:
+            history = self._repo.list_messages(conversation.id, limit=_MAX_HISTORY_MESSAGES)
+            prior = [m.content for m in reversed(history) if m.role == MessageRole.USER]
+            if _assistant_chat.wants_engine(text, has_attachments=bool(attachments), prior_user_texts=prior):
+                return None
+            payload = _assistant_chat.latest_payload_from_messages(self._repo.list_messages(conversation.id))
+            if payload is None and conversation.project_id is not None:
+                payload = self._project_frame_payload(account, conversation.project_id)
+            content, meta = _assistant_chat.assistant_reply(agent_type, text, payload)
+            if payload is not None and agent_type in ("ANALYSIS_AGENT", "LOAD_ASSESSMENT_AGENT", "SEISMIC_AGENT",
+                                                       "CONCRETE_DESIGN_AGENT", "VALIDATION_AGENT", "STRUCTURAL_MODELING_AGENT"):
+                pass  # summaries are text only; the full result card stays on the run that produced it
+            return content, meta
+        except Exception:  # noqa: BLE001 - never block the chat on a summariser problem
+            logger.exception("assistant summariser failed")
+            return None
+
+    def _project_frame_payload(self, account, project_id):
+        """Rebuild the newest frame3d payload of this project from its stored run inputs (deterministic)."""
+        from app.application.frame3d_chat_analysis import build_frame3d_payload, frame3d_spec, inputs_from_dict
+
+        for run in self.list_project_chat_runs(account, project_id):
+            if run.get("kind") == "frame3d_analysis" and isinstance(run.get("inputs"), dict):
+                return build_frame3d_payload(frame3d_spec(inputs_from_dict(run["inputs"])))
+        return None
 
     def _run_project_orchestration(
         self,
