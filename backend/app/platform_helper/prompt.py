@@ -17,7 +17,10 @@ def load_knowledge(path: str | None = None) -> str:
         return "You are a helpful assistant for a structural engineering platform."
 
 
-def build_system_prompt(*, knowledge_path: str | None = None, context: dict[str, str] | None = None, lang: str = "fa") -> str:
+def build_system_prompt(*, knowledge_path: str | None = None, context: dict[str, str] | None = None, lang: str = "fa",
+                        extra_knowledge: str = "") -> str:
+    """Hand-written rules + (optional) generated product facts + the live per-user session context."""
     ctx = "\n".join(f"- {k}: {v}" for k, v in (context or {}).items() if v)
     head = "Reply in Persian (فارسی)." if lang == "fa" else "Reply in English."
-    return f"{load_knowledge(knowledge_path)}\n\n## Current session\n{ctx or '- (no project selected)'}\n\n{head}"
+    extra = f"\n\n{extra_knowledge.strip()}" if extra_knowledge and extra_knowledge.strip() else ""
+    return f"{load_knowledge(knowledge_path)}{extra}\n\n## Current session (this user, live)\n{ctx or '- (no project selected)'}\n\n{head}"

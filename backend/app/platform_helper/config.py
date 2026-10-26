@@ -4,6 +4,9 @@ LLM_PROVIDER   auto | stub | none | <preset name> | custom      (default: auto)
 LLM_BASE_URL / LLM_API_KEY / LLM_MODEL   primary OpenAI-compatible endpoint (custom, or override of a preset)
 LLM_FALLBACKS  comma-separated preset names tried after the primary, e.g. "groq,openrouter,pollinations"
                each preset reads LLM_<NAME>_API_KEY and optionally LLM_<NAME>_MODEL / LLM_<NAME>_BASE_URL
+PLATFORM_HELP_LLM_PROVIDER   optional: pin one preset (e.g. "gemini", "groq", "openai") as the FIRST provider tried for the assistant,
+               ahead of the auto order; needs that preset's own key (LLM_<NAME>_API_KEY). Unset = behaviour unchanged.
+PLATFORM_HELP_LLM_MODEL      optional model override for the pinned provider
 LLM_TIMEOUT_SECONDS, LLM_MAX_TOKENS, LLM_TEMPERATURE
 PLATFORM_ISSUE_WEBHOOK_URL / PLATFORM_ISSUE_WEBHOOK_SECRET / PLATFORM_ISSUE_WEBHOOK_RETRIES   optional, off by default
 PLATFORM_ISSUE_ADMIN_TOKEN   bearer token for machine access to the issue admin API (Grok Bot)
@@ -106,6 +109,13 @@ def load_settings(env: Mapping[str, str] | None = None) -> HelperSettings:
             p = _provider_from_preset(name, env, **kw)
             if p:
                 providers.append(p)
+
+    pinned = (env.get("PLATFORM_HELP_LLM_PROVIDER") or "").strip().lower()
+    if pinned and mode not in ("stub", "none", "off", "disabled"):
+        # A more reliable provider for platform help, without changing defaults when the variable is unset.
+        p = _provider_from_preset(pinned, env, model_override=(env.get("PLATFORM_HELP_LLM_MODEL") or "").strip(), **kw)
+        if p:
+            providers = [p] + [x for x in providers if x.name != p.name]
 
     return HelperSettings(
         providers=providers,

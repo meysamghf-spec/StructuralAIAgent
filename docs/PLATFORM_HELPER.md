@@ -30,6 +30,23 @@ Engineering numbers are **never** produced by the LLM — rule-based engines run
 
 **Recommendation:** get one free key (Gemini or Groq, plus OpenRouter) and keep Pollinations as the key-less safety net. Pollinations is anonymous, has no SLA, and prompts are sent to a third party — do not rely on it for confidential data.
 
+### Generated platform knowledge (no hand-maintained page/plan/export lists)
+
+The product facts the assistant answers from are **generated at runtime** by `backend/app/application/platform_knowledge.py` and injected next to the hand-written rules in `knowledge/structuralai.md` (the `HelperService(knowledge_provider=…, faq_provider=…)` hooks wired in `platform_helper_factory.knowledge_hooks()`; the `platform_helper` package itself stays product-agnostic):
+
+- pages (checked against `frontend/lib/nav.ts` by a test), plans/limits/durations (`billing/plans.json`), crypto payment (`billing/crypto.py`), export kinds and plan gates (`chat_actions`), the agent capability catalog, and Validation / Approval / Memory (from their enums);
+- the **live per-user context** (plan + limits, project selected, model exists) is added to the system prompt every turn;
+- when the LLM is unreachable, platform questions get a **static FAQ built from the same knowledge** (`provider: "faq"`) instead of the generic stub;
+- "how do I / چطور / چیست / explain" questions are answered (with an offer to run the action) and never executed; direct commands still run as before;
+- `tests/test_platform_knowledge.py` fails if a page, plan or export kind is missing;
+- optional: `PLATFORM_HELP_LLM_PROVIDER` (+ `PLATFORM_HELP_LLM_MODEL`) pins a stronger provider first for the helper; it is ignored when that provider has no key, defaults unchanged.
+
+**Maintained sources the assistant is told about (edit these when the product changes):**
+- `platform_knowledge.py`: `CAPABILITY_MATRIX` (honest yes / in progress / no / partial / unconfirmed per capability: update a row's status when a feature ships), `EXAMPLES` (one example chat command per capability), `LOGIN_OPTIONS`, `PUBLIC_PAGES`, `RELATED_PRODUCTS`, `DIAGNOSE` (error-code table: cause + next step).
+- `platform_whats_new.py`: `WHATS_NEW`, newest first, one entry per user-visible feature that is **merged and live** (never list work in progress). Tests fail if a ref is unknown or an entry is missing from the prompt.
+- **Per-question sections:** `build_platform_knowledge(fa, message)` always sends the core (identity, matrix, limits, what's new) plus only the sections the question is about (billing, exports, login, diagnose ...), keeping prompts compact.
+- **Error diagnosis (honest):** an error the user describes is classified `diagnose`: the assistant explains the probable cause from `DIAGNOSE` and the error text and *offers* to file an issue (`report a problem: ...` or `report it`). Nothing is filed silently, and the assistant never claims it can change code or fix the site; filed issues follow the safety design below (records only; fixes need a human admin).
+
 ### Safety design
 * Issues are **records only**. A proposed fix is a stored *draft* (diff or PR text) and is never applied.
 * `approve-fix` needs a signed-in **human** admin (`PLATFORM_ADMIN_ACCOUNTS`); the machine token gets 403. Even approval does not merge or deploy — a person does that in GitHub.
