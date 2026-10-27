@@ -85,13 +85,45 @@ export function validateLoginInput(email: string, password: string, lang: AuthLa
   return errors;
 }
 
+/** Google sign-in failure codes (from /login#google_error=<code>) -> user-facing text. */
+export const GOOGLE_ERROR_COPY = {
+  en: {
+    cancelled: "Google sign-in was cancelled.",
+    state: "The Google sign-in expired or was opened in a different browser. Please try again.",
+    token_exchange: "Google did not accept the sign-in. Please try again.",
+    unreachable: "The server could not reach Google right now. Please try again later or use email and password.",
+    token_invalid: "Google sign-in could not be verified. Please try again.",
+    email_unverified: "Your Google email address is not verified, so it can't be used to sign in.",
+    account_disabled: "This account is disabled.",
+    not_configured: "Sign in with Google is not available right now.",
+    failed: "Google sign-in failed. Please try again or use email and password.",
+  },
+  fa: {
+    cancelled: "ورود با گوگل لغو شد.",
+    state: "ورود با گوگل منقضی شد یا در مرورگر دیگری باز شده بود. دوباره تلاش کنید.",
+    token_exchange: "گوگل ورود را نپذیرفت. دوباره تلاش کنید.",
+    unreachable: "سرور اکنون به گوگل دسترسی ندارد. بعداً تلاش کنید یا با ایمیل و رمز عبور وارد شوید.",
+    token_invalid: "ورود با گوگل تأیید نشد. دوباره تلاش کنید.",
+    email_unverified: "ایمیل گوگل شما تأیید نشده است و برای ورود قابل استفاده نیست.",
+    account_disabled: "این حساب غیرفعال است.",
+    not_configured: "ورود با گوگل اکنون در دسترس نیست.",
+    failed: "ورود با گوگل ناموفق بود. دوباره تلاش کنید یا با ایمیل و رمز عبور وارد شوید.",
+  },
+} as const;
+
+export function googleErrorMessage(code: string | null | undefined, lang: "en" | "fa"): string {
+  const table = GOOGLE_ERROR_COPY[lang] as Record<string, string>;
+  return (code && table[code]) || table.failed;
+}
+
 export const LOGIN_COPY = {
   en: {
     remember: "Remember me",
     rememberHint: "Stay signed in on this device for 30 days.",
     createAccount: "Create account",
-    googleSoon: "Sign in with Google isn't available yet.",
+    googleIpHost: "Sign in with Google only works at https://structuralai.ir. Open that address to use it.",
     google: "Sign in with Google",
+    or: "or",
     email: "Email",
     password: "Password",
     submit: "Sign in",
@@ -103,8 +135,9 @@ export const LOGIN_COPY = {
     remember: "مرا به خاطر بسپار",
     rememberHint: "تا ۳۰ روز در این دستگاه وارد بمانید.",
     createAccount: "ساخت حساب",
-    googleSoon: "ورود با گوگل هنوز فعال نشده است.",
+    googleIpHost: "ورود با گوگل فقط در آدرس https://structuralai.ir کار می‌کند. همان آدرس را باز کنید.",
     google: "ورود با گوگل",
+    or: "یا",
     email: "ایمیل",
     password: "رمز عبور",
     submit: "ورود",

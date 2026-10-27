@@ -106,8 +106,8 @@ class AuthService:
         hours = self._settings.auth_remember_expiry_hours if remember else None
         return user, self._issue_token(user, expires_in_hours=hours), remember
 
-    def login_with_google(self, *, email: str, display_name: str | None) -> tuple[User, str]:
-        """Link a verified Google email to an existing user, or create a new one."""
+    def login_with_google(self, *, email: str, display_name: str | None, remember: bool = False) -> tuple[User, str]:
+        """Link a verified Google email to an existing user, or create a new one (caller has checked email_verified)."""
         import secrets
 
         normalized_email = email.strip().lower()
@@ -124,7 +124,8 @@ class AuthService:
             )
         elif not user.is_active:
             raise AccountDisabledError()
-        return user, self._issue_token(user)
+        hours = self._settings.auth_remember_expiry_hours if remember else None
+        return user, self._issue_token(user, expires_in_hours=hours)
 
     def authenticate_bearer(self, token: str) -> AuthenticatedAccount:
         secret = self._jwt_secret()

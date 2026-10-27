@@ -3,9 +3,10 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useUiLang } from "@/hooks/useUiLang";
 import { AUTH_NAV_LINKS } from "@/lib/auth-forms";
-import { completeGoogleSignIn, fetchGoogleSignInEnabled, googleSignInStartUrl } from "@/lib/auth-api";
+import { completeGoogleSignIn, fetchGoogleSignInStatus, googleSignInStartUrl, type GoogleSignInStatus } from "@/lib/auth-api";
 import {
   LOGIN_COPY,
+  googleErrorMessage,
   classifyLoginError,
   loginErrorMessage,
   validateLoginInput,
@@ -33,27 +34,28 @@ export default function LoginClient() {
   const [lockedUntil, setLockedUntil] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
-  const [googleEnabled, setGoogleEnabled] = useState<boolean | null>(null);
+  const [googleEnabled, setGoogleEnabled] = useState<GoogleSignInStatus | null>(null);
 
   useEffect(() => {
-    void fetchGoogleSignInEnabled().then(setGoogleEnabled);
+    void fetchGoogleSignInStatus().then(setGoogleEnabled);
     if (typeof window === "undefined" || !window.location.hash) return;
     const params = new URLSearchParams(window.location.hash.slice(1));
-    const googleToken = params.get("google_token");
+    const googleOk = params.get("google") === "ok";
     const googleError = params.get("google_error");
-    if (!googleToken && !googleError) return;
+    if (!googleOk && !googleError) return;
     window.history.replaceState(null, "", window.location.pathname + window.location.search);
     if (googleError) {
-      setPlainError(googleError);
+      setPlainError(googleErrorMessage(googleError, lang));
       return;
     }
     setBusy(true);
     const next = params.get("next") || "/";
-    void completeGoogleSignIn(googleToken as string)
+    void completeGoogleSignIn(params.get("r") === "1")
       .then(() => refresh())
       .then(() => router.replace(next.startsWith("/") && !next.startsWith("//") ? next : "/"))
-      .catch((err) => setPlainError(err instanceof Error ? err.message : "Google sign-in failed"))
+      .catch(() => setPlainError(googleErrorMessage("failed", lang)))
       .finally(() => setBusy(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refresh, router]);
 
   useEffect(() => {
@@ -201,12 +203,15 @@ export default function LoginClient() {
         </button>
       </form>
 
-      {googleEnabled === true ? (
-        <a className="button secondary google-signin-button" href={googleSignInStartUrl(nextPath)}>
+      {googleEnabled?.enabled ? (
+        <div className="google-divider" aria-hidden="true"><span>{copy.or}</span></div>
+      ) : null}
+      {googleEnabled?.enabled ? (
+        <a className="button secondary google-signin-button" href={googleSignInStartUrl(nextPath, remember)} data-testid="google-signin">
           <span aria-hidden="true" className="google-signin-g">G</span> {copy.google}
         </a>
-      ) : googleEnabled === false ? (
-        <p className="muted auth-switch google-note">{copy.googleSoon}</p>
+      ) : googleEnabled?.reason === "ip_host" ? (
+        <p className="muted auth-switch google-note">{copy.googleIpHost}</p>
       ) : null}
 
       <p className="muted auth-switch">
