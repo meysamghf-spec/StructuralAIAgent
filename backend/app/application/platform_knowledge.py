@@ -497,16 +497,47 @@ def section_whats_new(fa: bool, limit: int = 6) -> str:
 def section_diagnose(fa: bool) -> str:
     rows = [f"- [{i}] {f if fa else e} {('اقدام' if fa else 'Do')}: {df if fa else de}" for i, _rx, e, f, de, df in DIAGNOSE]
     if fa:
-        head = ("عیب‌یابی خطا (صادقانه): وقتی کاربر خطایی گزارش می‌کند، با کمک این فهرست و متن خطا محتمل‌ترین علت را توضیح بده و قدم بعدی را بگو. "
-                "قطعی ادعا نکن؛ بگو «احتمالاً». دستیار نمی‌تواند کد را تغییر دهد، سایت را اصلاح یا سرور را راه‌اندازی کند و نباید چنین ادعایی بکند؛ "
-                "فقط می‌تواند علت را توضیح دهد و ثبت گزارش مشکل را پیشنهاد دهد (مدیر پلتفرم بررسی می‌کند و هر اصلاح فقط پس از تأیید مدیر اعمال می‌شود). "
-                "پیشنهاد: «برای ثبت گزارش بنویسید: «گزارش مشکل: <شرح>» یا فقط «گزارش کن»».")
+        head = ("عیب‌یابی خطا (صادقانه): وقتی کاربر خطایی گزارش می‌کند، با کمک این فهرست و متن خطا محتمل‌ترین علت و راه‌حل را همین‌جا توضیح بده. "
+                "قطعی ادعا نکن؛ بگو «احتمالاً». خطاهای واقعی پلتفرم را سامانه خودش خودکار گزارش می‌کند و خودش جملهٔ «این خطا خودکار گزارش شد» را "
+                "در پایان پاسخ اضافه می‌کند؛ از کاربر نخواه گزارش کند و خودت نگو که گزارش شد. محدودیت‌های عادی پلن گزارش نمی‌شوند. "
+                "دستیار نمی‌تواند کد را تغییر دهد، سایت را اصلاح یا سرور را راه‌اندازی کند و نباید چنین ادعایی بکند؛ "
+                "مدیر پلتفرم گزارش را بررسی می‌کند و هر اصلاح فقط پس از تأیید مدیر اعمال می‌شود.")
     else:
-        head = ("Error diagnosis (honest): when the user reports an error, use this list and the error text to explain the most likely cause and the next step. "
-                "Do not be certain; say \"probably\". The assistant CANNOT change code, fix the site or touch servers and must never claim it can; it can only "
-                "explain the cause and offer to file a platform issue (a platform admin reviews it and any fix is applied only after admin approval). "
-                "Offer: type \"report a problem: <what happened>\" or just \"report it\".")
+        head = ("Error diagnosis (honest): when the user reports an error, use this list and the error text to explain the most likely cause and the fix right here. "
+                "Do not be certain; say \"probably\". The platform itself files real errors automatically and appends the line \"This error was reported "
+                "automatically\" to your reply; do not ask the user to report it and do not say it was reported yourself. Normal plan limits are not filed. "
+                "The assistant CANNOT change code, fix the site or touch servers and must never claim it can; a platform admin reviews filed issues "
+                "and any fix is applied only after admin approval.")
     return head + "\n" + "\n".join(rows)
+
+
+# Expected behaviour of the plan system: explained, but not filed as a platform bug unless the user says it is unexpected.
+EXPECTED_LIMIT_CODES = frozenset({"QUOTA_EXCEEDED", "RATE_LIMITED", "EXPORT_LOCKED", "PAYMENT_PENDING"})
+_UNEXPECTED_CUE = re.compile(
+    r"even though|although|but i (?:have|already|paid|am)|i (?:already )?paid|already upgraded|not used|never used|should (?:work|be allowed)|"
+    r"با اینکه|با وجود|پرداخت کرده|پرداخت کردم|ارتقا دادم|ارتقا داده|استفاده نکرده|نباید", re.I)
+_OCCURRED = re.compile(
+    r"\bi (?:get|got|see|saw|keep|am getting|have)\b|\b(?:gives?|shows?|says?|returns?|throws?|appears?|happened|happens|keeps?)\b|"
+    r"not working|doesn'?t work|isn'?t working|broken|crash|failed|می ?دهد|می ?گیرم|گرفتم|می ?بینم|نشان می|میده|میگیرم|داد\b|رخ داد|کار نمی|نمیشه|نمی ?شود|خراب", re.I)
+_SERVER_ERR = re.compile(r"\b5\d\d\b|internal server|server error|traceback|exception|crash|خطای سرور|سرور", re.I)
+
+
+def diagnose_decision(message: str):
+    """Should this error report be auto-filed? Real platform/engine errors yes; expected plan limits and pure
+    "what does X mean" questions no."""
+    from app.platform_helper.intents import is_explain_question
+    from app.platform_helper.service import DiagnoseDecision
+
+    t = _norm(message)
+    rows = diagnose_matches(message)
+    codes = tuple(r[0] for r in rows)
+    severity = "high" if _SERVER_ERR.search(t) or codes == ("SLOW_TIMEOUT",) and re.search(r"stuck|گیر|hang", t) else "medium"
+    category = "performance" if codes == ("SLOW_TIMEOUT",) else "bug"
+    if is_explain_question(message) and not _OCCURRED.search(t):
+        return DiagnoseDecision(codes, False, "explain_only", severity, category)
+    if codes and all(c in EXPECTED_LIMIT_CODES for c in codes) and not _UNEXPECTED_CUE.search(t):
+        return DiagnoseDecision(codes, False, "expected_limit", severity, category)
+    return DiagnoseDecision(codes, True, "error", severity, category)
 
 
 def diagnose_matches(message: str) -> list[tuple[str, str, str, str, str, str]]:
@@ -611,13 +642,13 @@ _OFFER_FA = {"outputs": "اگر می‌خواهید همین الان اجرا �
              "approval": "برای دیدن صف: «تأییدهای در انتظار را نشان بده».",
              "billing": "برای ارتقا به صفحه «ارتقا» بروید: /workspace/upgrades.",
              "validation": "برای دیدن گزارش پروژه به صفحه «صحت‌سنجی» بروید: /workspace/validation.",
-             "diagnose": "برای ثبت گزارش بنویسید: «گزارش مشکل: <شرح خطا>» یا فقط «گزارش کن» تا همین خطا ثبت شود."}
+             }
 _OFFER_EN = {"outputs": "To run it now, type: \"export ETABS\" or \"download all outputs\".",
              "optimization": "To run it here, type: \"{ex}\".",
              "approval": "To see the queue: \"show pending approvals\".",
              "billing": "To upgrade, open the Upgrades page: /workspace/upgrades.",
              "validation": "To see your project's report, open the Validation page: /workspace/validation.",
-             "diagnose": "To file it, type \"report a problem: <what happened>\" or just \"report it\" to file this error."}
+             }
 
 
 def match_topics(message: str) -> list[str]:
@@ -702,8 +733,8 @@ def faq_topic_text(topic: str, fa: bool, message: str = "", ctx: dict[str, str] 
             parts = [("از این پیام نمی‌توانم علت را قطعی تشخیص دهم؛ علت‌های رایج:" if fa else
                       "I cannot pin the cause from this message; common causes:") + "\n" + "\n".join(
                 f"- {f if fa else e}" for _i, _rx, e, f, _de, _df in DIAGNOSE)]
-        parts.append("من نمی‌توانم کد یا سایت را تغییر دهم یا اصلاح کنم؛ فقط می‌توانم علت را توضیح دهم و گزارش مشکل ثبت کنم تا مدیر پلتفرم بررسی کند."
-                     if fa else "I cannot change code or fix the site; I can only explain the cause and file an issue for the platform admin to review.")
+        parts.append("من نمی‌توانم کد یا سایت را تغییر دهم یا اصلاح کنم؛ فقط می‌توانم علت را توضیح دهم. خطاهای واقعی پلتفرم خودکار برای مدیر پلتفرم گزارش می‌شوند."
+                     if fa else "I cannot change code or fix the site; I can only explain the cause. Real platform errors are reported to the platform admin automatically.")
     else:
         parts = [section_engines(fa), section_pages(fa)]
     gate = _gate_note(topic, ctx, fa)

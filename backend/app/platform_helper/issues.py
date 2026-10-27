@@ -38,6 +38,7 @@ _REDACTIONS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"(?i)bearer\s+[a-z0-9._\-]{12,}"), "Bearer [REDACTED]"),
     (re.compile(r"\b(?:sk|gsk|ghp|github_pat|xox[bp]|AIza)[A-Za-z0-9_\-]{16,}"), "[REDACTED_KEY]"),
     (re.compile(r"(?i)(api[_-]?key|secret|token|password|passwd)\s*[:=]\s*\S+"), r"\1=[REDACTED]"),
+    (re.compile(r"(?i)(توکن|رمز(?: عبور)?|کلید(?: api)?|پسورد)\s*[:=]\s*\S+"), r"\1=[REDACTED]"),
     (re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+"), "[email]"),
     (re.compile(r"\b[A-Fa-f0-9]{32,}\b"), "[hex]"),
 ]

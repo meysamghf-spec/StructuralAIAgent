@@ -17,9 +17,9 @@ WHATS_NEW: list[tuple[str, str, str, str, tuple[str, ...]]] = [
      ("p_delta", "response_spectrum_completion")),
     ("2026-10", "assistant-knows-platform",
      "The assistant now knows the whole platform (pages, plans, payment, exports, limits), explains how-to questions instead of running them, "
-     "and can diagnose errors you paste and offer to file a platform issue.",
+     "and diagnoses errors you hit: it explains the cause and reports real platform errors to the platform admin automatically (normal plan limits are only explained).",
      "دستیار اکنون کل پلتفرم را می‌شناسد (صفحه‌ها، پلن‌ها، پرداخت، خروجی‌ها، محدودیت‌ها)، پرسش‌های «چطور» را توضیح می‌دهد و اجرا نمی‌کند، "
-     "و خطاهای شما را بررسی و در صورت تمایل گزارش مشکل ثبت می‌کند.",
+     "و خطاهای شما را بررسی می‌کند: علت را توضیح می‌دهد و خطاهای واقعی پلتفرم را خودکار برای مدیر گزارش می‌کند (محدودیت‌های عادی پلن فقط توضیح داده می‌شوند).",
      ("report_problem", "APPROVAL_409")),
     ("2026-10", "chat-optimization-checklist",
      "Optimization in chat shows a step-by-step checklist when inputs are missing, and Iranian projects default to SI units.",

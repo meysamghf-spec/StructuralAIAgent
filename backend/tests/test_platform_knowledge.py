@@ -337,17 +337,29 @@ def test_chat_api_llm_reply_carries_user_context(api_client: TestClient) -> None
     assert "plan: Free" in seen["system"] and "project_selected: none" in seen["system"] and "Generated platform facts" in seen["system"]
 
 
-def test_api_error_report_is_diagnosed_then_filed_only_on_report_it(api_client: TestClient) -> None:
+def test_api_error_report_is_explained_and_auto_filed(api_client: TestClient) -> None:
     _down_service()
     h = _register(api_client)
     r1 = api_client.post("/api/v1/chat", json={"message": "Approve button is not working, it shows 409"}, headers=h)
     assert r1.status_code == 201, r1.text
-    md = r1.json()["assistant_message"]["metadata"]
-    text = r1.json()["assistant_message"]["content"]
-    assert md["intent"] == "diagnose" and not md.get("issue_id")
-    assert "cannot change code" in text and "report a problem:" in text
-    cid = r1.json()["assistant_message"]["conversation_id"]
+    msg = r1.json()["assistant_message"]
+    md, text = msg["metadata"], msg["content"]
+    assert md["intent"] == "diagnose" and md["issue_id"] and md["auto_reported"] is True
+    assert "cannot change code" in text and "reported automatically" in text  # cause explained, then the honest notice
+    mine = api_client.get("/api/v1/platform-issues/mine", headers=h).json()["items"]
+    assert [i["id"] for i in mine] == [md["issue_id"]] and mine[0]["title"].startswith("[APPROVAL_409]")
+    cid = msg["conversation_id"]
     r2 = api_client.post("/api/v1/chat", json={"message": "report it", "conversation_id": cid}, headers=h)
     assert r2.status_code == 201, r2.text
-    assert r2.json()["assistant_message"]["metadata"]["intent"] == "bug_report"
-    assert r2.json()["assistant_message"]["metadata"]["issue_id"]
+    assert "already reported automatically" in r2.json()["assistant_message"]["content"]
+    assert len(api_client.get("/api/v1/platform-issues/mine", headers=h).json()["items"]) == 1
+
+
+def test_api_normal_plan_limit_is_not_filed(api_client: TestClient) -> None:
+    _down_service()
+    h = _register(api_client)
+    r = api_client.post("/api/v1/chat", json={"message": "I get QUOTA_EXCEEDED when I run another analysis"}, headers=h)
+    assert r.status_code == 201, r.text
+    md = r.json()["assistant_message"]["metadata"]
+    assert md["intent"] == "diagnose" and md["auto_report"] == "expected_limit" and not md.get("issue_id")
+    assert api_client.get("/api/v1/platform-issues/mine", headers=h).json()["items"] == []

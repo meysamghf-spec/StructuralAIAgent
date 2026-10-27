@@ -145,9 +145,11 @@ def test_diagnose_table_is_complete_and_honest() -> None:
             assert f"[{c}]" in block
 
 
-def test_error_report_is_diagnosed_not_filed_and_offers_a_report() -> None:
+def test_error_report_intents() -> None:
     assert classify("Approve button is not working").name == "diagnose"
     assert classify("اکسپورت ETABS خطا می‌دهد").name == "diagnose"
+    assert classify("I get QUOTA_EXCEEDED").name == "diagnose"
+    assert classify("the analysis returns 502 bad gateway").name == "diagnose"
     assert classify("گزارش مشکل: دکمه تایید کار نمی‌کند").name == "bug_report"
     assert classify("report it").name == "report_it"
     assert classify("گزارش کن").name == "report_it"
@@ -159,22 +161,186 @@ def test_diagnose_faq_never_claims_to_change_code(fa: bool) -> None:
     ans = pk.answer_faq(msg, fa=fa, ctx=None, allow_overview=False)
     assert ans and ("409" in ans or "۴۰۹" in ans)
     assert ("نمی‌توانم کد یا سایت را تغییر دهم" in ans) if fa else ("cannot change code or fix the site" in ans)
-    assert ("گزارش مشکل:" in ans) if fa else ("report a problem:" in ans)
+    assert ("خودکار برای مدیر پلتفرم گزارش می‌شوند" in ans) if fa else ("reported to the platform admin automatically" in ans)
     assert not re.search(r"(i (?:fixed|have fixed|will fix|changed)|اصلاح کردم|درست کردم)", ans, re.I)
 
 
-def _svc() -> HelperService:
-    return HelperService(load_settings({"LLM_PROVIDER": "stub"}), **knowledge_hooks())
+def _svc(env: dict | None = None, clock=None, notifier=None) -> HelperService:
+    return HelperService(load_settings({"LLM_PROVIDER": "stub", **(env or {})}), notifier=notifier, clock=clock, **knowledge_hooks())
 
 
-def test_service_diagnoses_then_files_only_after_report_it() -> None:
+def _issues(svc: HelperService) -> list:
+    return svc.store.list(limit=100)
+
+
+class _Clock:
+    def __init__(self) -> None:
+        self.t = 1_000_000.0
+
+    def __call__(self) -> float:
+        return self.t
+
+
+def test_real_error_is_explained_and_auto_filed_with_context(fa: bool) -> None:
     svc = _svc()
-    r = svc.handle("Approve button is not working", account_id="a1")
-    assert r and r.intent == "diagnose" and not r.issue_id
-    assert "cannot change code" in r.text
-    # no issue store wired in this unit test: "report it" with no prior error asks for a description
-    r2 = svc.handle("report it", account_id="a1")
-    assert r2 and r2.intent == "report_it" and not r2.issue_id
+    msg = "دکمه تایید خطای 409 می‌دهد، توکن=abcdef1234567890abcdef" if fa else "Approve button gives 409 conflict, token=abcdef1234567890abcdef"
+    r = svc.handle(msg, account_id="acc1", project_id="p1", conversation_id="c1", page="approvals")
+    assert r and r.intent == "diagnose" and r.issue_id
+    assert ("این خطا خودکار گزارش شد" in r.text) if fa else ("reported automatically" in r.text)
+    assert r.metadata["auto_report"] == "filed" and r.metadata["auto_reported"] and "APPROVAL_409" in r.metadata["error_codes"]
+    assert ("cannot change code" in r.text) or ("نمی‌توانم کد یا سایت را تغییر دهم" in r.text)  # explained first
+    (iss,) = _issues(svc)
+    assert iss.source == "auto_detected" and iss.title.startswith("[APPROVAL_409]")
+    assert iss.page == "approvals" and iss.project_id == "p1" and iss.conversation_id == "c1" and iss.account_id == "acc1"
+    assert "abcdef1234567890abcdef" not in (iss.user_message + iss.error_text + iss.summary)  # redacted
+    assert iss.locale == ("fa" if fa else "en")
+    assert not re.search(r"(i (?:fixed|have fixed|changed)|اصلاح کردم|درست کردم)", r.text, re.I)
+
+
+def test_notice_is_streamed_to_the_user() -> None:
+    tokens: list[str] = []
+    r = _svc().handle("Approve button gives 409 conflict", account_id="a", on_token=tokens.append)
+    assert r and "reported automatically" in "".join(tokens) and r.text.endswith(tokens[-1])
+
+
+def test_identical_report_inside_window_is_deduplicated_per_user() -> None:
+    clock = _Clock()
+    svc = _svc(clock=clock)
+    r1 = svc.handle("Approve button gives 409 conflict", account_id="u1")
+    r2 = svc.handle("approve button gives 409 conflict", account_id="u1")  # same error again
+    assert r2.metadata["auto_report"] == "duplicate" and r2.issue_id == r1.issue_id
+    assert "already reported automatically" in r2.text and len(_issues(svc)) == 1 and _issues(svc)[0].occurrences == 1
+    # another user hitting the same error bumps the open issue's counter instead of creating a second one
+    r3 = svc.handle("Approve button gives 409 conflict", account_id="u2")
+    assert r3.metadata["auto_report"] == "filed" and len(_issues(svc)) == 1 and _issues(svc)[0].occurrences == 2
+    # after the window the same user can report again (counter bumps)
+    clock.t += 601
+    r4 = svc.handle("Approve button gives 409 conflict", account_id="u1")
+    assert r4.metadata["auto_report"] == "filed" and _issues(svc)[0].occurrences == 3
+
+
+def test_per_user_rate_limit_is_honest() -> None:
+    clock = _Clock()
+    svc = _svc({"PLATFORM_ISSUE_AUTO_MAX_PER_HOUR": "2"}, clock=clock)
+    outs = [svc.handle(f"the {w} page is not working", account_id="u1").metadata["auto_report"] for w in ("alpha", "beta", "gamma")]
+    assert outs == ["filed", "filed", "rate_limited"]
+    limited = svc.handle("the delta page is not working", account_id="u1")
+    assert "reported automatically" not in limited.text and "خودکار گزارش شد" not in limited.text  # no false claim
+    assert svc.handle("the alpha page is not working", account_id="u2").metadata["auto_report"] == "filed"  # other users unaffected
+    clock.t += 3601
+    assert svc.handle("the epsilon page is not working", account_id="u1").metadata["auto_report"] == "filed"
+    assert len(_issues(svc)) == 3  # u2's "alpha" joined u1's open issue (occurrences) instead of duplicating it
+
+
+@pytest.mark.parametrize("msg", [
+    "I get QUOTA_EXCEEDED when I run another analysis",
+    "I get error 402 on the free plan",
+    "خطای QUOTA_EXCEEDED می‌گیرم",
+    "RATE_LIMITED too many sign-in attempts",
+])
+def test_normal_plan_limits_are_explained_not_filed(msg: str) -> None:
+    svc = _svc()
+    r = svc.handle(msg, account_id="u1")
+    assert r and r.intent == "diagnose" and r.metadata["auto_report"] == "expected_limit" and not r.issue_id
+    assert not _issues(svc)
+    assert ("normal plan limit" in r.text) or ("محدودیت عادی پلن" in r.text)
+    assert "reported automatically" not in r.text and "خودکار گزارش شد" not in r.text
+    # the user can still file it explicitly
+    r2 = svc.handle("report it", [("user", msg), ("assistant", r.text)], account_id="u1")
+    assert r2.issue_id and len(_issues(svc)) == 1
+
+
+def test_quota_message_that_the_user_says_is_unexpected_is_filed() -> None:
+    svc = _svc()
+    r = svc.handle("I get QUOTA_EXCEEDED even though I already paid for Pro", account_id="u1")
+    assert r.metadata["auto_report"] == "filed" and len(_issues(svc)) == 1
+
+
+@pytest.mark.parametrize("msg,code", [
+    ("I get REQUIRES_ANALYSIS when I export", "REQUIRES_ANALYSIS"),
+    ("UNSUPPORTED_CODE error on my project", "UNSUPPORTED_CODE"),
+    ("analysis returns 502 bad gateway", ""),
+    ("the analysis timed out after 5 minutes", "SLOW_TIMEOUT"),
+    ("Approve button is not working", ""),
+    ("اکسپورت ETABS خطا می‌دهد", ""),
+])
+def test_other_real_errors_are_filed(msg: str, code: str) -> None:
+    svc = _svc()
+    r = svc.handle(msg, account_id="u1")
+    assert r.metadata["auto_report"] == "filed" and r.issue_id, msg
+    if code:
+        assert code in r.metadata["error_codes"]
+    assert _issues(svc)[0].severity in ("medium", "high")
+
+
+def test_5xx_is_high_severity_and_timeout_is_performance() -> None:
+    svc = _svc()
+    svc.handle("analysis returns 502 bad gateway", account_id="u1")
+    svc.handle("the analysis timed out after 5 minutes", account_id="u1")
+    by = {i.title.split("]")[0]: i for i in _issues(svc)}
+    assert any(i.severity == "high" for i in _issues(svc)) and any(i.category == "performance" for i in by.values())
+
+
+@pytest.mark.parametrize("msg", ["What does UNSUPPORTED_CODE mean?", "REQUIRES_ANALYSIS چیست؟", "what is the 409 conflict error?"])
+def test_pure_what_does_it_mean_questions_are_not_filed(msg: str) -> None:
+    svc = _svc()
+    r = svc.handle(msg, account_id="u1")
+    assert r and not r.issue_id and not _issues(svc)
+
+
+def test_auto_report_can_be_switched_off_and_manual_still_works() -> None:
+    svc = _svc({"PLATFORM_ISSUE_AUTO_REPORT": "0"})
+    r = svc.handle("Approve button is not working", account_id="u1")
+    assert r.metadata["auto_report"] == "disabled" and not _issues(svc) and "report it" in r.text
+    assert svc.handle("report it", [("user", "Approve button is not working"), ("assistant", r.text)], account_id="u1").issue_id
+
+
+def test_report_it_after_an_auto_report_says_already_reported() -> None:
+    svc = _svc()
+    r = svc.handle("Approve button is not working", account_id="u1")
+    r2 = svc.handle("report it", [("user", "Approve button is not working"), ("assistant", r.text)], account_id="u1")
+    assert "already reported automatically" in r2.text and len(_issues(svc)) == 1 and _issues(svc)[0].occurrences == 1
+
+
+def test_explicit_prefix_still_files_directly() -> None:
+    svc = _svc()
+    r = svc.handle("report a problem: the chart is blank", account_id="u1")
+    assert r.intent == "bug_report" and r.issue_id and _issues(svc)[0].source == "user_report"
+
+
+def test_auto_filed_issue_is_sent_through_the_signed_webhook_only_when_configured() -> None:
+    import json as _json
+
+    from app.platform_helper.issues import IssueNotifier, verify_signature
+
+    sent: list[httpx.Request] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        sent.append(req)
+        return httpx.Response(200)
+
+    hook = IssueNotifier("https://hook.test/in", "s3cret", 1, transport=httpx.MockTransport(handler), background=False)
+    svc = _svc(notifier=hook)
+    svc.handle("Approve button gives 409 conflict", account_id="u1", page="approvals")
+    assert len(sent) == 1
+    body = _json.loads(sent[0].content)
+    assert body["schema_version"] == 1 and body["event"] == "platform_issue.created"
+    assert body["issue"]["source"] == "auto_detected" and "APPROVAL_409" in body["issue"]["title"] and body["issue"]["page"] == "approvals"
+    hdrs = {k.lower(): v for k, v in sent[0].headers.items()}
+    sig = next(v for k, v in hdrs.items() if "signature" in k)
+    ts = next(v for k, v in hdrs.items() if "timestamp" in k)
+    assert verify_signature("s3cret", ts, sent[0].content, sig)
+    off = _svc()  # default: stored in the DB/store only, no outbound call
+    assert not off.notifier.enabled and off.handle("Approve button gives 409 conflict", account_id="u1").issue_id
+
+
+def test_engine_failure_hook_files_once_and_never_raises() -> None:
+    svc = _svc()
+    a = svc.auto_report("Unexpected engine failure: ValueError", error_text="ValueError: boom password=hunter2", account_id="u1",
+                        severity="high", codes=("ENGINE_FAILURE", "ValueError"))
+    b = svc.auto_report("Unexpected engine failure: ValueError", error_text="ValueError: boom password=hunter2", account_id="u1",
+                        severity="high", codes=("ENGINE_FAILURE", "ValueError"))
+    assert a and b and a.id == b.id and len(_issues(svc)) == 1 and "hunter2" not in _issues(svc)[0].error_text
 
 
 def test_prompt_for_an_error_report_carries_the_diagnose_rules() -> None:
@@ -191,4 +357,21 @@ def test_prompt_for_an_error_report_carries_the_diagnose_rules() -> None:
     svc.converse("Approve button is not working, error 409")
     sp = seen["system"]
     assert "[APPROVAL_409]" in sp and "CANNOT change code" in sp and "Honest capability matrix" in sp
+    assert "reported automatically" in sp and "do not ask the user to report it" in sp
     assert "[pro]" not in sp  # per-question selection keeps billing out of this prompt
+
+
+def test_report_engine_failure_files_once_and_never_raises() -> None:
+    from app.application import platform_helper_factory as f
+
+    svc = _svc()
+    f.reset_helper_service(svc)
+    try:
+        raise RuntimeError("boom token=abcdef1234567890abcdef")
+    except RuntimeError as exc:
+        a = f.report_engine_failure(exc, account_id="u1", conversation_id="c1", user_message="analyze my frame")
+        b = f.report_engine_failure(exc, account_id="u1", conversation_id="c1", user_message="analyze my frame")
+    assert a and a == b and len(_issues(svc)) == 1
+    iss = _issues(svc)[0]
+    assert iss.source == "auto_detected" and "abcdef1234567890abcdef" not in iss.error_text
+    f.reset_helper_service(None)
