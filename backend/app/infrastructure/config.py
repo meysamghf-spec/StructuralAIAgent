@@ -59,17 +59,27 @@ class Settings(BaseSettings):
     # Login rate limiting: this many failures within the window lock the email+IP (and, at 4x, the IP) for the lockout time
     auth_max_login_failures: int = 5
     auth_lockout_seconds: int = 900
-    # Sign in with Google (OAuth 2.0 / OIDC). Enabled only when GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are both set.
+    # Sign in with Google (OAuth 2.0 authorization code + PKCE, OIDC). OFF unless GOOGLE_OAUTH_ENABLED=true AND
+    # GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are set. See docs/GOOGLE_SIGNIN.md.
+    google_oauth_enabled: bool = False
     google_client_id: str | None = None
     google_client_secret: SecretStr | None = None
+    # Redirect URI registered in Google Cloud. GOOGLE_OAUTH_REDIRECT_URI wins; GOOGLE_REDIRECT_URI is the older name.
+    google_oauth_redirect_uri: str | None = None
     google_redirect_uri: str | None = None
     # Where the browser lands after Google sign-in; defaults to the redirect URI's origin + /login
     google_post_login_url: str | None = None
+    # Optional outbound proxy for the server -> Google calls (token endpoint), e.g. http://user:pass@host:3128 or
+    # socks5://host:1080. Only needed if the host cannot reach oauth2.googleapis.com directly (the browser's
+    # redirects to accounts.google.com are not affected).
+    google_oauth_proxy: SecretStr | None = None
+    google_oauth_timeout_seconds: float = 15.0
 
     @property
     def google_callback_url(self) -> str:
-        """Redirect URI registered in Google Cloud: GOOGLE_REDIRECT_URI, else the production default."""
-        return self.google_redirect_uri or "https://structuralai.ir/api/auth/google/callback"
+        """Redirect URI registered in Google Cloud: GOOGLE_OAUTH_REDIRECT_URI, else GOOGLE_REDIRECT_URI, else the production default."""
+        return self.google_oauth_redirect_uri or self.google_redirect_uri or "https://structuralai.ir/api/auth/google/callback"
+
     project_access_enforced: bool = False
     entitlement_enforcement_enabled: bool = False
     # Free-launch mode (e.g. Iran hosting, where the crypto payment gateway and CoinGecko are not usable):

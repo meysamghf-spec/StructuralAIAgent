@@ -83,23 +83,30 @@ export async function fetchFeatureAccess(): Promise<FeatureAccessSummary> {
   return apiFetch<FeatureAccessSummary>("/api/v1/auth/me/features");
 }
 
-export async function fetchGoogleSignInEnabled(): Promise<boolean> {
+export type GoogleSignInStatus = { enabled: boolean; reason: string | null };
+
+export async function fetchGoogleSignInStatus(): Promise<GoogleSignInStatus> {
   try {
-    const res = await apiFetch<{ enabled: boolean }>("/api/v1/auth/google/config");
-    return Boolean(res.enabled);
+    const res = await apiFetch<{ enabled: boolean; reason?: string | null }>("/api/v1/auth/google/config");
+    return { enabled: Boolean(res.enabled), reason: res.reason ?? null };
   } catch {
-    return false;
+    return { enabled: false, reason: null };
   }
 }
 
-export function googleSignInStartUrl(nextPath: string): string {
-  return `${getApiBaseUrl()}/api/v1/auth/google/start?next=${encodeURIComponent(nextPath)}`;
+export async function fetchGoogleSignInEnabled(): Promise<boolean> {
+  return (await fetchGoogleSignInStatus()).enabled;
 }
 
-/** Finish a Google sign-in redirect: store the token from the URL fragment and resolve the account. */
-export async function completeGoogleSignIn(token: string): Promise<UserResponse> {
-  storeAuthSession(token, "");
-  const me = await fetchCurrentUser();
-  storeAuthSession(token, me.account_id);
-  return me;
+export function googleSignInStartUrl(nextPath: string, remember = false): string {
+  return `${getApiBaseUrl()}/api/v1/auth/google/start?next=${encodeURIComponent(nextPath)}&remember=${remember ? "true" : "false"}`;
+}
+
+/** Finish a Google sign-in redirect: the callback set the httpOnly session cookie; trade it for a bearer token
+ *  (exactly like "remember me" session restore) and remember the choice the user made on the login page. */
+export async function completeGoogleSignIn(remember: boolean): Promise<UserResponse> {
+  const session = await restoreSession();
+  if (!session) throw new Error("google_session_missing");
+  setRememberHint(remember);
+  return session.user;
 }

@@ -3151,3 +3151,7 @@ a.button,
 @media (max-width: 640px) {
   .chat-message[dir="rtl"] .chat-md-table { font-size: 0.8rem; }
 }
+
+/* Login: "or" divider above the Google button */
+.google-divider { display: flex; align-items: center; gap: 0.75rem; margin: 0.9rem 0 0.6rem; color: var(--muted, #6b7280); font-size: 0.85rem; }
+.google-divider::before, .google-divider::after { content: ""; flex: 1; height: 1px; background: currentColor; opacity: 0.25; }

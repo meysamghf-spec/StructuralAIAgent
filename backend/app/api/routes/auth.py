@@ -152,22 +152,29 @@ def _ip_host(request: Request) -> bool:
 
 
 def google_config(request: Request) -> dict:
+    """What the login page needs: whether to show the button (flag + credentials + not a bare-IP host)."""
     from app.application.google_oauth import google_enabled
     from app.infrastructure.config import get_settings
 
-    return {"enabled": google_enabled(get_settings()) and not _ip_host(request)}
+    on = google_enabled(get_settings())
+    ip = _ip_host(request)
+    return {"enabled": on and not ip, "reason": "ip_host" if on and ip else None}
 
 
-def google_start(request: Request, next: str = "/") -> RedirectResponse:
+def _google_error_redirect(target: str, code: str) -> RedirectResponse:
+    resp = RedirectResponse(f"{target}#google_error={quote(code)}", status_code=302)
+    resp.delete_cookie(_GOOGLE_COOKIE, path="/api")
+    return resp
+
+
+def google_start(request: Request, next: str = "/", remember: bool = False) -> RedirectResponse:
     from app.application import google_oauth as g
-    from app.application.exceptions import AuthenticationError
     from app.infrastructure.config import get_settings
 
     settings = get_settings()
+    next = g.safe_next(next)
     if not g.google_enabled(settings) or _ip_host(request):
-        raise AuthenticationError("Google sign-in is not configured")
-    if not next.startswith("/") or next.startswith("//"):
-        next = "/"
+        return _google_error_redirect(g.post_login_url(settings) if g.google_enabled(settings) else "/login", "not_configured")
     # The nonce cookie is host-only, and Google returns to the registered redirect URI's host. If sign-in was
     # started from another host (e.g. www), restart it on the callback host so cookie and callback match.
     from urllib.parse import urlparse
@@ -175,10 +182,14 @@ def google_start(request: Request, next: str = "/") -> RedirectResponse:
     cb = urlparse(settings.google_callback_url)
     host, cb_host = _request_host(request), (cb.hostname or "").lower()
     if host != cb_host and host.removeprefix("www.") == cb_host.removeprefix("www."):
-        return RedirectResponse(f"{cb.scheme}://{cb.netloc}{request.url.path}?next={quote(next, safe="")}", status_code=302)
+        return RedirectResponse(
+            f"{cb.scheme}://{cb.netloc}{request.url.path}?next={quote(next, safe='')}&remember={'true' if remember else 'false'}",
+            status_code=302,
+        )
+    secret = AuthService(user_repository=None, settings=settings)._jwt_secret()  # type: ignore[arg-type]
     nonce = g.new_nonce()
-    state = g.make_state(AuthService(user_repository=None, settings=settings)._jwt_secret(), nonce, next)  # type: ignore[arg-type]
-    resp = RedirectResponse(g.authorization_url(settings, state, nonce), status_code=302)
+    state = g.make_state(secret, nonce, next, remember)
+    resp = RedirectResponse(g.authorization_url(settings, state, nonce, g.code_verifier(secret, nonce)), status_code=302)
     resp.set_cookie(
         _GOOGLE_COOKIE, nonce, max_age=g.STATE_TTL_SECONDS, httponly=True, samesite="lax",
         secure=settings.google_callback_url.startswith("https://"), path="/api",
@@ -193,23 +204,43 @@ def google_callback(
     state: str | None = None,
     error: str | None = None,
 ) -> RedirectResponse:
+    """Google redirects here. On success: set the same httpOnly session cookie as email login and send the browser to
+    /login#google=ok (the page trades the cookie for a bearer token via POST /auth/session). No token is put in a URL."""
+    import logging
+
     from app.application import google_oauth as g
-    from app.application.exceptions import ApplicationError
+    from app.application.exceptions import AccountDisabledError, ApplicationError
     from app.infrastructure.config import get_settings
 
     settings = get_settings()
     target = g.post_login_url(settings)
+    log = logging.getLogger("saia.google_signin")
     try:
         if not g.google_enabled(settings):
-            raise ValueError("Google sign-in is not configured")
-        if error or not code or not state:
-            raise ValueError(error or "Google sign-in was cancelled")
-        data = g.read_state(auth_service._jwt_secret(), state, request.cookies.get(_GOOGLE_COOKIE))
-        claims = g.exchange_code(settings, code, data["n"])
-        _user, token = auth_service.login_with_google(email=claims["email"], display_name=claims.get("name"))
-        resp = RedirectResponse(f"{target}#google_token={quote(token)}&next={quote(data.get('p', '/'))}", status_code=302)
-    except (ApplicationError, ValueError) as exc:
-        resp = RedirectResponse(f"{target}#google_error={quote(str(exc))}", status_code=302)
+            raise g.GoogleSignInError("not_configured")
+        if error:
+            raise g.GoogleSignInError("cancelled" if error == "access_denied" else "failed")
+        if not code or not state:
+            raise g.GoogleSignInError("cancelled")
+        secret = auth_service._jwt_secret()
+        data = g.read_state(secret, state, request.cookies.get(_GOOGLE_COOKIE))
+        claims = g.exchange_code(settings, code, data["n"], g.code_verifier(secret, data["n"]))
+        remember = bool(data.get("r"))
+        _user, token = auth_service.login_with_google(
+            email=claims["email"], display_name=claims.get("name"), remember=remember
+        )
+    except g.GoogleSignInError as exc:
+        log.warning("google sign-in failed: %s", exc.code)
+        return _google_error_redirect(target, exc.code)
+    except AccountDisabledError:
+        return _google_error_redirect(target, "account_disabled")
+    except ApplicationError:
+        log.warning("google sign-in failed: application error")
+        return _google_error_redirect(target, "failed")
+    resp = RedirectResponse(
+        f"{target}#google=ok&r={1 if remember else 0}&next={quote(g.safe_next(data.get('p')), safe='')}", status_code=302
+    )
+    _set_session_cookie(resp, request, token, remember=remember)
     resp.delete_cookie(_GOOGLE_COOKIE, path="/api")
     return resp
 

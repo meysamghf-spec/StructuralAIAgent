@@ -35,3 +35,25 @@ describe("login errors", () => {
     expect(validateLoginInput("a@b.co", "x", "en")).toEqual({});
   });
 });
+
+describe("google sign-in messages", () => {
+  it("has English and Persian text for every backend error code", async () => {
+    const { GOOGLE_ERROR_COPY, googleErrorMessage } = await import("../lib/auth-messages");
+    const codes = ["cancelled", "state", "token_exchange", "unreachable", "token_invalid", "email_unverified", "account_disabled", "not_configured", "failed"];
+    for (const code of codes) {
+      expect(Object.keys(GOOGLE_ERROR_COPY.en)).toContain(code);
+      expect(googleErrorMessage(code, "en").length).toBeGreaterThan(5);
+      expect(googleErrorMessage(code, "fa")).toMatch(/[\u0600-\u06FF]/);
+    }
+    expect(googleErrorMessage("totally-unknown", "en")).toBe(GOOGLE_ERROR_COPY.en.failed);
+    expect(googleErrorMessage(null, "fa")).toBe(GOOGLE_ERROR_COPY.fa.failed);
+  });
+
+  it("labels the button in both languages and explains the bare-IP case", async () => {
+    const { LOGIN_COPY } = await import("../lib/auth-messages");
+    expect(LOGIN_COPY.en.google).toBe("Sign in with Google");
+    expect(LOGIN_COPY.fa.google).toBe("ورود با گوگل");
+    expect(LOGIN_COPY.en.googleIpHost).toMatch(/structuralai\.ir/);
+    expect(LOGIN_COPY.fa.googleIpHost).toMatch(/structuralai\.ir/);
+  });
+});

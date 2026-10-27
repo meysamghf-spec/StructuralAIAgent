@@ -152,15 +152,18 @@ Volumes:
 - [ ] `/ready` returns `200` before sending traffic
 
 ## Sign in with Google (optional)
-Disabled unless all three are set in `.env.production` (backend):
+Server-side OAuth (code + PKCE). Disabled unless `GOOGLE_OAUTH_ENABLED=true` and id/secret are set in `.env.production`:
 ```
+GOOGLE_OAUTH_ENABLED=true
 GOOGLE_CLIENT_ID=<OAuth client id>.apps.googleusercontent.com
-GOOGLE_CLIENT_SECRET=<OAuth client secret>
-GOOGLE_REDIRECT_URI=https://<your-domain>/api/v1/auth/google/callback
-# optional: GOOGLE_POST_LOGIN_URL=https://<your-domain>/login
+GOOGLE_CLIENT_SECRET=<OAuth client secret>          # server only, never commit
+GOOGLE_OAUTH_REDIRECT_URI=https://<your-domain>/api/auth/google/callback
+# optional: GOOGLE_POST_LOGIN_URL=https://<your-domain>/login, GOOGLE_OAUTH_PROXY=http://proxy:3128
 ```
 Google Cloud Console → APIs & Services → Credentials → OAuth client ID (Web application):
 - Authorized JavaScript origins: `https://<your-domain>`
-- Authorized redirect URIs: `https://<your-domain>/api/v1/auth/google/callback`
-- OAuth consent screen scopes: `openid`, `email`, `profile`.
-Google accounts are linked to existing users by verified email; unknown emails get a new user.
+- Authorized redirect URIs: `https://<your-domain>/api/auth/google/callback`
+- Consent screen scopes: `openid`, `email`, `profile` (in *Testing* only listed test users can sign in).
+Google accounts are linked to existing users by verified email; unknown verified emails get a new user.
+If an nginx gate protects the site, allow `location = /api/auth/google/callback` through it.
+Full details, rollout and rollback: [docs/GOOGLE_SIGNIN.md](docs/GOOGLE_SIGNIN.md).
