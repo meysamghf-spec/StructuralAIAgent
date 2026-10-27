@@ -1445,6 +1445,7 @@ _WF_FA_TITLES = {
     "Execute specialist assistant work": "اجرای کار دستیار تخصصی",
     "Validate and record results": "اعتبارسنجی و ثبت نتایج",
     "Review attached or project files": "بررسی فایل‌های پیوست یا پروژه",
+    "Prepare rebar detailing": "آماده‌سازی جزئیات آرماتوربندی (دیتیلینگ)",
 }
 _WF_FA_STATUS = {
     "COMPLETED": "تکمیل شد",

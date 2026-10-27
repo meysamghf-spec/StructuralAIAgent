@@ -697,3 +697,12 @@ def _minimal_xlsx_bytes() -> bytes:
             "</worksheet>",
         )
     return buffer.getvalue()
+
+
+def test_complex_workflow_plans_detailing_after_design_and_never_marks_it_done():
+    from app.application import engineering_task_workflow_service as svc
+    import inspect
+
+    src = inspect.getsource(svc)
+    assert '"rebar_detailing"' in src and 'capability="detailing.rebar"' in src
+    assert src.index('"concrete_design"') < src.index('step_id="rebar_detailing"')

@@ -1,5 +1,6 @@
 import { getApiBaseUrl } from "./api";
 import { getAuthHeaders } from "./auth-session";
+import { isDetailingItem, markDetailingDone } from "./detailing-step";
 
 export type DownloadKind = "table" | "figure" | "model" | "drawing" | "report";
 export type DownloadItem = { kind: DownloadKind; name: string; label: string; labelFa: string; formats: string[] };
@@ -112,6 +113,8 @@ export async function fetchDownload(item: Pick<DownloadItem, "kind" | "name">, f
 export async function download(item: Pick<DownloadItem, "kind" | "name">, format: string, ctx: DownloadContext) {
   const { blob, filename } = await fetchDownload(item, format, ctx);
   save(blob, filename);
+  // Detailing step status: only a really generated rebar / structural-set file counts as "done".
+  if (item.kind === "drawing" && isDetailingItem(item.name)) markDetailingDone(ctx.projectId);
 }
 
 export type ZipProgress = { state: "starting" | "running" | "downloading" | "done"; elapsedS: number; files?: number };

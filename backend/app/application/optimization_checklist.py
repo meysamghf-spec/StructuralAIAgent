@@ -52,6 +52,16 @@ def _action(kind, en, fa, href=None, command=None, command_fa=None):
     return {"kind": kind, "label": {"en": en, "fa": fa}, "href": href, "command": command, "command_fa": command_fa}
 
 
+def _detailing_step(href: str | None = None):
+    """Optional last step after Design: rebar detailing sheets (phase 6a) built from the Mabhas 9 design. Never counts as missing."""
+    return _step("detailing", False, "Detailing (optional, after design)", "جزئیات‌سازی (اختیاری، پس از طراحی)",
+                 "Rebar detailing sheets (DXF) and the structural drawing set are generated from the designed members; not run yet.",
+                 "نقشه‌های جزئیات آرماتوربندی (DXF) و نقشه‌های اجرایی سازه از اعضای طراحی‌شده ساخته می‌شوند؛ هنوز اجرا نشده.",
+                 _action("chat", "Generate rebar details", "ساخت جزئیات آرماتوربندی", href=href,
+                         command="detail the rebar", command_fa="دیتیلینگ آرماتور را بده"),
+                 optional=True)
+
+
 def checklist_for_readiness(report: dict[str, Any], project_id: str | None = None) -> dict[str, Any]:
     """Page checklist from an OptimizationReadinessReport (dict)."""
     ms = report.get("model_summary") or {}
@@ -101,6 +111,7 @@ def checklist_for_readiness(report: dict[str, Any], project_id: str | None = Non
               _action("link", "Run design", "اجرای طراحی", href=f"/workspace/design{pid}", command="design the members per Mabhas 9")
               if not int(report.get("usable_design_runs") or 0) else None,
               optional=True),
+        _detailing_step(f"/workspace/cad{pid}"),
     ]
     required_done = all(s["done"] for s in steps if not s["optional"] and s["key"] != "analysis") and (
         steps[4]["done"] or steps[5]["done"])
@@ -139,6 +150,7 @@ def checklist_for_chat(*, has_frame: bool, partial_missing: list[str] | None = N
               "داخل حلقه بهینه‌سازی انجام می‌شود (تحلیل کامل سه‌بعدی برای هر کاندیدا)."),
         _step("design", True, "Design (Mabhas 9)", "طراحی (مبحث ۹)", "Checked inside the loop for every candidate.",
               "برای هر کاندیدا داخل حلقه کنترل می‌شود."),
+        _detailing_step(),
     ]
     return _finish(steps, has_frame)
 

@@ -632,6 +632,25 @@ class EngineeringTaskWorkflowService:
             )
             step_number += 1
 
+        # Detailing follows Design. It is on-demand (chat "detail the rebar" / CAD page), so the workflow only
+        # PLANs it: it is never marked executed here, which keeps the honest "Pending" listing.
+        design_idx = next((i for i, st in enumerate(steps) if st.step_id == "concrete_design"), None)
+        if design_idx is not None:
+            steps.insert(
+                design_idx + 1,
+                EngineeringTaskStep(
+                    step_id="rebar_detailing",
+                    step_number=steps[design_idx].step_number + 1,
+                    title="Prepare rebar detailing",
+                    description="Rebar detailing sheets and DXF drawings from the designed members (on demand)",
+                    capability="detailing.rebar",
+                    capability_kind="deterministic_service",
+                    dependencies=["concrete_design"],
+                ),
+            )
+            for n, st in enumerate(steps, start=1):
+                st.step_number = n
+
         requested = {item.lower() for item in deliverables}
         deliverable_specs: list[tuple[str, str, str, str, EngineeringAgentType | None, list[str]]] = [
             (
