@@ -85,7 +85,8 @@ class HelperService:
         self.llm = llm or LLMClient(self.settings.providers)
         self.store = store or InMemoryIssueStore()
         self.notifier = notifier or IssueNotifier(self.settings.webhook_url, self.settings.webhook_secret,
-                                                   self.settings.webhook_retries, product=product)
+                                                   self.settings.webhook_retries, product=product,
+                                                   auth_token=self.settings.webhook_auth_token)
         self.issues = IssueService(self.store, self.notifier)
         self.knowledge_path = knowledge_path
         # Product-specific hooks (the helper package stays product-agnostic): generated knowledge for the prompt and a

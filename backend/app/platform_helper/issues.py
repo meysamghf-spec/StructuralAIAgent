@@ -224,8 +224,9 @@ class IssueNotifier:
 
     def __init__(self, url: str = "", secret: str = "", retries: int = 3, *, product: str = "structuralai",
                  transport: httpx.BaseTransport | None = None, sleep: Callable[[float], None] = time.sleep,
-                 background: bool = True, timeout: float = 8.0) -> None:
+                 background: bool = True, timeout: float = 8.0, auth_token: str = "") -> None:
         self.url, self.secret, self.retries = url, secret, max(1, retries)
+        self.auth_token = (auth_token or "").strip()
         self.product, self._transport, self._sleep = product, transport, sleep
         self._background, self._timeout = background, timeout
         self.deliveries: list[dict[str, Any]] = []  # recent attempts (status only), for the admin view
@@ -254,6 +255,8 @@ class IssueNotifier:
                 "X-Platform-Timestamp": ts,
                 "User-Agent": "platform-helper/1",
             }
+            if self.auth_token:
+                headers["Authorization"] = f"Bearer {self.auth_token}"
             if self.secret:
                 headers["X-Platform-Signature"] = sign_body(self.secret, ts, body)
             code: int | str = "error"

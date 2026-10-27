@@ -73,6 +73,7 @@ UI: `/workspace/admin/platform-issues`.
 
 ### Webhook (optional)
 Set `PLATFORM_ISSUE_WEBHOOK_URL` (+ `PLATFORM_ISSUE_WEBHOOK_SECRET`, `PLATFORM_ISSUE_WEBHOOK_RETRIES`).
+If the receiver requires a bearer token (e.g. a Grok Bot routine webhook), also set `PLATFORM_ISSUE_WEBHOOK_AUTH_TOKEN`; it is sent as `Authorization: Bearer <token>` (independent of the HMAC signature headers).
 ```json
 {"schema_version":1,"event":"platform_issue.created|platform_issue.updated","delivery_id":"uuid","sent_at":"ISO-8601",
  "product":"structuralai",
@@ -82,7 +83,7 @@ Set `PLATFORM_ISSUE_WEBHOOK_URL` (+ `PLATFORM_ISSUE_WEBHOOK_SECRET`, `PLATFORM_I
   "steps_to_reproduce":"","expected":"","actual":"","suspected_files":[],"app_version":"","locale":"fa|en",
   "occurrences":1,"dedupe_key":"","fix_note":"","fix_pr_url":"","proposed_fix":null,"created_at":"","updated_at":""}}
 ```
-Headers: `X-Platform-Event`, `X-Platform-Delivery`, `X-Platform-Timestamp`, `X-Platform-Signature: sha256=<hex>` where hex = HMAC-SHA256(secret, `"{timestamp}." + raw_body`).
+Headers: `Authorization: Bearer <token>` (only if `PLATFORM_ISSUE_WEBHOOK_AUTH_TOKEN` is set), `X-Platform-Event`, `X-Platform-Delivery`, `X-Platform-Timestamp`, `X-Platform-Signature: sha256=<hex>` where hex = HMAC-SHA256(secret, `"{timestamp}." + raw_body`).
 Retries: exponential backoff up to 30 s; 4xx other than 408/429 are not retried.
 
 Verify (Python):
