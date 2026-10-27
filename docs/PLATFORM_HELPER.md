@@ -61,7 +61,7 @@ The product facts the assistant answers from are **generated at runtime** by `ba
 * Webhook is off by default.
 
 ### API
-* `GET /api/v1/admin/platform-issues?open_only=true&status=&limit=`
+* `GET /api/v1/admin/platform-issues?open_only=true&status=&kind=&limit=` (`kind` = `bug` | `feature_request`; feature requests are sorted by demand counter)
 * `GET /api/v1/admin/platform-issues/{id}`
 * `POST /api/v1/admin/platform-issues/{id}/post-back` `{status?, fix_note?, fix_pr_url?, proposed_fix?}`
 * `POST /api/v1/admin/platform-issues/{id}/propose-fix` `{kind: diff|pr_draft, title, body, diff}`
@@ -83,6 +83,8 @@ If the receiver requires a bearer token (e.g. a Grok Bot routine webhook), also 
   "steps_to_reproduce":"","expected":"","actual":"","suspected_files":[],"app_version":"","locale":"fa|en",
   "occurrences":1,"dedupe_key":"","fix_note":"","fix_pr_url":"","proposed_fix":null,"created_at":"","updated_at":""}}
 ```
+Optional additive fields (schema stays v1; consumers that ignore unknown keys are unaffected): `issue.kind` (`"bug"` | `"feature_request"`) and `issue.details` (`{}` for bugs; for feature requests the capability key, estimate, closest alternative, request counter and non-sensitive project context). Details: [FEATURE_REQUEST_AUTOREPORT.md](FEATURE_REQUEST_AUTOREPORT.md).
+
 Headers: `Authorization: Bearer <token>` (only if `PLATFORM_ISSUE_WEBHOOK_AUTH_TOKEN` is set), `X-Platform-Event`, `X-Platform-Delivery`, `X-Platform-Timestamp`, `X-Platform-Signature: sha256=<hex>` where hex = HMAC-SHA256(secret, `"{timestamp}." + raw_body`).
 Retries: exponential backoff up to 30 s; 4xx other than 408/429 are not retried.
 
@@ -93,6 +95,9 @@ def ok(secret, ts, body, sig):
     exp = "sha256=" + hmac.new(secret.encode(), f"{ts}.".encode() + body, hashlib.sha256).hexdigest()
     return hmac.compare_digest(exp, sig)
 ```
+
+### Feature requests (unsupported capability → ETA)
+When enabled (`FEATURE_REQUEST_AUTOREPORT_ENABLED=true`, default off) a request for something the platform cannot do yet gets an honest "not available yet" reply with an estimated time and the closest alternative, and is filed once as a `feature_request` issue through this same pipeline and webhook. See [FEATURE_REQUEST_AUTOREPORT.md](FEATURE_REQUEST_AUTOREPORT.md).
 
 ### Porting to TrafficLens (Traffic Urban)
 The package has **no imports from the host app**; the issue store and knowledge file are injected.
@@ -127,6 +132,9 @@ The package has **no imports from the host app**; the issue store and knowledge 
 
 ### وب‌هوک و API
 ساختار payload، هدرهای امضا (`X-Platform-Signature` = HMAC-SHA256 روی `"{timestamp}." + body`) و endpointها همان بخش انگلیسی است. صفحهٔ ادمین: `/workspace/admin/platform-issues`.
+
+### درخواست قابلیت جدید
+وقتی `FEATURE_REQUEST_AUTOREPORT_ENABLED=true` باشد (پیش‌فرض خاموش)، اگر کاربر چیزی بخواهد که پلتفرم هنوز ندارد، پاسخ صادقانه با «تخمین» زمان و نزدیک‌ترین جایگزین می‌گیرد و درخواست یک‌بار به‌صورت `feature_request` از همین مسیر وب‌هوک ثبت می‌شود. جزئیات: [FEATURE_REQUEST_AUTOREPORT.md](FEATURE_REQUEST_AUTOREPORT.md).
 
 ### انتقال به TrafficLens
 ۱) پوشهٔ `platform_helper` و تست‌ها را کپی کنید. ۲) فایل دانش `trafficlens.md` را بنویسید. ۳) مایگریشن `030` و ریپازیتوری `IssueStore` را اضافه کنید. ۴) factory و routeها را ثبت کنید. ۵) در سرویس چت بعد از موتورهای دامنه و قبل از پاسخ عمومی `helper` را صدا بزنید. ۶) فرانت: `lib/platform-issues.ts`، صفحهٔ ادمین، و مدیریت رویداد `agent_run.token`. ۷) همان متغیرهای محیطی را تنظیم کنید.

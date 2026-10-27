@@ -4,6 +4,8 @@ import {
   ISSUE_STATUSES,
   approveFix,
   checkPlatformAdmin,
+  featureRequestLine,
+  isFeatureRequest,
   listPlatformIssues,
   postBackPlatformIssue,
   proposeFix,
@@ -109,7 +111,7 @@ export default function PlatformIssuesClient() {
                 className={issue.id === selectedId ? "issue-row active" : "issue-row"}
                 onClick={() => setSelectedId(issue.id)}
               >
-                <span className={`issue-sev issue-sev-${issue.severity}`}>{issue.severity}</span>
+                <span className={`issue-sev issue-sev-${issue.severity}`}>{isFeatureRequest(issue) ? "feature" : issue.severity}</span>
                 <strong dir="auto">{issue.title}</strong>
                 <span className="muted">
                   {issue.status} · ×{issue.occurrences}
@@ -124,6 +126,9 @@ export default function PlatformIssuesClient() {
             <p className="muted">
               {selected.category} · {selected.source} · page {selected.page || "—"} · {selected.created_at}
             </p>
+            {isFeatureRequest(selected) ? (
+              <p data-testid="feature-request-line"><strong>Feature request:</strong> {featureRequestLine(selected)}</p>
+            ) : null}
             {selected.summary ? <p dir="auto">{selected.summary}</p> : null}
             {selected.user_message ? <pre dir="auto">{selected.user_message}</pre> : null}
             {selected.error_text ? <pre>{selected.error_text}</pre> : null}

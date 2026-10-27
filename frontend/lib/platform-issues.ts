@@ -24,7 +24,31 @@ export type PlatformIssue = {
   proposed_fix: { kind?: string; title?: string; body?: string; diff?: string; status?: string; approved_by?: string } | null;
   created_at: string;
   updated_at: string;
+  /** Optional (backend >= feature-request autoreport): "bug" | "feature_request". */
+  kind?: string;
+  details?: FeatureRequestDetails | Record<string, unknown>;
 };
+
+export type FeatureRequestDetails = {
+  capability_key?: string;
+  capability_title_en?: string;
+  estimate?: { size?: string; eta_en?: string; eta_fa?: string; hours_min?: number; hours_max?: number; source?: string };
+  closest_alternative?: { id?: string; text_en?: string };
+  request_count?: number;
+  sample_requests?: string[];
+  project_context?: Record<string, unknown>;
+};
+
+export function isFeatureRequest(issue: Pick<PlatformIssue, "kind" | "category">): boolean {
+  return issue.kind === "feature_request" || issue.category === "feature_request";
+}
+
+/** One-line summary for the admin list: "pushover_analysis · weeks (about 2-6 weeks) · ×3". */
+export function featureRequestLine(issue: PlatformIssue): string {
+  const d = (issue.details ?? {}) as FeatureRequestDetails;
+  const parts = [d.capability_key, d.estimate?.eta_en, `×${d.request_count ?? issue.occurrences ?? 1}`];
+  return parts.filter(Boolean).join(" · ");
+}
 
 export const ISSUE_STATUSES = [
   "open",

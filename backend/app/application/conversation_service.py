@@ -459,6 +459,10 @@ class ConversationService:
         progress_sink: AgentRunProgressSink | None = None,
     ) -> tuple[str, dict]:
         if not attachments:
+            requested = self._maybe_feature_request(conversation, account, user_content)
+            if requested is not None:
+                requested[1]["selected_mode"] = mode or "auto"
+                return requested
             orchestrated = self._maybe_orchestrate(conversation, account, user_content)
             if orchestrated is not None:
                 orchestrated[1]["selected_mode"] = mode or "auto"
@@ -524,6 +528,32 @@ class ConversationService:
                                                    conversation=conversation)
         metadata["selected_mode"] = mode or "auto"
         return content, metadata
+
+    def _maybe_feature_request(self, conversation, account: AuthenticatedAccount, text: str) -> tuple[str, dict] | None:
+        """Unsupported capability -> honest ETA estimate + automatic feature request (FEATURE_REQUEST_AUTOREPORT_ENABLED, default
+        false). Returns None whenever the flag is off, the request is supported or unclear, or anything fails."""
+        try:
+            from app.application import feature_requests as fr
+
+            settings = fr.load_settings()
+            if not settings.enabled:
+                return None
+            history = [("user" if m.role == MessageRole.USER else "assistant", m.content)
+                       for m in self._repo.list_messages(conversation.id, limit=_MAX_HISTORY_MESSAGES)
+                       if m.role in (MessageRole.USER, MessageRole.ASSISTANT)]
+            if history and history[-1] == ("user", text):
+                history = history[:-1]
+            hctx = self._helper_context(conversation, account)
+            pctx: dict[str, Any] = {"plan_id": hctx.get("plan_id"), "has_project": hctx.get("project_selected") not in (None, "none"),
+                                    "has_model": hctx.get("model_exists") == "yes"}
+            if pctx["has_model"]:
+                inputs = self._latest_frame_inputs(conversation, account) or {}
+                pctx.update({k: inputs.get(k) for k in ("storeys", "bays_x", "bays_y")})
+            return fr.handle_turn(text, history, account_id=account.account_id, project_id=str(conversation.project_id or ""),
+                                  conversation_id=str(conversation.id), project_context=pctx, settings=settings)
+        except Exception:  # noqa: BLE001 - must never take the chat down
+            logger.exception("feature request hook failed")
+            return None
 
     def _maybe_orchestrate(self, conversation, account: AuthenticatedAccount, text: str) -> tuple[str, dict] | None:
         """Gemini-as-chief-engineer path (PLATFORM_ORCHESTRATOR_MODE=off|auto|always, default off). Returns None to use the

@@ -113,8 +113,8 @@ class LLMClient:
         with self._lock:
             self._cooldown_until[name] = self._clock() + max(1.0, seconds)
 
-    def _client(self, p: ProviderConfig) -> httpx.Client:
-        return httpx.Client(timeout=p.timeout, transport=self._transport)
+    def _client(self, p: ProviderConfig, timeout: float | None = None) -> httpx.Client:
+        return httpx.Client(timeout=timeout or p.timeout, transport=self._transport)
 
     @staticmethod
     def _headers(p: ProviderConfig) -> dict[str, str]:
@@ -162,7 +162,7 @@ class LLMClient:
         for p in self._available():
             for attempt in range(self._retries + 1):
                 try:
-                    with self._client(p) as c:
+                    with self._client(p, opts.get("timeout")) as c:
                         resp = c.post(f"{p.base_url.rstrip('/')}/chat/completions", headers=self._headers(p),
                                       json=self._payload(p, messages, False, opts))
                     self._raise_for_status(p, resp)
