@@ -317,3 +317,12 @@ def test_howto_with_leading_greeting_is_platform_help() -> None:
     assert intents.classify("Hi, how do I optimize my frame?").name == "platform_help"
     assert intents.classify("Hi, explain what you can do.").name == "platform_help"
     assert intents.classify("run the analysis on my frame").name == "engineering"
+
+
+def test_knowledge_does_not_claim_english_ltr_cards_are_intended() -> None:
+    from app.platform_helper.prompt import load_knowledge
+
+    text = load_knowledge()
+    assert "Language and layout of chat cards" in text
+    assert "is a BUG, never intended behaviour" in text
+    assert "right-to-left" in text

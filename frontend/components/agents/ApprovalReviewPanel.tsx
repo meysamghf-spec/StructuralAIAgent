@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuth } from "@/hooks/useAuth";
+import { chatT, dirOf, type ChatLang } from "@/lib/chat-i18n";
 import { approveAgentRequest, getApprovalRequest, rejectAgentRequest } from "@/lib/api";
 import { getApprovalReviewPath } from "@/lib/agent-workspace";
 import Link from "next/link";
@@ -10,10 +11,12 @@ export function ApprovalReviewPanel({
   projectId,
   approvalRequestId,
   onResolved,
+  lang = null,
 }: {
   projectId: string;
   approvalRequestId: string;
   onResolved: (message?: string) => void;
+  lang?: ChatLang | null;
 }) {
   const { user } = useAuth();
   const [note, setNote] = useState("");
@@ -95,16 +98,18 @@ export function ApprovalReviewPanel({
   }
 
   return (
-    <section className="approval-panel">
+    <section className="approval-panel" dir={dirOf(lang)} lang={lang ?? undefined}>
       <div className="approval-panel-header">
-        <strong>Review required</strong>
+        <strong>{chatT(lang, "Review required")}</strong>
         <p className="muted">
-          This work needs engineer approval before results are finalized. Decisions are recorded
-          under your authenticated account
-          {user ? ` (${user.email})` : ""}.
+          {chatT(
+            lang,
+            "This work needs engineer approval before results are finalized. Decisions are recorded under your authenticated account",
+          )}
+          {user ? <> (<bdi dir="ltr">{user.email}</bdi>)</> : ""}.
         </p>
         <Link className="text-link" href={getApprovalReviewPath(projectId, approvalRequestId)}>
-          Open review link
+          {chatT(lang, "Open review link")}
         </Link>
       </div>
 
@@ -112,28 +117,28 @@ export function ApprovalReviewPanel({
 
       <div className="approval-actions">
         <form className="approval-form" onSubmit={handleApprove}>
-          <h4>Approve</h4>
+          <h4>{chatT(lang, "Approve")}</h4>
           <input
             className="input"
-            placeholder="Optional note"
+            placeholder={chatT(lang, "Optional note")}
             value={note}
             onChange={(event) => setNote(event.target.value)}
           />
           <button className="button" type="submit" disabled={busy}>
-            Approve result
+            {chatT(lang, "Approve result")}
           </button>
         </form>
 
         <form className="approval-form" onSubmit={handleReject}>
-          <h4>Reject</h4>
+          <h4>{chatT(lang, "Reject")}</h4>
           <input
             className="input"
-            placeholder="Rejection reason"
+            placeholder={chatT(lang, "Rejection reason")}
             value={reason}
             onChange={(event) => setReason(event.target.value)}
           />
           <button className="button secondary" type="submit" disabled={busy}>
-            Reject result
+            {chatT(lang, "Reject result")}
           </button>
         </form>
       </div>

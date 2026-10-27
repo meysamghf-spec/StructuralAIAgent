@@ -2,10 +2,12 @@
 
 import { useId, useState } from "react";
 
+import { chatT, dirOf, type ChatLang } from "@/lib/chat-i18n";
 import type { AgentToolDetail, AgentToolExecution } from "@/lib/chat-types";
 
 type ToolExecutionCardProps = {
   tool: AgentToolExecution;
+  lang?: ChatLang | null;
 };
 
 function stateSymbol(state: AgentToolExecution["status"]): string {
@@ -35,7 +37,7 @@ function detailRows(tool: AgentToolExecution): AgentToolDetail[] {
   }));
 }
 
-export function ToolExecutionCard({ tool }: ToolExecutionCardProps) {
+export function ToolExecutionCard({ tool, lang = null }: ToolExecutionCardProps) {
   const detailsId = useId();
   const [open, setOpen] = useState(tool.status === "error" || tool.status === "current");
   const rows = detailRows(tool);
@@ -43,14 +45,14 @@ export function ToolExecutionCard({ tool }: ToolExecutionCardProps) {
   const actions = tool.actions ?? [];
 
   return (
-    <section className={`tool-execution-card is-${tool.status}`} aria-label={tool.name}>
+    <section className={`tool-execution-card is-${tool.status}`} aria-label={chatT(lang, tool.name)} dir={dirOf(lang)}>
       <header className="tool-execution-header">
         <div>
-          <p className="eyebrow">Agent action</p>
-          <h3>{tool.name}</h3>
+          <p className="eyebrow">{chatT(lang, "Agent action")}</p>
+          <h3 dir="auto">{chatT(lang, tool.name)}</h3>
         </div>
         <span className={`chat-progress-badge ${tool.status === "error" ? "warning" : ""}`}>
-          {tool.status.replace(/_/g, " ")}
+          {chatT(lang, tool.status.replace(/_/g, " "))}
         </span>
       </header>
       {rows.length > 0 ? (
@@ -58,7 +60,7 @@ export function ToolExecutionCard({ tool }: ToolExecutionCardProps) {
           {rows.map((detail) => (
             <li key={detail.key || detail.label} className={`is-${detail.state}`}>
               <span aria-hidden="true">{stateSymbol(detail.state)}</span>
-              <span>{detail.label}</span>
+              <span dir="auto">{chatT(lang, detail.label)}</span>
             </li>
           ))}
         </ul>
@@ -68,21 +70,21 @@ export function ToolExecutionCard({ tool }: ToolExecutionCardProps) {
           {artifacts.map((artifact) => (
             <li key={artifact.id}>
               <span aria-hidden="true">✓</span>
-              <span>{artifact.name}</span>
+              <span dir="auto">{artifact.name}</span>
             </li>
           ))}
         </ul>
       ) : null}
       {tool.error ? (
-        <p className="muted tool-execution-error" role="status">
-          {tool.error.reason}
+        <p className="muted tool-execution-error" role="status" dir="auto">
+          {chatT(lang, tool.error.reason)}
         </p>
       ) : null}
       {actions.length > 0 || tool.capability ? (
         <div className="tool-execution-toggle">
           {actions.map((action) => (
             <a key={`${action.label}:${action.href}`} href={action.href} className="button secondary">
-              {action.label}
+              {chatT(lang, action.label)}
             </a>
           ))}
           {tool.capability ? (
@@ -93,14 +95,14 @@ export function ToolExecutionCard({ tool }: ToolExecutionCardProps) {
               aria-controls={detailsId}
               onClick={() => setOpen((value) => !value)}
             >
-              {open ? "Hide details" : "View details"}
+              {chatT(lang, open ? "Hide details" : "View details")}
             </button>
           ) : null}
         </div>
       ) : null}
       {open && tool.capability ? (
         <p id={detailsId} className="muted tool-execution-capability">
-          Capability: {tool.capability.replace(/_/g, " ")}
+          {chatT(lang, "Capability")}: <bdi dir="ltr">{tool.capability.replace(/_/g, " ")}</bdi>
         </p>
       ) : null}
     </section>

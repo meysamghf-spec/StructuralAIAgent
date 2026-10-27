@@ -980,7 +980,7 @@ a {
 }
 
 .chat-message-user .chat-message-role {
-  text-align: right;
+  text-align: end;
 }
 
 .chat-message-content {
@@ -1291,7 +1291,7 @@ a {
 
 .chat-status-events {
   list-style: disc;
-  padding-left: 1.25rem;
+  padding-inline-start: 1.25rem;
   color: #cbd5e1;
   font-size: 0.9rem;
 }
@@ -3116,4 +3116,38 @@ a.button,
 /* The result card is a grid whose column can grow to the widest table; keep the Detailing block inside the viewport on phones. */
 @media (max-width: 640px) {
   .detailing-step { width: min(100%, calc(100vw - 4.5rem)); box-sizing: border-box; }
+}
+
+/* ===== Persian / RTL chat =====
+   Every message sets dir/lang from its language (backend `metadata.lang`, else detected from the text); each block
+   (paragraph, heading, list item, quote, table) re-detects its own direction, so an English block in a Persian
+   message stays LTR. Numbers, units, paths and codes are isolated as LTR runs (<bdi dir="ltr">). */
+.chat-message-content { text-align: start; }
+.chat-message-content > * { unicode-bidi: isolate; }
+.chat-message-content[dir="rtl"] { font-family: Vazirmatn, "Noto Naskh Arabic", Tahoma, system-ui, sans-serif; line-height: 1.9; }
+.chat-message-heading, .chat-message-content p, .chat-message-list-item { text-align: start; }
+.chat-message-list-text { min-width: 0; flex: 1 1 auto; }
+.chat-message-bullet { flex: 0 0 auto; unicode-bidi: isolate; }
+.chat-ltr-run { unicode-bidi: isolate; direction: ltr; }
+.chat-md-code, .engineering-result-code bdi { unicode-bidi: isolate; direction: ltr; text-align: left; }
+.chat-md-inline-code { unicode-bidi: isolate; }
+.chat-md-inline-code[dir="rtl"] { font-family: inherit; }
+.chat-md-table-wrap[dir="rtl"] { direction: rtl; }
+.chat-md-table[dir="rtl"] th, .chat-md-table[dir="rtl"] td { text-align: start; }
+.chat-md-table[dir="rtl"] th[style], .chat-md-table[dir="rtl"] td[style] { text-align: start !important; }
+.chat-md-table th, .chat-md-table td { text-align: start; }
+.chat-message[dir="rtl"] .chat-message-tools { justify-content: flex-start; }
+.chat-message[dir="rtl"] .chat-message-actions,
+.chat-message[dir="rtl"] .agent-error-actions,
+.chat-message[dir="rtl"] .tool-execution-toggle { justify-content: flex-start; }
+.agent-progress[dir="rtl"], .agent-context-strip[dir="rtl"], .tool-execution-card[dir="rtl"], .agent-error-card[dir="rtl"],
+.artifact-card[dir="rtl"], .chat-inline-approval[dir="rtl"], .chat-status-events[dir="rtl"] { text-align: start; }
+.chat-message[dir="rtl"] .chat-stream-caret { margin-inline-start: 2px; }
+.chat-message[dir="rtl"] .chat-md-quote { border-inline-start-width: 3px; }
+.chat-message[dir="rtl"] .eyebrow, .chat-message[dir="rtl"] .agent-context-heading { letter-spacing: 0; text-transform: none; }
+.tool-execution-card h3, .agent-error-card h3, .artifact-card-name, .artifact-card-meta { unicode-bidi: plaintext; }
+/* technical drawings (beam, diagrams) stay left-to-right even inside a Persian message */
+.rc-demo svg, .rc-demo .rc-diagram-row { direction: ltr; }
+@media (max-width: 640px) {
+  .chat-message[dir="rtl"] .chat-md-table { font-size: 0.8rem; }
 }
