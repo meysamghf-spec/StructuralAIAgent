@@ -42,6 +42,7 @@ from app.application.drawing.view_helpers import (
     add_overall_plan_dimensions,
     add_plan_grid,
 )
+from app.domain.models.pem import effective_unit_configuration
 from app.domain.models.drawing import (
     Discipline,
     DrawingSheet,
@@ -106,6 +107,7 @@ def build_structural_notes(context: SheetBuildContext) -> DrawingSheet:
     pem = context.pem
     structural = pem.structural
     report = pem.pem.engineering_report
+    _units = effective_unit_configuration(pem.pem.unit_configuration, pem.pem.code_configuration)
     material_ids = [
         item.id
         for item in (
@@ -149,11 +151,11 @@ def build_structural_notes(context: SheetBuildContext) -> DrawingSheet:
                 _NoteBlock(
                     "3. UNITS",
                     [
-                        f"Unit system         {pem.pem.unit_configuration.system.value}",
-                        f"Length              {pem.pem.unit_configuration.length_unit}",
-                        f"Force               {pem.pem.unit_configuration.force_unit}",
-                        f"Moment              {pem.pem.unit_configuration.moment_unit}",
-                        f"Stress              {pem.pem.unit_configuration.stress_unit}",
+                        f"Unit system         {_units.system.value}",
+                        f"Length              {_units.length_unit}",
+                        f"Force               {_units.force_unit}",
+                        f"Moment              {_units.moment_unit}",
+                        f"Stress              {_units.stress_unit}",
                         f"Drawing geometry    {context.units} (PEM coordinate frame)",
                     ],
                 ),

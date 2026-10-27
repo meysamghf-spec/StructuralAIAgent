@@ -304,7 +304,7 @@ def optimize_frame(inp: f3.Frame3dInputs, options: dict[str, Any] | None = None)
 # ----------------------------------------------------------------------------- chat
 import re  # noqa: E402
 
-_OPT_RE = re.compile(r"optimi[sz]|بهینه|cheapest|most economical|اقتصادی ?ترین|کمترین هزینه", re.I)
+_OPT_RE = re.compile(r"optimi[sz]|به[یي]نه|\bbehin(?:e|eh)?(?![a-z])|cheapest|most economical|اقتصادی ?ترین|کمترین هزینه", re.I)
 
 
 def text_lang(text: str) -> str:
