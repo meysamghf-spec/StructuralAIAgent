@@ -26,7 +26,14 @@ async def lifespan(app: FastAPI):
 
         applied = apply_migrations(settings.resolved_database_url)
         logging.getLogger(__name__).info("Applied migrations on startup: %s", applied)
-    yield
+    from app.application.billing import watcher
+
+    payment_watcher = watcher.start_background()  # no-op unless a USDT/BEP20 receiving address is configured
+    try:
+        yield
+    finally:
+        if payment_watcher:
+            payment_watcher.stop()
 
 
 def create_app() -> FastAPI:

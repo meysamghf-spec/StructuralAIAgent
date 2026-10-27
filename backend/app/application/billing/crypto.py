@@ -12,6 +12,7 @@ Design (works for Iran under sanctions, no custodial processor, no KYC):
 from __future__ import annotations
 
 import json
+import logging
 import os
 import random
 import time
@@ -20,6 +21,10 @@ from decimal import ROUND_UP, Decimal
 from typing import Any
 
 import httpx
+
+from . import evm
+
+log = logging.getLogger(__name__)
 
 TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 
@@ -60,15 +65,55 @@ FALLBACK_USD = {"BTC": 65000, "ETH": 3000, "TRX": 0.12, "BNB": 550, "TON": 5, "L
 EXPIRY_MIN = int(os.environ.get("CRYPTO_INVOICE_MINUTES", "30"))
 
 
+EVM_CHAINS = {"eth": 1, "bsc": 56, "polygon": 137}
+# Average seconds per block (used only to estimate a start block when the RPC was unreachable at checkout).
+BLOCK_SECONDS = {"eth": 12.0, "bsc": 0.45, "polygon": 2.1}
+EXPLORER = {"bsc": "https://bscscan.com", "eth": "https://etherscan.io", "polygon": "https://polygonscan.com",
+            "tron": "https://tronscan.org/#", "ton": "https://tonviewer.com"}
+# Public, key-less BSC JSON-RPC endpoints, in preference order (all reachable from Germany, none sanction-blocked).
+# They differ in eth_getLogs limits, so the watcher scans in <=1000-block windows, which all of them accept.
+DEFAULT_RPC = {
+    "bsc": ["https://bsc-rpc.publicnode.com", "https://public-bsc.nownodes.io", "https://rpc-bsc.48.club",
+            "https://bsc.rpc.blxrbdn.com", "https://bsc.drpc.org"],
+    "eth": ["https://ethereum-rpc.publicnode.com", "https://eth.drpc.org"],
+    "polygon": ["https://polygon-bor-rpc.publicnode.com", "https://polygon.drpc.org"],
+}
+
+
 def _env(k: str, d: str = "") -> str:
     return (os.environ.get(k) or d).strip()
+
+
+def _csv(k: str) -> list[str]:
+    return [x.strip() for x in _env(k).split(",") if x.strip()]
+
+
+def address_error(a: Asset) -> str:
+    """Why the configured receiving address is unusable ('' when fine or not configured)."""
+    if a.chain not in EVM_CHAINS:
+        return ""
+    raw = _env(f"CRYPTO_{a.chain.upper()}_ADDRESS") or _env("CRYPTO_EVM_ADDRESS")
+    if not raw:
+        return ""
+    try:
+        evm.normalize_address(raw)
+        return ""
+    except ValueError as exc:
+        return str(exc)
 
 
 def receive_address(a: Asset) -> str:
     if a.chain == "tron":
         return _env("CRYPTO_TRON_ADDRESS")
-    if a.chain in ("bsc", "eth", "polygon"):
-        return _env(f"CRYPTO_{a.chain.upper()}_ADDRESS") or _env("CRYPTO_EVM_ADDRESS")
+    if a.chain in EVM_CHAINS:
+        raw = _env(f"CRYPTO_{a.chain.upper()}_ADDRESS") or _env("CRYPTO_EVM_ADDRESS")
+        if not raw:
+            return ""
+        try:
+            return evm.normalize_address(raw)  # EIP-55 checked; a typo never becomes a payment address
+        except ValueError as exc:
+            log.error("Ignoring invalid %s receiving address: %s", a.chain, exc)
+            return ""
     if a.chain == "ton":
         return _env("CRYPTO_TON_ADDRESS")
     return ""
@@ -78,21 +123,60 @@ def btcpay_configured() -> bool:
     return all(_env(k) for k in ("BTCPAY_SERVER_URL", "BTCPAY_API_KEY", "BTCPAY_STORE_ID"))
 
 
+def live_allowlist() -> set[str]:
+    """Optional CRYPTO_LIVE_ASSETS=usdt-bep20,... restricts which assets are offered as real payments."""
+    return {x.lower() for x in _csv("CRYPTO_LIVE_ASSETS")}
+
+
 def is_live(a: Asset) -> bool:
+    allow = live_allowlist()
+    if allow and a.id not in allow:
+        return False
     return btcpay_configured() if a.chain == "btcpay" else bool(receive_address(a))
 
 
+def mock_allowed() -> bool:
+    """Test ('simulate payment') invoices are for development only: in production they would grant Pro for free."""
+    from app.infrastructure.config import get_settings
+    st = get_settings()
+    return (not st.is_production) or bool(st.crypto_payment_allow_mock_in_production)
+
+
+def rpc_urls(chain: str) -> list[str]:
+    """CRYPTO_<CHAIN>_RPC_URLS (comma list, tried in order) + legacy CRYPTO_<CHAIN>_RPC + built-in public fallbacks."""
+    out: list[str] = []
+    for u in [*_csv(f"CRYPTO_{chain.upper()}_RPC_URLS"), _env(f"CRYPTO_{chain.upper()}_RPC"), *DEFAULT_RPC.get(chain, [])]:
+        if u and u not in out:
+            out.append(u)
+    return out
+
+
 def rpc_url(chain: str) -> str:
-    return _env(f"CRYPTO_{chain.upper()}_RPC", {"eth": "https://ethereum-rpc.publicnode.com",
-                                              "bsc": "https://bsc-rpc.publicnode.com",
-                                              "polygon": "https://polygon-bor-rpc.publicnode.com"}.get(chain, ""))
+    urls = rpc_urls(chain)
+    return urls[0] if urls else ""
+
+
+def confirmations() -> int:
+    try:
+        return max(1, int(_env("CRYPTO_CONFIRMATIONS", "30")))  # BSC ~0.45 s/block -> ~14 s
+    except ValueError:
+        return 30
+
+
+def overpay_tolerance_units(decimals: int) -> int:
+    """Largest overpay (in USDT) over the tagged amount that is still accepted automatically."""
+    return int(Decimal(_env("CRYPTO_OVERPAY_TOLERANCE_USDT", "1")).scaleb(decimals))
 
 
 def asset_catalog() -> list[dict[str, Any]]:
     out = []
     for a in ASSETS:
+        live = is_live(a)
         out.append({"id": a.id, "coin": a.coin, "network": a.network, "standard": a.standard, "stable": a.stable,
-                    "optional": a.optional, "live": is_live(a), "contract": a.contract,
+                    "optional": a.optional, "live": live, "available": live or mock_allowed(), "contract": a.contract,
+                    "decimals": a.decimals, "chain": a.chain, "chain_id": EVM_CHAINS.get(a.chain),
+                    "address": receive_address(a) if live and a.chain != "btcpay" else "",
+                    "explorer": EXPLORER.get(a.chain, ""), "confirmations": confirmations() if a.chain in EVM_CHAINS else None,
                     "processor": "BTCPay Server (self-hosted)" if a.chain == "btcpay" else "Direct to wallet (watch-only)"})
     return out
 
@@ -112,12 +196,16 @@ def usd_price(coin: str) -> tuple[float, str]:
         return float(FALLBACK_USD[coin]), "fallback"
 
 
-def quote_crypto(a: Asset, usdt: float) -> dict[str, Any]:
+def quote_crypto(a: Asset, usdt: float, taken: set[str] | None = None) -> dict[str, Any]:
     price, src = usd_price(a.coin)
     if a.stable:
-        # unique "cents tag" (0.001-0.999) so a payment to a shared address maps to exactly one invoice
-        amt = Decimal(str(usdt)) + Decimal(random.randint(1, 999)) / Decimal(1000)
-        amt = amt.quantize(Decimal("0.001"))
+        # unique "cents tag" (0.001-0.999) so a payment to a shared address maps to exactly one invoice;
+        # `taken` = amounts of other pending invoices on the same asset, never reused.
+        taken = taken or set()
+        tags = [t for t in range(1, 1000) if format((Decimal(str(usdt)) + Decimal(t) / 1000).quantize(Decimal("0.001")).normalize(), "f") not in taken]
+        if not tags:
+            raise RuntimeError("Too many open payments right now; try again in a few minutes.")
+        amt = (Decimal(str(usdt)) + Decimal(random.choice(tags)) / Decimal(1000)).quantize(Decimal("0.001"))
     else:
         places = Decimal(1).scaleb(-min(a.decimals, 8))
         amt = (Decimal(str(usdt)) / Decimal(str(price))).quantize(places, rounding=ROUND_UP)
@@ -154,11 +242,10 @@ def _units(amount: str, decimals: int) -> int:
 
 
 def start_marker(a: Asset) -> dict[str, Any]:
-    """Where to start looking (EVM block number); best effort."""
-    if a.chain in ("eth", "bsc", "polygon"):
+    """Where to start looking (EVM block number); best effort (the watcher estimates it if this fails)."""
+    if a.chain in EVM_CHAINS:
         try:
-            r = httpx.post(rpc_url(a.chain), json={"jsonrpc": "2.0", "id": 1, "method": "eth_blockNumber"}, timeout=8)
-            return {"from_block": int(r.json()["result"], 16) - 5}
+            return {"from_block": evm.RpcPool(rpc_urls(a.chain), EVM_CHAINS[a.chain], timeout=6).block_number() - 5}
         except Exception:  # noqa: BLE001
             return {}
     return {}

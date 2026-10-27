@@ -3150,4 +3150,22 @@ a.button,
 .rc-demo svg, .rc-demo .rc-diagram-row { direction: ltr; }
 @media (max-width: 640px) {
   .chat-message[dir="rtl"] .chat-md-table { font-size: 0.8rem; }
+
+/* ---- USDT / BEP20 payment page: network box, RTL, mobile ---- */
+.billing-netbox { display: flex; flex-wrap: wrap; gap: 8px 24px; padding: 10px 12px; margin: 8px 0; border-radius: 8px; background: rgba(2, 132, 199, 0.1); border: 1px solid rgba(2, 132, 199, 0.4); }
+.billing-amount { font-size: 1.15rem; font-weight: 700; }
+.billing-link { font-size: 0.85rem; text-decoration: underline; }
+.billing-qr-tabs { margin: 8px 0 4px; }
+.billing-qr-tabs button { padding: 4px 10px; font-size: 0.8rem; }
+.billing-claim { margin-top: 14px; border-top: 1px dashed rgba(148, 163, 184, 0.5); padding-top: 10px; }
+.billing-claim summary { cursor: pointer; font-weight: 600; }
+.billing-tx-input { flex: 1 1 260px; min-width: 0; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border, #334155); background: transparent; color: inherit; font-family: monospace; }
+.billing-pay-page.is-rtl { text-align: right; }
+.billing-pay-page.is-rtl .billing-pay-fields code { text-align: left; }
+.billing-pay-page .billing-banner { overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .billing-pay-page .billing-pay-fields dd { align-items: flex-start; }
+  .billing-pay-page .billing-copy { padding: 8px 14px; min-height: 40px; }
+  .billing-pay-page .form-row .button { flex: 1 1 100%; min-height: 44px; }
+  .billing-pay-page .billing-chips button { min-height: 40px; }
 }

@@ -40,6 +40,7 @@ See `.env.example` for the full list. Minimum production set:
 | `BTCPAY_SERVER_URL` | Your BTCPay instance base URL |
 | `BTCPAY_API_KEY` | BTCPay Greenfield API key |
 | `BTCPAY_STORE_ID` | BTCPay store identifier |
+| `CRYPTO_BSC_ADDRESS`, `CRYPTO_LIVE_ASSETS`, `CRYPTO_BSC_RPC_URLS`, `CRYPTO_CONFIRMATIONS`, `BILLING_ADMIN_ACCOUNTS` | USDT/BEP20 automatic detection (see docs/billing-crypto-go-live.md) |
 | `CRYPTO_PAYMENT_WEBHOOK_SECRET` | HMAC secret for payment webhooks |
 | `BTCPAY_WEBHOOK_SECRET` | BTCPay webhook signing secret |
 | `CORS_ORIGINS` | Comma-separated frontend origin(s), e.g. `https://app.example.com` |
