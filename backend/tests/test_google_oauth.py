@@ -30,7 +30,7 @@ def _jwt(claims: dict) -> str:
 
 
 def _claims(**over):
-    c = {"aud": "cid", "iss": "https://accounts.google.com", "exp": int(time.time()) + 60, "nonce": "n",
+    c = {"aud": "cid", "iss": "https://accounts.google.com", "exp": int(time.time()) + 86400, "nonce": "n",
          "sub": "123", "email": "a@b.ir", "email_verified": True}
     c.update(over)
     return c
