@@ -326,3 +326,20 @@ def test_knowledge_does_not_claim_english_ltr_cards_are_intended() -> None:
     assert "Language and layout of chat cards" in text
     assert "is a BUG, never intended behaviour" in text
     assert "right-to-left" in text
+
+def test_webhook_sends_bearer_auth_header_only_when_configured():
+    seen = []
+    handler = lambda r: (seen.append(r), httpx.Response(200))[1]  # noqa: E731
+    issue = IssueReport(title="t", summary="s")
+    IssueNotifier("https://hook.test/in", "", 1, transport=httpx.MockTransport(handler), background=False,
+                  auth_token="tok-123").notify("platform_issue.created", issue)
+    IssueNotifier("https://hook.test/in", "", 1, transport=httpx.MockTransport(handler), background=False
+                  ).notify("platform_issue.created", issue)
+    assert seen[0].headers["authorization"] == "Bearer tok-123"
+    assert "authorization" not in seen[1].headers
+
+
+def test_webhook_auth_token_loaded_from_env():
+    from app.platform_helper.config import load_settings
+    assert load_settings({"PLATFORM_ISSUE_WEBHOOK_AUTH_TOKEN": " abc "}).webhook_auth_token == "abc"
+    assert load_settings({}).webhook_auth_token == ""

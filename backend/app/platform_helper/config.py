@@ -9,6 +9,7 @@ PLATFORM_HELP_LLM_PROVIDER   optional: pin one preset (e.g. "gemini", "groq", "o
 PLATFORM_HELP_LLM_MODEL      optional model override for the pinned provider
 LLM_TIMEOUT_SECONDS, LLM_MAX_TOKENS, LLM_TEMPERATURE
 PLATFORM_ISSUE_WEBHOOK_URL / PLATFORM_ISSUE_WEBHOOK_SECRET / PLATFORM_ISSUE_WEBHOOK_RETRIES   optional, off by default
+PLATFORM_ISSUE_WEBHOOK_AUTH_TOKEN   optional: also sent as "Authorization: Bearer <token>" (e.g. Grok Bot routine webhook)
 PLATFORM_ISSUE_ADMIN_TOKEN   bearer token for machine access to the issue admin API (Grok Bot)
 PLATFORM_ADMIN_ACCOUNTS      comma-separated account ids / e-mails allowed to use the issue admin API as a human
 """
@@ -47,6 +48,7 @@ class HelperSettings:
     provider_mode: str = "auto"
     webhook_url: str = ""
     webhook_secret: str = ""
+    webhook_auth_token: str = ""
     webhook_retries: int = 3
     auto_report: bool = True  # file diagnosed platform errors automatically (DB always; webhook only when configured)
     auto_max_per_hour: int = 6  # per user, new auto-filed reports
@@ -129,6 +131,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> HelperSettings:
         auto_report=(env.get("PLATFORM_ISSUE_AUTO_REPORT") or "1").strip().lower() not in ("0", "false", "off", "no"),
         auto_max_per_hour=max(1, int(env.get("PLATFORM_ISSUE_AUTO_MAX_PER_HOUR") or 6)),
         auto_dedupe_seconds=max(0, int(env.get("PLATFORM_ISSUE_AUTO_DEDUPE_SECONDS") or 600)),
+        webhook_auth_token=(env.get("PLATFORM_ISSUE_WEBHOOK_AUTH_TOKEN") or "").strip(),
         admin_token=(env.get("PLATFORM_ISSUE_ADMIN_TOKEN") or "").strip(),
         admin_accounts=frozenset(
             x.strip().lower() for x in ((env.get("PLATFORM_ADMIN_ACCOUNTS") or "") + "," + (env.get("BILLING_COMPLIMENTARY_ACCOUNTS") or "")).split(",") if x.strip()
