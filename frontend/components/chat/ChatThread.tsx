@@ -11,6 +11,7 @@ import {
   shouldShowEngineeringDisclaimer,
   workspaceActionsForChat,
 } from "@/lib/chat";
+import { chatT, conversationLang, dirOf, messageLang, type ChatLang } from "@/lib/chat-i18n";
 import { mapBackendMessage } from "@/lib/chat-mappers";
 import type { AgentRunStep, ChatMessage as UiChatMessage, ExecutionPhase } from "@/lib/chat-types";
 
@@ -152,6 +153,7 @@ export function ChatThread({
     );
   }
 
+  const convLang = conversationLang(messages);
   const hasStreamingAssistant = messages.some(
     (message) => message.role === "assistant" && message.metadata?.streaming === true,
   );
@@ -160,6 +162,12 @@ export function ChatThread({
     <div className="chat-thread" ref={threadRef}>
       {messages.map((rawMessage, messageIndex) => {
         const message = toUiMessage(rawMessage);
+        // language/direction of THIS message: the backend tag, else the text; assistant cards follow the user's language
+        const lang: ChatLang = messageLang(
+          message.content,
+          rawMessage.metadata as Record<string, unknown> | null,
+          rawMessage.role === "assistant" ? convLang : null,
+        );
         const isLastAssistant =
           message.role === "assistant" && messageIndex === messages.length - 1 && !busy;
         const tokenStreaming = rawMessage.metadata?.token_streaming === true && rawMessage.metadata?.streaming === true;
@@ -169,9 +177,11 @@ export function ChatThread({
             className={
               message.role === "user" ? "chat-message chat-message-user" : "chat-message chat-message-assistant"
             }
+            dir={dirOf(lang)}
+            lang={lang}
           >
-            <div className="chat-message-avatar" aria-hidden="true">{message.role === "user" ? "You" : "AI"}</div>
-            <p className="chat-message-role">{message.role === "user" ? "You" : "Agent"}</p>
+            <div className="chat-message-avatar" aria-hidden="true">{message.role === "user" ? chatT(lang, "You") : "AI"}</div>
+            <p className="chat-message-role">{message.role === "user" ? chatT(lang, "You") : chatT(lang, "Agent")}</p>
             <div className="chat-message-body">
               {message.attachments.length > 0 ? (
                 <div className="chat-message-attachments">
@@ -181,12 +191,12 @@ export function ChatThread({
                 </div>
               ) : null}
               {message.role === "assistant" && rawMessage.metadata?.streaming === true && !message.content.trim() ? (
-                <div className="chat-typing-indicator" aria-label="Assistant is responding"><span /><span /><span /></div>
+                <div className="chat-typing-indicator" aria-label={chatT(lang, "Assistant is responding")}><span /><span /><span /></div>
               ) : null}
-              <MessageContent content={message.content} />
+              <MessageContent content={message.content} lang={lang} />
               {tokenStreaming ? <span className="chat-stream-caret" aria-hidden="true" /> : null}
               {message.role === "assistant" && rawMessage.metadata?.stopped === true ? (
-                <p className="muted chat-stopped-note">Stopped</p>
+                <p className="muted chat-stopped-note">{chatT(lang, "Stopped")}</p>
               ) : null}
               {message.role === "assistant" && parseChatDownloads(rawMessage.metadata) ? (
                 <ChatDownloadsCard downloads={parseChatDownloads(rawMessage.metadata)!} />
@@ -213,50 +223,51 @@ export function ChatThread({
               {message.role === "assistant" && message.engineeringResult ? (
                 <div className="chat-message-meta">
                   {message.engineeringResult.selectedCapability ? (
-                    <span className="chat-progress-badge">{message.engineeringResult.selectedCapability}</span>
+                    <span className="chat-progress-badge">{chatT(lang, message.engineeringResult.selectedCapability)}</span>
                   ) : null}
                   {message.engineeringResult.executionStatus ? (
                     <span className="chat-progress-badge">
-                      {message.engineeringResult.executionStatus.replace(/_/g, " ")}
+                      {chatT(lang, message.engineeringResult.executionStatus.replace(/_/g, " "))}
                     </span>
                   ) : null}
                   {message.engineeringResult.requiresApproval ? (
-                    <span className="chat-progress-badge warning">Requires approval</span>
+                    <span className="chat-progress-badge warning">{chatT(lang, "Requires approval")}</span>
                   ) : null}
                   {message.engineeringResult.agentRun ? (
                     <>
-                      <AgentProgress steps={message.engineeringResult.agentRun.steps} />
+                      <AgentProgress steps={message.engineeringResult.agentRun.steps} lang={lang} />
                       <AgentContextStrip
                         context={message.engineeringResult.agentRun.context}
                         projectName={projectName}
+                        lang={lang}
                       />
                       {message.engineeringResult.agentRun.tools.map((tool) => (
-                        <ToolExecutionCard key={tool.id} tool={tool} />
+                        <ToolExecutionCard key={tool.id} tool={tool} lang={lang} />
                       ))}
                       {message.engineeringResult.agentRun.error ? (
-                        <AgentErrorCard error={message.engineeringResult.agentRun.error} />
+                        <AgentErrorCard error={message.engineeringResult.agentRun.error} lang={lang} />
                       ) : null}
                     </>
                   ) : message.engineeringResult.statusEvents.length > 0 ? (
-                    <ul className="chat-status-events">
+                    <ul className="chat-status-events" dir={dirOf(lang)}>
                       {message.engineeringResult.statusEvents.map((event) => (
-                        <li key={event}>{event}</li>
+                        <li key={event}>{chatT(lang, event)}</li>
                       ))}
                     </ul>
                   ) : null}
                   {message.engineeringResult.demoResults ? (
-                    <EngineeringResultCard results={message.engineeringResult.demoResults} />
+                    <EngineeringResultCard results={message.engineeringResult.demoResults} lang={lang} />
                   ) : null}
                   {message.engineeringResult.frame3dResults ? (
                     <Frame3dResultCard results={message.engineeringResult.frame3dResults} />
                   ) : null}
                   {message.engineeringResult.aciBeamResults ? (
-                    <AciRcBeamResultCard results={message.engineeringResult.aciBeamResults} />
+                    <AciRcBeamResultCard results={message.engineeringResult.aciBeamResults} lang={lang} />
                   ) : null}
                   {message.engineeringResult.artifacts.length > 0 ? (
                     <div className="chat-artifacts">
                       {message.engineeringResult.artifacts.map((artifact) => (
-                        <ArtifactCard key={artifact.id} artifact={artifact} />
+                        <ArtifactCard key={artifact.id} artifact={artifact} lang={lang} />
                       ))}
                     </div>
                   ) : null}
@@ -271,12 +282,13 @@ export function ChatThread({
                     return (
                       <>
                         {approvalId && projectId ? (
-                          <div className="chat-inline-approval">
-                            <p className="agent-approval-heading">Approval required</p>
+                          <div className="chat-inline-approval" dir={dirOf(lang)}>
+                            <p className="agent-approval-heading">{chatT(lang, "Approval required")}</p>
                             <ApprovalReviewPanel
                               projectId={projectId}
                               approvalRequestId={approvalId}
                               onResolved={onApprovalResolved ?? (() => undefined)}
+                              lang={lang}
                             />
                           </div>
                         ) : null}
@@ -288,7 +300,7 @@ export function ChatThread({
                                 href={action.href}
                                 className="button secondary chat-action-link"
                               >
-                                {action.label}
+                                {chatT(lang, action.label)}
                               </Link>
                             ))}
                           </div>
@@ -298,8 +310,10 @@ export function ChatThread({
                   })()}
                   {shouldShowEngineeringDisclaimer(message.content) ? (
                     <p className="muted chat-disclaimer">
-                      Engineering outputs require review by a qualified professional before use in
-                      construction documents.
+                      {chatT(
+                        lang,
+                        "Engineering outputs require review by a qualified professional before use in construction documents.",
+                      )}
                     </p>
                   ) : null}
                 </div>
@@ -310,14 +324,14 @@ export function ChatThread({
                 <button
                   type="button"
                   className="chat-tool-button"
-                  aria-label="Copy message"
+                  aria-label={chatT(lang, "Copy")}
                   onClick={() => copyMessage(message.id, message.content)}
                 >
-                  {copiedId === message.id ? "Copied ✓" : "Copy"}
+                  {chatT(lang, copiedId === message.id ? "Copied ✓" : "Copy")}
                 </button>
                 {isLastAssistant && onRegenerate ? (
-                  <button type="button" className="chat-tool-button" aria-label="Regenerate response" onClick={onRegenerate}>
-                    Regenerate
+                  <button type="button" className="chat-tool-button" aria-label={chatT(lang, "Regenerate")} onClick={onRegenerate}>
+                    {chatT(lang, "Regenerate")}
                   </button>
                 ) : null}
               </div>
@@ -326,13 +340,13 @@ export function ChatThread({
         );
       })}
       {busy && !hasStreamingAssistant ? (
-        <article className="chat-message chat-message-assistant" aria-live="polite" aria-busy="true">
-          <p className="chat-message-role">Agent</p>
+        <article className="chat-message chat-message-assistant" aria-live="polite" aria-busy="true" dir={dirOf(convLang)} lang={convLang}>
+          <p className="chat-message-role">{chatT(convLang, "Agent")}</p>
           <div className="chat-message-body">
-            <p className="muted">{statusLabel ?? "Processing your engineering request…"}</p>
-            <AgentProgress steps={liveProgressSteps(executionPhase, statusLabel)} />
+            <p className="muted">{chatT(convLang, statusLabel ?? "Processing your engineering request…")}</p>
+            <AgentProgress steps={liveProgressSteps(executionPhase, statusLabel)} lang={convLang} />
             {executionPhase !== "idle" && executionPhase !== "error" ? (
-              <div className="chat-typing-indicator" aria-label="Assistant is responding">
+              <div className="chat-typing-indicator" aria-label={chatT(convLang, "Assistant is responding")}>
                 <span />
                 <span />
                 <span />
@@ -343,8 +357,8 @@ export function ChatThread({
       ) : null}
       <div ref={endRef} />
       {showJump ? (
-        <button type="button" className="chat-jump-latest" onClick={jumpToLatest} aria-label="Scroll to latest message">
-          ↓ Latest
+        <button type="button" className="chat-jump-latest" onClick={jumpToLatest} aria-label="Scroll to latest message" dir={dirOf(convLang)}>
+          {chatT(convLang, "↓ Latest")}
         </button>
       ) : null}
     </div>

@@ -1,10 +1,12 @@
 "use client";
 
+import { chatT, dirOf, type ChatLang } from "@/lib/chat-i18n";
 import type { AgentRunStep } from "@/lib/chat-types";
 
 type AgentProgressProps = {
   steps: AgentRunStep[];
   label?: string;
+  lang?: ChatLang | null;
 };
 
 function stateSymbol(state: AgentRunStep["state"]): string {
@@ -33,7 +35,7 @@ function stateLabel(state: AgentRunStep["state"]): string {
   return "Pending";
 }
 
-export function AgentProgress({ steps, label = "Agent progress" }: AgentProgressProps) {
+export function AgentProgress({ steps, label = "Agent progress", lang = null }: AgentProgressProps) {
   if (steps.length === 0) {
     return null;
   }
@@ -41,7 +43,7 @@ export function AgentProgress({ steps, label = "Agent progress" }: AgentProgress
   const current = steps.find((step) => step.state === "current" || step.state === "error");
 
   return (
-    <ol className="agent-progress" aria-label={label}>
+    <ol className="agent-progress" aria-label={chatT(lang, label)} dir={dirOf(lang)}>
       {steps.map((step) => (
         <li
           key={step.key}
@@ -52,14 +54,14 @@ export function AgentProgress({ steps, label = "Agent progress" }: AgentProgress
             {stateSymbol(step.state)}
           </span>
           <span className="agent-progress-copy">
-            <span className="agent-progress-label">{step.label}</span>
-            <span className="agent-progress-state">{stateLabel(step.state)}</span>
+            <span className="agent-progress-label">{chatT(lang, step.label)}</span>
+            <span className="agent-progress-state">{chatT(lang, stateLabel(step.state))}</span>
           </span>
         </li>
       ))}
       {current ? (
         <span className="visually-hidden">
-          Current step: {current.label}, {stateLabel(current.state)}
+          {chatT(lang, "Current step")}: {chatT(lang, current.label)}, {chatT(lang, stateLabel(current.state))}
         </span>
       ) : null}
     </ol>

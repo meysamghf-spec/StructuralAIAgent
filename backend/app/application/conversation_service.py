@@ -80,6 +80,7 @@ _AGENT_WORKSPACE_LINKS: dict[EngineeringAgentType, str] = {
 }
 
 from app.application import assistant_chat as _assistant_chat  # noqa: E402
+from app.application import chat_i18n as _i18n  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -377,12 +378,16 @@ class ConversationService:
                     reason = exc.message
                 else:
                     reason = "The agent could not complete this engineering step."
+                _lang = _i18n.detect_lang(content)
                 emit_progress(
                     _QueueSink(),
                     EVENT_FAILED,
                     {
                         "conversation_id": str(conversation_id),
-                        "error": safe_stream_error(title="Engineering workflow failed", reason=reason),
+                        "error": safe_stream_error(
+                            title=_i18n.tr("Engineering workflow failed", _lang),
+                            reason=_i18n.tr(reason, _lang),
+                        ),
                     },
                 )
             finally:
@@ -759,6 +764,7 @@ class ConversationService:
         from app.application import frame3d_followup as _fu
 
         prior_user_texts = [m.content for m in reversed(history) if m.role == MessageRole.USER]
+        ui_lang = _i18n.conversation_lang(user_request, prior_user_texts)
         merged_request = _fu.merge_with_pending(user_request, prior_user_texts)
         if merged_request == user_request:
             # «پیش‌فرض‌ها را فرض کن» right after the optimization checklist -> run the default-frame optimization.
@@ -773,6 +779,8 @@ class ConversationService:
             "attachment_file_ids": [str(item.file_id) for item in attachments],
             "selected_mode": mode or "auto",
         }
+        if ui_lang:
+            parameters["ui_lang"] = ui_lang
         if resume_context is not None:
             parameters["resume_execution_id"] = resume_context["execution_id"]
         if attachment_context is not None:
@@ -1145,9 +1153,10 @@ def _emit_terminal_chat_event(
         agent_run = metadata.get("agent_run")
         if isinstance(agent_run, dict) and isinstance(agent_run.get("error"), dict):
             error = agent_run.get("error")
+        _lang = metadata.get("lang") if metadata.get("lang") in ("fa", "en") else None
         payload["error"] = error or safe_stream_error(
-            title="Engineering workflow failed",
-            reason="The agent could not complete this engineering step.",
+            title=_i18n.tr("Engineering workflow failed", _lang),
+            reason=_i18n.tr("The agent could not complete this engineering step.", _lang),
         )
         emit_progress(sink, EVENT_FAILED, payload)
         return
@@ -1156,20 +1165,22 @@ def _emit_terminal_chat_event(
 
 def _format_execution_response(record) -> tuple[str, dict]:
     view = build_agent_execution_user_view(record)
+    lang = _record_lang(record)
+    h = lambda key: _i18n.heading(key, lang)  # noqa: E731
     sections: list[str] = []
 
-    status_label = _execution_status_label(record.execution_status, view.progress)
-    sections.append(f"**Status:** {status_label}")
+    status_label = _execution_status_label(record.execution_status, view.progress, lang)
+    sections.append(f"**{h('status')}:** {status_label}")
 
     if view.summary:
-        sections.append(f"### Request\n{view.summary}")
+        sections.append(f"### {h('request')}\n{_i18n.tr(view.summary, lang)}")
 
     if view.final_result:
-        sections.append(f"### Result\n{view.final_result}")
+        sections.append(f"### {h('result')}\n{_i18n.tr(view.final_result, lang)}")
 
     if record.agent_result and record.agent_result.recommendations:
-        rec_lines = "\n".join(f"- {item}" for item in record.agent_result.recommendations[:5])
-        sections.append(f"### Recommendations\n{rec_lines}")
+        rec_lines = "\n".join(f"- {_i18n.tr(item, lang)}" for item in record.agent_result.recommendations[:5])
+        sections.append(f"### {h('recommendations')}\n{rec_lines}")
 
     demo_results = _extract_engineering_results(record)
     if demo_results:
@@ -1179,7 +1190,7 @@ def _format_execution_response(record) -> tuple[str, dict]:
         if isinstance(markdown, str) and markdown.strip():
             sections.append(markdown)
         else:
-            sections.append("### Structural analysis (Demo)\nDeterministic simply-supported beam results are available.")
+            sections.append(f"### {h('demo_title')}\n{h('demo_body')}")
 
     _so = record.agent_result.structured_output if record.agent_result else None
     if isinstance(_so, dict) and _so.get("checklist") and isinstance(_so.get("status_message"), str):
@@ -1188,8 +1199,8 @@ def _format_execution_response(record) -> tuple[str, dict]:
     if record.agent_result and record.agent_result.validation_information:
         warnings = record.agent_result.validation_information.get("warnings")
         if isinstance(warnings, list) and warnings:
-            warn_lines = "\n".join(f"- {item}" for item in warnings[:5])
-            sections.append(f"### Warnings\n{warn_lines}")
+            warn_lines = "\n".join(f"- {_i18n.tr(item, lang)}" for item in warnings[:5])
+            sections.append(f"### {h('warnings')}\n{warn_lines}")
 
     actions = _build_workspace_actions(record)
     artifacts = _extract_artifacts(record)
@@ -1216,18 +1227,25 @@ def _format_execution_response(record) -> tuple[str, dict]:
         engineering_task = record.traceability_metadata.get("engineering_task")
     if isinstance(engineering_task, dict):
         metadata["engineering_task"] = engineering_task
-        _req = record.input_request.get("user_request") if isinstance(record.input_request, dict) else None
-        workflow_section = _format_engineering_task_section(
-            engineering_task, "fa" if _is_persian(str(_req or "")) else "en" if _req else None)
+        workflow_section = _format_engineering_task_section(engineering_task, lang)
         if workflow_section:
             sections.insert(1, workflow_section)
     if isinstance(record.traceability_metadata, dict) and record.traceability_metadata.get("report_id"):
         metadata["report_id"] = str(record.traceability_metadata["report_id"])
 
-    return "\n\n".join(sections), metadata
+    return "\n\n".join(sections), _i18n.localize_metadata(metadata, lang)
 
 
-def _execution_status_label(status: AgentExecutionStatus, progress: str) -> str:
+def _record_lang(record) -> str | None:
+    """fa/en of the conversation turn that created this execution (``ui_lang`` parameter, else the request text)."""
+    req = record.input_request if isinstance(record.input_request, dict) else {}
+    params = req.get("parameters") if isinstance(req.get("parameters"), dict) else {}
+    if params.get("ui_lang") in ("fa", "en"):
+        return params["ui_lang"]
+    return _i18n.detect_lang(str(req.get("user_request") or ""))
+
+
+def _execution_status_label(status: AgentExecutionStatus, progress: str, lang: str | None = None) -> str:
     mapping = {
         "queued": "Queued",
         "in_progress": "Processing",
@@ -1238,7 +1256,7 @@ def _execution_status_label(status: AgentExecutionStatus, progress: str) -> str:
         "rejected": "Rejected",
         "cancelled": "Cancelled",
     }
-    return mapping.get(progress, status.value.replace("_", " ").title())
+    return _i18n.status_label(progress, mapping.get(progress, status.value.replace("_", " ").title()), lang)
 
 
 def _conversation_id_from_execution(record: AgentExecutionRecord) -> UUID | None:
@@ -1428,6 +1446,8 @@ def _format_engineering_task_section(engineering_task: dict, lang: str | None = 
         lines.append(f"{'وضعیت کار' if fa else 'Task status'}: {label}")
 
     objective = engineering_task.get("normalized_objective")
+    if objective and fa:
+        objective = _i18n.tr(str(objective), "fa")
     if objective and (not fa or _is_persian(str(objective))):
         lines.append(f"{'هدف' if fa else 'Objective'}: {objective}")
 

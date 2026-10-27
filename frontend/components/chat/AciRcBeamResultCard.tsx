@@ -1,37 +1,39 @@
 "use client";
 
+import { chatT, dirOf, type ChatLang } from "@/lib/chat-i18n";
 import type { AciRcBeamResults } from "@/lib/chat-types";
 
 type AciRcBeamResultCardProps = {
   results: AciRcBeamResults;
+  lang?: ChatLang | null;
 };
 
-export function AciRcBeamResultCard({ results }: AciRcBeamResultCardProps) {
+export function AciRcBeamResultCard({ results, lang = null }: AciRcBeamResultCardProps) {
   const checkComplete = results.status === "PASS" || results.status === "FAIL";
   const validationLabel = validationCopy(results.status);
 
   return (
-    <section className="engineering-result-card" aria-label="ACI 318 RC beam check">
+    <section className="engineering-result-card" aria-label={chatT(lang, "ACI 318 RC beam check")} dir={dirOf(lang)} lang={lang ?? undefined}>
       <header className="engineering-result-header">
         <div>
-          <p className="eyebrow">Concrete design</p>
-          <h3>ACI 318 RC beam check</h3>
+          <p className="eyebrow">{chatT(lang, "Concrete design")}</p>
+          <h3>{chatT(lang, "ACI 318 RC beam check")}</h3>
         </div>
         <div className="engineering-result-badges">
           <span className={`chat-progress-badge ${badgeClass(results.status)}`}>
-            {results.status.replace(/_/g, " ")}
+            {chatT(lang, results.status.replace(/_/g, " "))}
           </span>
         </div>
       </header>
 
-      {results.code ? <p className="muted engineering-result-code">Code: {results.code}</p> : null}
+      {results.code ? <p className="muted engineering-result-code">{chatT(lang, "Code")}: <bdi dir="ltr">{results.code}</bdi></p> : null}
 
       {results.missing.length > 0 ? (
         <div className="engineering-result-block">
-          <p className="engineering-result-label">Required inputs</p>
+          <p className="engineering-result-label">{chatT(lang, "Required inputs")}</p>
           <ul>
             {results.missing.map((item) => (
-              <li key={item}>{item}</li>
+              <li key={item} dir="auto">{chatT(lang, item)}</li>
             ))}
           </ul>
         </div>
@@ -39,11 +41,11 @@ export function AciRcBeamResultCard({ results }: AciRcBeamResultCardProps) {
 
       {checkComplete && results.fields.length > 0 ? (
         <div className="engineering-result-block">
-          <p className="engineering-result-label">Inputs and results</p>
+          <p className="engineering-result-label">{chatT(lang, "Inputs and results")}</p>
           <dl className="engineering-result-grid">
             {results.fields.map((field) => (
               <div key={`${field.label}-${field.value}`} className="engineering-result-field">
-                <dt>{field.label}</dt>
+                <dt dir="auto">{field.label}</dt>
                 <dd>
                   {field.value}
                   {field.unit ? <span className="engineering-result-unit"> {field.unit}</span> : null}
@@ -56,15 +58,15 @@ export function AciRcBeamResultCard({ results }: AciRcBeamResultCardProps) {
 
       {checkComplete ? (
         <div className="engineering-result-block">
-          <p className="engineering-result-label">Validation</p>
+          <p className="engineering-result-label">{chatT(lang, "Validation")}</p>
           <ul>
-            <li>Calculation completed</li>
-            <li>{validationLabel}</li>
+            <li>{chatT(lang, "Calculation completed")}</li>
+            <li>{chatT(lang, validationLabel)}</li>
             {results.numericResults?.flexureOutcome ? (
-              <li>Flexure {results.numericResults.flexureOutcome}</li>
+              <li>{chatT(lang, `Flexure ${results.numericResults.flexureOutcome}`)}</li>
             ) : null}
             {results.numericResults?.shearOutcome ? (
-              <li>Shear {results.numericResults.shearOutcome}</li>
+              <li>{chatT(lang, `Shear ${results.numericResults.shearOutcome}`)}</li>
             ) : null}
           </ul>
         </div>
@@ -72,21 +74,21 @@ export function AciRcBeamResultCard({ results }: AciRcBeamResultCardProps) {
 
       {results.inputUnits || results.internalUnits || results.outputUnits ? (
         <div className="engineering-result-block">
-          <p className="engineering-result-label">Units</p>
+          <p className="engineering-result-label">{chatT(lang, "Units")}</p>
           <ul>
-            {results.inputUnits ? <li>Input: {results.inputUnits}</li> : null}
-            {results.internalUnits ? <li>Internal: {results.internalUnits}</li> : null}
-            {results.outputUnits ? <li>Output: {results.outputUnits}</li> : null}
+            {results.inputUnits ? <li>{chatT(lang, "Input")}: <bdi dir="ltr">{results.inputUnits}</bdi></li> : null}
+            {results.internalUnits ? <li>{chatT(lang, "Internal")}: <bdi dir="ltr">{results.internalUnits}</bdi></li> : null}
+            {results.outputUnits ? <li>{chatT(lang, "Output")}: <bdi dir="ltr">{results.outputUnits}</bdi></li> : null}
           </ul>
         </div>
       ) : null}
 
       {results.assumptions.length > 0 ? (
         <div className="engineering-result-block">
-          <p className="engineering-result-label">Assumptions</p>
+          <p className="engineering-result-label">{chatT(lang, "Assumptions")}</p>
           <ul>
             {results.assumptions.map((item) => (
-              <li key={item}>{item}</li>
+              <li key={item} dir="auto">{chatT(lang, item)}</li>
             ))}
           </ul>
         </div>
@@ -94,16 +96,16 @@ export function AciRcBeamResultCard({ results }: AciRcBeamResultCardProps) {
 
       {results.warnings.length > 0 ? (
         <div className="engineering-result-block">
-          <p className="engineering-result-label">Warnings</p>
+          <p className="engineering-result-label">{chatT(lang, "Warnings")}</p>
           <ul>
             {results.warnings.map((item) => (
-              <li key={item}>{item}</li>
+              <li key={item} dir="auto">{chatT(lang, item)}</li>
             ))}
           </ul>
         </div>
       ) : null}
 
-      {results.disclaimer ? <p className="muted chat-disclaimer">{results.disclaimer}</p> : null}
+      {results.disclaimer ? <p className="muted chat-disclaimer" dir="auto">{chatT(lang, results.disclaimer)}</p> : null}
     </section>
   );
 }
