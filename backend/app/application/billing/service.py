@@ -158,7 +158,8 @@ def payment_status() -> dict[str, Any]:
 
 MOCK_ADDR = {"tron": "TMockStructuralAiTestAddrDoNotPay01", "bsc": "0x000000000000000000000000000000000000dEaD",
              "eth": "0x000000000000000000000000000000000000dEaD", "polygon": "0x000000000000000000000000000000000000dEaD",
-             "ton": "UQMockStructuralAiTestAddressDoNotPay0000000000000", "btcpay": "bc1qmockstructuralaitestaddressdonotpay0"}
+             "ton": "UQMockStructuralAiTestAddressDoNotPay0000000000000", "btcpay": "bc1qmockstructuralaitestaddressdonotpay0",
+             "btc": "bc1qmockstructuralaitestaddressdonotpay0"}
 
 
 def create_checkout(account_id: str, plan_id: str, duration_id: str, asset_id: str, *, frontend_base: str = "") -> dict:
@@ -183,8 +184,8 @@ def create_checkout(account_id: str, plan_id: str, duration_id: str, asset_id: s
             pay.update(bp, pay_address="", amount_crypto="", rate_usd=None, rate_source="btcpay")
         else:
             addr = crypto.receive_address(a) if live else MOCK_ADDR[a.chain]
-            taken = watcher.pending_amounts(a.id, addr) if (live and a.contract and a.chain in crypto.EVM_CHAINS) else set()
-            cq = crypto.quote_crypto(a, q["amount_usdt"], taken)
+            taken = watcher.pending_amounts(a.id, addr) if (live and crypto.is_watched(a)) else set()
+            cq = crypto.quote_crypto(a, q["amount_usdt"], taken, live=live)
             pay.update(cq, pay_address=addr, **(crypto.start_marker(a) if live else {}))
             pay["payment_uri"] = crypto.payment_uri(a, addr, cq["amount_crypto"])
     except Exception as exc:  # noqa: BLE001
@@ -209,14 +210,15 @@ def public_invoice(inv: dict) -> dict:
     out = {k: v for k, v in inv.items() if k not in ("from_block",)}
     if inv.get("pay_address") and inv["status"] == "pending":
         out["qr_svg"] = crypto.qr_svg(inv.get("payment_uri") or inv["pay_address"])
-        if inv.get("contract") and not inv.get("mock"):
+        if inv.get("payment_uri") != inv["pay_address"] and not inv.get("mock"):
             out["qr_address_svg"] = crypto.qr_svg(inv["pay_address"])  # plain-address QR for wallets without EIP-681
     a = crypto.BY_ID.get(inv.get("asset_id", ""))
-    if a and a.chain in crypto.EVM_CHAINS:
-        out["chain_id"] = crypto.EVM_CHAINS[a.chain]
+    if a and a.chain in crypto.WATCHED_CHAINS:
+        out["chain"] = a.chain
+        out["chain_id"] = crypto.EVM_CHAINS.get(a.chain)
         out["explorer"] = crypto.EXPLORER.get(a.chain, "")
-        out["confirmations_required"] = crypto.confirmations()
-        out["auto_detect"] = bool(a.contract) and not inv.get("mock")
+        out["confirmations_required"] = crypto.confirmations(a.chain)
+        out["auto_detect"] = crypto.is_watched(a) and not inv.get("mock")
         out["decimals"] = a.decimals
         if inv["status"] == "pending":
             out.update(watcher.seen(inv["id"]))

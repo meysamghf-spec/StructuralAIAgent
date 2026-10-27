@@ -12,7 +12,7 @@ import {
   type CryptoAsset,
   type Invoice,
 } from "@/lib/billing";
-import { countdownLabel, defaultAsset, displayAmount, isTokenOnEvm, isTxHash, payStage, payT, selectableAssets, txUrl } from "@/lib/crypto-pay";
+import { confirmEta, countdownLabel, defaultAsset, displayAmount, etaText, explorerLabel, invChain, isAutoDetected, isHighFeeChain, isTxHash, networkNote, payStage, payT, selectableAssets, tokenUrl, txUrl } from "@/lib/crypto-pay";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
@@ -155,7 +155,8 @@ function PayInner() {
   const dir = lang === "fa" ? "rtl" : "ltr";
   const doneHref = inv ? `/workspace/upgrades?invoice=${inv.number}&status=${inv.status}` : "/workspace/upgrades";
   const stage = inv ? payStage(inv, now) : "awaiting";
-  const evmToken = inv ? isTokenOnEvm(inv) : false;
+  const watched = inv ? isAutoDetected(inv) : false;
+  const chain = inv ? invChain(inv) : "";
   const qr = inv ? (qrMode === "address" && inv.qr_address_svg ? inv.qr_address_svg : inv.qr_svg) : "";
   const label = inv ? countdownLabel(inv.expires_at, now) : "";
   const net = inv ? tr(inv.network) : "";
@@ -207,11 +208,25 @@ function PayInner() {
                   {tr("Processed by")}: {asset.processor}
                 </p>
               ) : null}
-              {asset?.live && asset.contract ? (
+              {asset?.live && (asset.contract || asset.chain === "btc") ? (
                 <p className="billing-warn" data-testid="pre-warning">
-                  {tr("Send only {coin} on {network}. Any other token or network (for example TRC20 or ERC20) will be lost and cannot be recovered. Send exactly the amount shown, including the last digits: they identify your invoice.", {
+                  {tr("Send only {coin} on {network}. Any other token or network will be lost and cannot be recovered. Send exactly the amount shown, including the last digits: they identify your invoice.", {
                     coin: asset.coin,
                     network: tr(asset.network),
+                  })}
+                </p>
+              ) : null}
+              {asset?.live && (asset.contract || asset.chain === "btc") && networkNote(asset.chain ?? asset.chain_id) ? (
+                <p className={`billing-warn${isHighFeeChain(asset.chain ?? asset.chain_id) ? " billing-warn-fee" : " billing-note"}`} data-testid="network-note">
+                  {isHighFeeChain(asset.chain ?? asset.chain_id) ? "⛽ " : "ℹ "}
+                  {tr(networkNote(asset.chain ?? asset.chain_id), { n: asset.confirmations ?? 3 })}
+                </p>
+              ) : null}
+              {asset?.live && (asset.contract || asset.chain === "btc") && asset.confirmations ? (
+                <p className="workspace-meta" data-testid="confirm-eta">
+                  {tr("Needs {n} network confirmations (about {time}).", {
+                    n: asset.confirmations,
+                    time: etaText(lang, confirmEta(asset.chain ?? asset.chain_id, asset.confirmations).seconds),
                   })}
                 </p>
               ) : null}
@@ -240,23 +255,29 @@ function PayInner() {
                   {tr("Test invoice: this wallet is not configured yet, so the address below is a placeholder. Do not send real coins. Use “Simulate payment”.")}
                 </p>
               ) : null}
-              {evmToken ? (
+              {watched ? (
                 <div className="billing-netbox" data-testid="network-box">
                   <span>
                     {tr("Network")}: <strong data-testid="net-name">{net}</strong>
                   </span>
                   <span>
-                    {tr("Token")}: <strong dir="ltr">{inv.coin}</strong>
+                    {tr(inv.contract ? "Token" : "Coin")}: <strong dir="ltr">{inv.coin}</strong>
                   </span>
                 </div>
               ) : null}
               <p className="billing-warn" data-testid="network-warning">
                 ⚠{" "}
-                {tr("Send only {coin} on {network}. Any other token or network (for example TRC20 or ERC20) will be lost and cannot be recovered. Send exactly the amount shown, including the last digits: they identify your invoice.", {
+                {tr("Send only {coin} on {network}. Any other token or network will be lost and cannot be recovered. Send exactly the amount shown, including the last digits: they identify your invoice.", {
                   coin: inv.coin,
                   network: net,
                 })}
               </p>
+              {watched && networkNote(chain) ? (
+                <p className={`billing-warn${isHighFeeChain(chain) ? " billing-warn-fee" : " billing-note"}`} data-testid="network-note-invoice">
+                  {isHighFeeChain(chain) ? "⛽ " : "ℹ "}
+                  {tr(networkNote(chain), { n: inv.confirmations_required ?? 3 })}
+                </p>
+              ) : null}
               {inv.checkout_url ? (
                 <p>
                   <a className="workspace-primary-button" href={inv.checkout_url} target="_blank" rel="noreferrer">
@@ -288,7 +309,7 @@ function PayInner() {
                       <dt>{tr("Amount")}</dt>
                       <dd>
                         <code className="billing-amount" dir="ltr" data-testid="pay-amount">
-                          {displayAmount(inv.amount_crypto, evmToken || inv.coin === "USDT" || inv.coin === "USDC")} {inv.coin}
+                          {displayAmount(inv.amount_crypto, inv.coin === "USDT" || inv.coin === "USDC")} {inv.coin}
                         </code>
                         <Copy text={inv.amount_crypto} testId="copy-amount" label={tr("Copy")} done={tr("Copied")} />
                       </dd>
@@ -302,7 +323,7 @@ function PayInner() {
                         <Copy text={inv.pay_address} testId="copy-address" label={tr("Copy")} done={tr("Copied")} />
                       </dd>
                     </div>
-                    {evmToken && inv.contract ? (
+                    {watched && inv.contract ? (
                       <div>
                         <dt>{tr("Token contract")}</dt>
                         <dd>
@@ -310,9 +331,9 @@ function PayInner() {
                             {inv.contract}
                           </code>
                           <Copy text={inv.contract} testId="copy-contract" label={tr("Copy")} done={tr("Copied")} />
-                          {inv.explorer ? (
-                            <a href={`${inv.explorer}/token/${inv.contract}`} target="_blank" rel="noreferrer" className="billing-link">
-                              {tr("Verify on BscScan")}
+                          {tokenUrl(inv) ? (
+                            <a href={tokenUrl(inv)} target="_blank" rel="noreferrer" className="billing-link">
+                              {tr(explorerLabel(chain))}
                             </a>
                           ) : null}
                         </dd>
@@ -380,15 +401,17 @@ function PayInner() {
                   </>
                 ) : null}
               </div>
-              {evmToken ? (
+              {watched ? (
                 <details className="billing-claim" data-testid="claim-box">
                   <summary>{tr("Already paid but not detected?")}</summary>
-                  <p className="workspace-meta">{tr("Paste the transaction hash (0x…) and we will verify it on the blockchain.")}</p>
+                  <p className="workspace-meta">
+                    {tr(chain === "tron" || chain === "btc" ? "Paste the transaction id (64 characters) and we will verify it on the blockchain." : "Paste the transaction hash (0x…) and we will verify it on the blockchain.")}
+                  </p>
                   <div className="form-row">
                     <input
                       className="billing-tx-input"
                       dir="ltr"
-                      placeholder="0x…"
+                      placeholder={chain === "tron" || chain === "btc" ? "64-character id" : "0x…"}
                       value={txInput}
                       onChange={(e) => setTxInput(e.target.value)}
                       data-testid="claim-input"

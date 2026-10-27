@@ -94,7 +94,10 @@ export type Invoice = {
   tx?: string;
   contract?: string;
   qr_address_svg?: string;
-  chain_id?: number;
+  chain?: string;
+  chain_id?: number | null;
+  amount_crypto_base?: string;
+  decimals?: number;
   explorer?: string;
   confirmations_required?: number;
   auto_detect?: boolean;

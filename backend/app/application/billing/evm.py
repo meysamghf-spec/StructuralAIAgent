@@ -104,7 +104,8 @@ class RpcPool:
     """Tries each endpoint in order (starting at the last one that worked) and fails over on any
     transport error, HTTP error, JSON-RPC error or wrong chain id."""
 
-    def __init__(self, urls: list[str], chain_id: int | None = None, timeout: float = 10.0) -> None:
+    def __init__(self, urls: list[str], chain_id: int | None = None, timeout: float = 10.0,
+                 headers: dict[str, dict[str, str]] | None = None) -> None:
         if not urls:
             raise RpcError("No RPC endpoints configured.")
         self.urls = urls
@@ -113,9 +114,11 @@ class RpcPool:
         self._good = 0
         self._lock = threading.Lock()
         self._checked: set[str] = set()
+        self._headers = headers or {}   # host -> extra headers (e.g. an optional API key for that host only)
 
     def _post(self, url: str, method: str, params: list[Any]) -> Any:
-        r = httpx.post(url, json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params}, timeout=self.timeout)
+        r = httpx.post(url, json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params}, timeout=self.timeout,
+                       headers=self._headers.get(url.split("//")[-1].split("/")[0]))
         r.raise_for_status()
         body = r.json()
         if body.get("error"):

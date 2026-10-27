@@ -3150,6 +3150,7 @@ a.button,
 .rc-demo svg, .rc-demo .rc-diagram-row { direction: ltr; }
 @media (max-width: 640px) {
   .chat-message[dir="rtl"] .chat-md-table { font-size: 0.8rem; }
+}
 
 /* ---- USDT / BEP20 payment page: network box, RTL, mobile ---- */
 .billing-netbox { display: flex; flex-wrap: wrap; gap: 8px 24px; padding: 10px 12px; margin: 8px 0; border-radius: 8px; background: rgba(2, 132, 199, 0.1); border: 1px solid rgba(2, 132, 199, 0.4); }
@@ -3169,3 +3170,5 @@ a.button,
   .billing-pay-page .form-row .button { flex: 1 1 100%; min-height: 44px; }
   .billing-pay-page .billing-chips button { min-height: 40px; }
 }
+.billing-warn.billing-note { background: rgba(59, 130, 246, 0.08); border-color: rgba(59, 130, 246, 0.4); }
+.billing-warn.billing-warn-fee { background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.55); }
