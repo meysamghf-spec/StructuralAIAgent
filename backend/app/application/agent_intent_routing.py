@@ -162,7 +162,7 @@ AGENT_INTENT_ROUTING: list[tuple[tuple[str, ...], EngineeringAgentType, str]] = 
         "Interpret uploaded documents and specifications",
     ),
     (
-        ("optimize", "optimization", "بهینه"),
+        ("optimize", "optimization", "optimise", "optimisation", "behine", "behineh", "بهینه", "بهينه"),
         EngineeringAgentType.OPTIMIZATION_AGENT,
         "Plan and run structural optimization workflows",
     ),
