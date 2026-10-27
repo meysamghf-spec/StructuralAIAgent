@@ -363,3 +363,22 @@ def test_api_normal_plan_limit_is_not_filed(api_client: TestClient) -> None:
     md = r.json()["assistant_message"]["metadata"]
     assert md["intent"] == "diagnose" and md["auto_report"] == "expected_limit" and not md.get("issue_id")
     assert api_client.get("/api/v1/platform-issues/mine", headers=h).json()["items"] == []
+
+
+# ---------------------------------------------------------------------------------------- orchestrator tools
+def test_every_orchestrator_tool_is_documented_and_safe() -> None:
+    """A tool the Gemini orchestrator may call must be documented, and the whitelist must never contain billing / code / shell tools."""
+    from app.application.orchestrator.tools import get_registry
+
+    doc = Path(__file__).resolve().parents[2] / "docs" / "GEMINI_PLATFORM_ORCHESTRATOR.md"
+    if not doc.exists():
+        pytest.skip("docs not present")
+    text = doc.read_text(encoding="utf-8")
+    names = get_registry().names()
+    assert len(names) >= 11
+    undocumented = [n for n in names if f"`{n}`" not in text]
+    assert not undocumented, f"orchestrator tools missing from docs/GEMINI_PLATFORM_ORCHESTRATOR.md: {undocumented}"
+    forbidden = re.compile(r"billing|payment|pay|plan|subscribe|shell|sql|exec|code|file_write|delete|approve|reject", re.I)
+    assert not [n for n in names if forbidden.search(n)], "orchestrator tool names must not touch billing/code/shell/sql/approvals/deletes"
+    for t in get_registry().tools():
+        assert t.maps_to, f"{t.name}: maps_to is required"

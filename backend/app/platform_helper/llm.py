@@ -186,6 +186,46 @@ class LLMClient:
                     self._sleep(0.4 * (attempt + 1))
         raise LLMUnavailableError("all LLM providers failed: " + "; ".join(self.last_errors[-4:]))
 
+    # ---- tool calling ------------------------------------------------------
+    def chat_tools(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]], *, tool_choice: str | dict[str, Any] = "auto",
+                   only: set[str] | None = None, **opts: Any) -> dict[str, Any]:
+        """One OpenAI-style function-calling round. -> ``{"message": <assistant message, verbatim>, "provider", "model", "usage"}``.
+
+        The assistant message is returned unchanged (including provider extras such as Gemini's ``extra_content`` thought
+        signature) so the caller can append it to ``messages`` before the ``role: tool`` results. ``only`` restricts the
+        providers tried (e.g. those known to support tools). The existing ``chat`` / ``stream`` behaviour is untouched."""
+        pool = [p for p in self._available() if only is None or p.name in only]
+        if not pool:
+            raise LLMUnavailableError("no tool-capable LLM provider configured")
+        self.last_errors = []
+        for p in pool:
+            for attempt in range(self._retries + 1):
+                try:
+                    body = self._payload(p, messages, False, opts)  # type: ignore[arg-type]
+                    body["tools"] = tools
+                    body["tool_choice"] = tool_choice
+                    with self._client(p) as c:
+                        resp = c.post(f"{p.base_url.rstrip('/')}/chat/completions", headers=self._headers(p), json=body)
+                    self._raise_for_status(p, resp)
+                    data = resp.json()
+                    msg = ((data.get("choices") or [{}])[0].get("message") or {})
+                    if not msg.get("tool_calls") and not str(msg.get("content") or "").strip():
+                        raise LLMError(f"{p.name}: empty answer", provider=p.name)
+                    return {"message": msg, "provider": p.name, "model": str(data.get("model") or p.model),
+                            "usage": data.get("usage") or {}}
+                except LLMError as exc:
+                    self.last_errors.append(str(exc))
+                    if exc.status in (429, 401, 403, 400, 404) or attempt >= self._retries:
+                        break
+                    self._sleep(0.4 * (attempt + 1))
+                except (httpx.HTTPError, ValueError) as exc:
+                    self.last_errors.append(f"{p.name}: {type(exc).__name__}")
+                    if attempt >= self._retries:
+                        self._cool(p.name, 15.0)
+                        break
+                    self._sleep(0.4 * (attempt + 1))
+        raise LLMUnavailableError("all tool-capable LLM providers failed: " + "; ".join(self.last_errors[-4:]))
+
     # ---- streaming -------------------------------------------------------
     def stream(self, messages: list[dict[str, str]], **opts: Any) -> Iterator[str]:
         """Yield content deltas. Raises LLMUnavailableError if no provider produced a first token."""

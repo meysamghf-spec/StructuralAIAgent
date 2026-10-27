@@ -459,6 +459,10 @@ class ConversationService:
         progress_sink: AgentRunProgressSink | None = None,
     ) -> tuple[str, dict]:
         if not attachments:
+            orchestrated = self._maybe_orchestrate(conversation, account, user_content)
+            if orchestrated is not None:
+                orchestrated[1]["selected_mode"] = mode or "auto"
+                return orchestrated
             acted = self._maybe_chat_action(conversation, account, user_content)
             if acted is not None:
                 acted[1]["selected_mode"] = mode or "auto"
@@ -520,6 +524,33 @@ class ConversationService:
                                                    conversation=conversation)
         metadata["selected_mode"] = mode or "auto"
         return content, metadata
+
+    def _maybe_orchestrate(self, conversation, account: AuthenticatedAccount, text: str) -> tuple[str, dict] | None:
+        """Gemini-as-chief-engineer path (PLATFORM_ORCHESTRATOR_MODE=off|auto|always, default off). Returns None to use the
+        rule-based pipeline, which is also the fallback whenever the model is unavailable."""
+        from app.application.orchestrator.config import load_settings as _orch_settings
+
+        settings = _orch_settings()
+        if not settings.enabled:
+            return None
+        try:
+            from app.application.orchestrator import engine
+            from app.application.orchestrator.service_port import ConversationPort
+
+            port = ConversationPort(self, conversation, account, text)
+            history = [{"role": getattr(m.role, "value", str(m.role)), "content": m.content}
+                       for m in self._repo.list_messages(conversation.id, limit=_MAX_HISTORY_MESSAGES)]
+            if history and history[-1]["role"] == "user" and history[-1]["content"] == text:
+                history = history[:-1]  # the new message is passed separately
+            out = engine.run_turn(port, text, history, settings=settings, pending=port.pending_confirmation())
+            if out is None:
+                return None
+            reply, meta = out
+            self._maybe_persist_frame3d_memory(port.conversation, account, meta)
+            return reply, meta
+        except Exception:  # noqa: BLE001 - the orchestrator must never take the chat down
+            logger.exception("orchestrator failed; falling back to the rule-based pipeline")
+            return None
 
     def _latest_frame_inputs(self, conversation, account) -> dict | None:
         from app.application.chat_runs import extract_runs
