@@ -31,7 +31,7 @@ import { hydrateFrame3dFromServer } from "@/lib/chat-runs";
 const Frame3dViewer = dynamic(() => import("@/components/chat/Frame3dViewer"), { ssr: false });
 const FoundationView = dynamic(() => import("@/components/frame3d/FoundationView"), { ssr: false });
 
-type Mode = "model" | "analysis" | "results" | "design" | "foundation";
+type Mode = "model" | "results" | "design" | "foundation";
 
 export async function runFrame3d(inputs: Record<string, unknown>, assumeDefaults = false): Promise<unknown> {
   const res = await apiFetch<{ frame3d_analysis: unknown }>("/api/v1/frame3d/run", {
@@ -196,17 +196,6 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
             </button>
           </div>
         </form>
-      ) : mode === "analysis" ? (
-        <div className="frame3d-actions">
-          {saved ? (
-            <button className="button" type="button" disabled={busy} onClick={() => void run({ ...saved, lang })}>
-              {busy ? t("Running…") : t("Rerun with saved model")}
-            </button>
-          ) : null}
-          <Link className="button secondary" href="/workspace/model">
-            {t("Go to Model")}
-          </Link>
-        </div>
       ) : null}
       {note ? <p className="muted">{note}</p> : null}
       {error ? <p className="alert error">{error}</p> : null}
@@ -225,12 +214,10 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
           inputs={(results?.inputs as Record<string, unknown> | null) ?? saved}
           projectId={projectId}
           groups={
-            mode === "analysis"
-              ? ["analysis", "figures", "models"]
-              : mode === "design"
-                ? ["design", "foundation", "drawings"]
-                : mode === "foundation"
-                  ? ["foundation", "drawings"]
+            mode === "design"
+              ? ["design", "foundation", "drawings"]
+              : mode === "foundation"
+                ? ["foundation", "drawings"]
                 : mode === "model"
                   ? ["models", "figures"]
                   : undefined
