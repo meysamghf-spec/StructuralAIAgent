@@ -16,7 +16,7 @@ from app.api.deps import get_auth_service, get_current_account
 from app.application.auth_service import AuthService
 from app.application.platform_helper_factory import get_helper_service
 from app.domain.models.user import AuthenticatedAccount
-from app.platform_helper.issues import OPEN_STATUSES, STATUSES
+from app.platform_helper.issues import KIND_FEATURE_REQUEST, OPEN_STATUSES, STATUSES
 
 router = APIRouter(tags=["platform-issues"])
 
@@ -60,10 +60,21 @@ class ProposeFixBody(BaseModel):
 
 
 @router.get("/admin/platform-issues")
-def list_issues(_: Admin, status: str | None = None, open_only: bool = False, limit: int = 100) -> dict[str, Any]:
+def list_issues(_: Admin, status: str | None = None, open_only: bool = False, limit: int = 100,
+                kind: str | None = None) -> dict[str, Any]:
+    """``kind=feature_request`` lists only auto-reported missing-capability requests; ``kind=bug`` everything else."""
+    if kind not in (None, "", "bug", KIND_FEATURE_REQUEST):
+        raise HTTPException(status_code=422, detail="kind must be 'bug' or 'feature_request'")
     svc = get_helper_service()
     statuses = OPEN_STATUSES if open_only else ((status,) if status else None)
-    items = svc.store.list(statuses=statuses, limit=limit)
+    if kind == KIND_FEATURE_REQUEST:
+        items = svc.store.list(statuses=statuses, limit=limit, category=KIND_FEATURE_REQUEST)
+    else:
+        items = svc.store.list(statuses=statuses, limit=500 if kind == "bug" else limit)
+        if kind == "bug":
+            items = [i for i in items if i.kind == "bug"][:limit]
+    if kind == KIND_FEATURE_REQUEST:  # most requested first, then newest
+        items = sorted(items, key=lambda i: (-i.occurrences, i.created_at.timestamp() * -1))
     return {"items": [i.to_dict() for i in items], "count": len(items), "helper": svc.status()}
 
 

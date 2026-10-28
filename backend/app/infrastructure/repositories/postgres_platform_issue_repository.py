@@ -12,23 +12,45 @@ from app.platform_helper.issues import OPEN_STATUSES, IssueReport
 _COLS = ("id", "title", "summary", "category", "severity", "source", "status", "page", "conversation_id", "project_id",
          "account_id", "user_message", "assistant_excerpt", "error_text", "steps_to_reproduce", "expected", "actual",
          "suspected_files", "app_version", "locale", "dedupe_key", "occurrences", "fix_note", "fix_pr_url",
-         "proposed_fix", "created_at", "updated_at")
-_JSON = {"steps_to_reproduce", "suspected_files", "proposed_fix"}
+         "proposed_fix", "details", "created_at", "updated_at")
+_JSON = {"steps_to_reproduce", "suspected_files", "proposed_fix", "details"}
 _UPDATABLE = set(_COLS) - {"id", "created_at"}
+# ``details`` comes from migration 031. Until it has run (rolling deploy) the repository keeps working without it.
+_OPTIONAL = {"details"}
+_missing_optional: set[str] = set()
 
 
 def _row_to_issue(row: dict[str, Any]) -> IssueReport:
-    return IssueReport(**{c: row[c] for c in _COLS})
+    values = {c: row[c] for c in _COLS if c not in _OPTIONAL}
+    values["details"] = row.get("details") or {}
+    return IssueReport(**values)
+
+
+def _cols() -> tuple[str, ...]:
+    return tuple(c for c in _COLS if c not in _missing_optional)
+
+
+def _is_missing_column(exc: Exception, col: str) -> bool:
+    return col in str(exc) and "does not exist" in str(exc)
 
 
 class PostgresPlatformIssueRepository:
     def add(self, issue: IssueReport) -> IssueReport:
-        vals = [Jsonb(getattr(issue, c)) if c in _JSON else getattr(issue, c) for c in _COLS]
-        with get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    f"INSERT INTO platform_issues ({', '.join(_COLS)}) VALUES ({', '.join(['%s'] * len(_COLS))})", vals)
-            conn.commit()
+        for _ in range(2):
+            cols = _cols()
+            vals = [Jsonb(getattr(issue, c)) if c in _JSON else getattr(issue, c) for c in cols]
+            try:
+                with get_connection() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            f"INSERT INTO platform_issues ({', '.join(cols)}) VALUES ({', '.join(['%s'] * len(cols))})", vals)
+                    conn.commit()
+                return issue
+            except Exception as exc:  # noqa: BLE001 - psycopg.errors.UndefinedColumn: migration 031 not applied yet
+                if "details" in cols and _is_missing_column(exc, "details"):
+                    _missing_optional.add("details")
+                    continue
+                raise
         return issue
 
     def get(self, issue_id: str) -> IssueReport | None:
@@ -38,8 +60,12 @@ class PostgresPlatformIssueRepository:
                 row = cur.fetchone()
         return _row_to_issue(row) if row else None
 
-    def list(self, *, statuses: tuple[str, ...] | None = None, account_id: str | None = None, limit: int = 100) -> list[IssueReport]:
+    def list(self, *, statuses: tuple[str, ...] | None = None, account_id: str | None = None, limit: int = 100,
+             category: str | None = None) -> list[IssueReport]:
         where, params = [], []
+        if category:
+            where.append("category = %s")
+            params.append(category)
         if statuses:
             where.append("status = ANY(%s)")
             params.append(list(statuses))
@@ -57,7 +83,7 @@ class PostgresPlatformIssueRepository:
     def update(self, issue_id: str, **fields: Any) -> IssueReport | None:
         sets, params = [], []
         for k, v in fields.items():
-            if k in _UPDATABLE:
+            if k in _UPDATABLE and k not in _missing_optional:
                 sets.append(f"{k} = %s")
                 params.append(Jsonb(v) if k in _JSON else v)
         sets.append("updated_at = now()")

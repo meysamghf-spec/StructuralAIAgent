@@ -28,6 +28,7 @@ STATUSES = ("open", "triaged", "fix_in_progress", "fix_ready", "awaiting_approva
 OPEN_STATUSES = ("open", "triaged", "fix_in_progress", "fix_ready", "awaiting_approval")
 SEVERITIES = ("low", "medium", "high", "critical")
 SOURCES = ("user_report", "auto_detected", "admin")
+KIND_FEATURE_REQUEST = "feature_request"
 
 
 def utcnow() -> datetime:
@@ -51,11 +52,24 @@ def redact(text: str | None, limit: int = 4000) -> str:
     return out[:limit]
 
 
+def _redact_json(value: Any, depth: int = 0) -> Any:
+    """Redact every string inside a small JSON-like structure (details are never trusted to be clean)."""
+    if depth > 4:
+        return None
+    if isinstance(value, str):
+        return redact(value, 600)
+    if isinstance(value, dict):
+        return {str(k)[:60]: _redact_json(v, depth + 1) for k, v in list(value.items())[:40]}
+    if isinstance(value, (list, tuple)):
+        return [_redact_json(v, depth + 1) for v in list(value)[:20]]
+    return value if isinstance(value, (int, float, bool)) or value is None else redact(str(value), 200)
+
+
 @dataclass
 class IssueReport:
     title: str
     summary: str = ""
-    category: str = "bug"  # bug | ux | data | performance | other
+    category: str = "bug"  # bug | ux | data | performance | other | feature_request
     severity: str = "medium"
     source: str = "user_report"
     page: str = ""
@@ -72,6 +86,7 @@ class IssueReport:
     app_version: str = ""
     locale: str = ""
     dedupe_key: str = ""
+    details: dict[str, Any] = field(default_factory=dict)  # structured, non-sensitive extras (feature_request: capability key, ETA, ...)
     # lifecycle / admin fields
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     status: str = "open"
@@ -91,6 +106,7 @@ class IssueReport:
         self.actual = redact(self.actual, 1000)
         self.expected = redact(self.expected, 1000)
         self.steps_to_reproduce = [redact(s, 300) for s in self.steps_to_reproduce][:12]
+        self.details = _redact_json(self.details or {})
         if self.severity not in SEVERITIES:
             self.severity = "medium"
         if self.source not in SOURCES:
@@ -100,8 +116,14 @@ class IssueReport:
             self.dedupe_key = hashlib.sha256(basis.encode()).hexdigest()[:24]
         return self
 
+    @property
+    def kind(self) -> str:
+        """``feature_request`` for a missing-capability request, otherwise ``bug`` (every other category)."""
+        return KIND_FEATURE_REQUEST if self.category == KIND_FEATURE_REQUEST else "bug"
+
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
+        d["kind"] = self.kind
         d["created_at"] = self.created_at.isoformat()
         d["updated_at"] = self.updated_at.isoformat()
         return d
@@ -140,7 +162,8 @@ class IssueReport:
 class IssueStore(Protocol):
     def add(self, issue: IssueReport) -> IssueReport: ...
     def get(self, issue_id: str) -> IssueReport | None: ...
-    def list(self, *, statuses: tuple[str, ...] | None = None, account_id: str | None = None, limit: int = 100) -> list[IssueReport]: ...
+    def list(self, *, statuses: tuple[str, ...] | None = None, account_id: str | None = None, limit: int = 100,
+             category: str | None = None) -> list[IssueReport]: ...
     def update(self, issue_id: str, **fields: Any) -> IssueReport | None: ...
     def find_open_by_dedupe(self, dedupe_key: str) -> IssueReport | None: ...
     def delete(self, issue_id: str) -> bool: ...
@@ -159,8 +182,10 @@ class InMemoryIssueStore:
     def get(self, issue_id: str) -> IssueReport | None:
         return self._items.get(issue_id)
 
-    def list(self, *, statuses=None, account_id=None, limit=100) -> list[IssueReport]:
+    def list(self, *, statuses=None, account_id=None, limit=100, category=None) -> list[IssueReport]:
         items = sorted(self._items.values(), key=lambda i: i.created_at, reverse=True)
+        if category:
+            items = [i for i in items if i.category == category]
         if statuses:
             items = [i for i in items if i.status in statuses]
         if account_id:
@@ -192,21 +217,25 @@ class InMemoryIssueStore:
 def webhook_payload(event: str, issue: IssueReport, *, product: str = "structuralai") -> dict[str, Any]:
     """Payload schema (version 1) POSTed to PLATFORM_ISSUE_WEBHOOK_URL. See docs/PLATFORM_HELPER.md."""
     d = issue.to_dict()
+    body_issue = {
+        k: d[k]
+        for k in (
+            "id", "title", "summary", "category", "severity", "source", "status", "page", "conversation_id",
+            "project_id", "user_message", "assistant_excerpt", "error_text", "steps_to_reproduce", "expected",
+            "actual", "suspected_files", "app_version", "locale", "occurrences", "dedupe_key", "fix_note",
+            "fix_pr_url", "proposed_fix", "created_at", "updated_at",
+        )
+    }
+    # Optional additive fields (schema v1 stays compatible: consumers that ignore unknown keys are unaffected).
+    body_issue["kind"] = d["kind"]  # "bug" | "feature_request"
+    body_issue["details"] = d.get("details") or {}
     return {
         "schema_version": SCHEMA_VERSION,
         "event": event,  # platform_issue.created | platform_issue.updated
         "delivery_id": str(uuid.uuid4()),
         "sent_at": utcnow().isoformat(),
         "product": product,
-        "issue": {
-            k: d[k]
-            for k in (
-                "id", "title", "summary", "category", "severity", "source", "status", "page", "conversation_id",
-                "project_id", "user_message", "assistant_excerpt", "error_text", "steps_to_reproduce", "expected",
-                "actual", "suspected_files", "app_version", "locale", "occurrences", "dedupe_key", "fix_note",
-                "fix_pr_url", "proposed_fix", "created_at", "updated_at",
-            )
-        },
+        "issue": body_issue,
     }
 
 

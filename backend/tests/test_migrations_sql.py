@@ -32,6 +32,7 @@ def test_migrations_directory_contains_bootstrap_and_pem_foundation() -> None:
         "021_engineering_learning_foundation.sql",
         "022_seed_agent_capabilities.sql",
         "030_platform_issues.sql",
+        "031_platform_issues_details.sql",
     ]
 
 
