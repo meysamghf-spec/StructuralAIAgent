@@ -46,8 +46,8 @@ STARTERS: dict[str, tuple[list[str], list[str]]] = {
         ["Summarize the Mabhas 9 concrete design", "Which groups fail and why?"],
         ["خلاصه طراحی بتن طبق مبحث نهم", "کدام گروه‌ها رد می‌شوند و چرا؟"]),
     "STEEL_DESIGN_AGENT": (
-        ["Check a steel beam IPE300, span 6 m, 20 kN/m", "What can the steel assistant do?"],
-        ["تیر فولادی IPE300 با دهانه ۶ متر و ۲۰ kN/m را کنترل کن", "دستیار فولاد چه کارهایی می‌کند؟"]),
+        ["Analyze a simply supported steel beam, span 6 m, 20 kN/m", "What can and can't the steel assistant do?"],
+        ["تیر فولادی ساده با دهانه ۶ متر و بار ۲۰ kN/m را تحلیل کن", "دستیار فولاد چه کارهایی می‌کند و چه کارهایی نمی‌کند؟"]),
     "SEISMIC_AGENT": (
         ["Show the Standard 2800 seismic parameters", "Base shear and storey forces", "Drift check"],
         ["پارامترهای لرزه‌ای استاندارد ۲۸۰۰", "برش پایه و نیروی طبقات", "کنترل دریفت"]),
@@ -226,8 +226,8 @@ def _concrete(p: dict, fa: bool) -> str:
 
 
 def _steel(p: dict, fa: bool) -> str:
-    return ("دستیار فولاد تیر فولادی تکی را کنترل می‌کند؛ مثال: «تیر IPE300 دهانه ۶ متر بار ۲۰ kN/m». طراحی قاب فولادی کامل هنوز در این پلتفرم موجود نیست و گزارش نمی‌شود."
-            if fa else "The steel assistant checks single steel beams, e.g. \"IPE300 beam, 6 m span, 20 kN/m\". Full steel-frame design is not available on this platform yet and is not reported.")
+    return ("دستیار فولاد فقط تحلیل الاستیک یک تیر تکی را انجام می‌دهد (واکنش‌ها، لنگر، برش، خیز)؛ مثال: «تیر فولادی ساده با دهانه ۶ متر و بار ۲۰ kN/m را تحلیل کن». کنترل ظرفیت مقطع فولادی، اتصالات و طراحی قاب فولادی هنوز در این پلتفرم موجود نیست و گزارش نمی‌شود."
+            if fa else "The steel assistant only does elastic analysis of a single beam (reactions, moment, shear, deflection), e.g. \"analyze a simply supported steel beam, span 6 m, 20 kN/m\". Steel section capacity checks, connections and steel-frame design are not available on this platform yet and are not reported.")
 
 
 def _validation(p: dict, fa: bool) -> str:

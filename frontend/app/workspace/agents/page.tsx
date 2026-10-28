@@ -6,7 +6,7 @@ function AgentsWorkspaceFallback() {
     <section className="panel-stack">
       <header className="page-header">
         <p className="eyebrow">Engineering Assistants</p>
-        <h2>Assistants</h2>
+        <h2 className="page-dup-title">Assistants</h2>
         <p className="muted">Loading assistant workspace…</p>
       </header>
     </section>

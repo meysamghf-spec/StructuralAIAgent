@@ -75,7 +75,7 @@ export default function ReportsWorkspaceClient() {
     <section className="panel-stack">
       <header className="page-header">
         <p className="eyebrow">Deliverables</p>
-        <h2>Reports</h2>
+        <h2 className="page-dup-title">Reports</h2>
         <p className="subtitle">Generate engineering reports from project context.</p>
       </header>
 

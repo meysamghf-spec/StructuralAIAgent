@@ -29,7 +29,7 @@ const isIncomplete = (r: ChatRun, fixed?: Record<string, unknown>) =>
   r.kind === "frame3d_analysis" && !fixed && (missingInputs(r.inputs).length > 0 || /missing|incomplete/i.test(String(r.status ?? "")));
 
 /** Runs made in chat for the selected project — shown on Results, Optimization, Validation, Traceability, Files. */
-export function ChatRunsSection(props: { kinds?: string[]; title?: string }) {
+export function ChatRunsSection(props: { kinds?: string[]; excludeKinds?: string[]; title?: string }) {
   return (
     <SectionErrorBoundary label="Runs">
       <ChatRunsSectionInner {...props} />
@@ -37,7 +37,7 @@ export function ChatRunsSection(props: { kinds?: string[]; title?: string }) {
   );
 }
 
-function ChatRunsSectionInner({ kinds, title = NEUTRAL_TITLE }: { kinds?: string[]; title?: string }) {
+function ChatRunsSectionInner({ kinds, excludeKinds, title = NEUTRAL_TITLE }: { kinds?: string[]; excludeKinds?: string[]; title?: string }) {
   const { lang } = useUiLang();
   const tx = (en: string, fa: string) => (lang === "fa" ? fa : en);
   const [fixed, setFixed] = useState<Record<string, Record<string, unknown>>>({});
@@ -67,7 +67,7 @@ function ChatRunsSectionInner({ kinds, title = NEUTRAL_TITLE }: { kinds?: string
     return () => window.removeEventListener(PROJECT_EVENT, sync);
   }, []);
 
-  const shown = (runs ?? []).filter((r) => !kinds || kinds.includes(r.kind));
+  const shown = (runs ?? []).filter((r) => (!kinds || kinds.includes(r.kind)) && !excludeKinds?.includes(r.kind));
 
   return (
     <section className="card chat-runs" data-testid="chat-runs" dir={lang === "fa" ? "rtl" : "ltr"} lang={lang}>

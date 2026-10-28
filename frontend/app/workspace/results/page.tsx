@@ -7,7 +7,9 @@ import ResultsWorkspaceClient from "./ResultsWorkspaceClient";
 export default function ResultsWorkspacePage() {
   return (
     <>
-      <ChatRunsSection title={CHAT_ORIGIN_TITLE} />
+      {/* The frame analysis is shown once, in the frame section below (result or inline missing-inputs form);
+          this list keeps the history of the other run types (AutoCAD drawings, beams, optimization, …). */}
+      <ChatRunsSection title={CHAT_ORIGIN_TITLE} excludeKinds={["frame3d_analysis"]} />
       <Frame3dWorkspacePanel mode="results" />
       <LegacySection label="results">
         <ResultsWorkspaceClient />

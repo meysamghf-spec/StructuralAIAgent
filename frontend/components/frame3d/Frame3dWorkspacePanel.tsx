@@ -27,7 +27,7 @@ import {
 } from "@/lib/frame3d-store";
 import { missingGeometry } from "@/lib/input-labels";
 import { useUiLang } from "@/hooks/useUiLang";
-import { hydrateFrame3dFromServer } from "@/lib/chat-runs";
+import { hydrateFrame3dFromServer, incompleteFrameRun, listProjectChatRuns } from "@/lib/chat-runs";
 
 const Frame3dViewer = dynamic(() => import("@/components/chat/Frame3dViewer"), { ssr: false });
 const FoundationView = dynamic(() => import("@/components/frame3d/FoundationView"), { ssr: false });
@@ -63,6 +63,8 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Changes when saved inputs appear (e.g. restored from the latest chat run) so the re-run effect below fires.
+  const [savedKey, setSavedKey] = useState("");
 
   useEffect(() => {
     const sync = () => {
@@ -71,7 +73,21 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
       setProjectId(pid);
       setPayload(loadFrame3dPayload(pid));
       const saved = loadFrame3dInputs(pid);
-      if (!saved) void hydrateFrame3dFromServer(pid);
+      setSavedKey(saved ? JSON.stringify(saved) : "");
+      if (!saved) {
+        void hydrateFrame3dFromServer(pid);
+        // Results: a chat run that stopped for missing inputs is completed right here (one section, no second card).
+        if (mode === "results" && pid) {
+          void listProjectChatRuns(pid)
+            .then((runs) => {
+              const run = incompleteFrameRun(runs);
+              const missing = run?.inputs ? missingGeometry(run.inputs) : [];
+              if (!run?.inputs || missing.length === 0 || loadFrame3dPayload(pid)) return;
+              setPayload({ status: "MISSING_REQUIRED_INPUT", missing_inputs: missing, inputs: run.inputs });
+            })
+            .catch(() => undefined);
+        }
+      }
       if (saved && mode === "model") setValues(inputsToForm({ ...DEFAULT_FRAME_INPUTS, ...saved }));
     };
     sync();
@@ -105,7 +121,7 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
       void run({ ...loadFrame3dInputs(projectId)!, lang });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, payload, projectId]);
+  }, [mode, payload, projectId, savedKey]);
 
   const incomplete = isIncompleteFramePayload(payload);
   const results = payload ? mapFrame3dResults(payload) : null;
@@ -194,7 +210,7 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
       ) : null}
       {results && mode !== "foundation" ? (
         <Frame3dResultCard results={results} downloads={false} />
-      ) : mode !== "model" ? (
+      ) : mode !== "model" && !incomplete ? (
         <EmptyHint projectId={projectId} />
       ) : null}
     </section>

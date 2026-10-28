@@ -57,7 +57,7 @@ export default function ApprovalsWorkspaceClient() {
     <section className="panel-stack">
       <header className="page-header">
         <p className="eyebrow">Review</p>
-        <h2>Approvals</h2>
+        <h2 className="page-dup-title">Approvals</h2>
         <p className="subtitle">Decisions waiting for your sign-off.</p>
       </header>
 

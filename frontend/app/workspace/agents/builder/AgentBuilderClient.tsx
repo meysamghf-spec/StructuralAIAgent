@@ -387,7 +387,7 @@ export default function AgentBuilderClient() {
     <section className="panel-stack">
       <header className="page-header">
         <p className="eyebrow">Assistant Builder</p>
-        <h2>Assistant Builder</h2>
+        <h2 className="page-dup-title">Assistant Builder</h2>
         <p className="subtitle">
           Create, test, review, and publish project assistants without touching internal runtime
           details.

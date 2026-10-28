@@ -45,8 +45,8 @@ const ASSISTANT_CATALOG: Record<
   },
   STEEL_DESIGN_AGENT: {
     title: "Steel Design Assistant",
-    description: "Assist with steel member sizing, connections, and design decision documentation.",
-    capabilities: ["Beam and column design", "Connection review", "Steel detailing"],
+    description: "Elastic analysis of a single steel beam (reactions, moment, shear, deflection). Steel code checks and frame design are not available yet.",
+    capabilities: ["Single-beam analysis", "Reactions, M, V, deflection"],
   },
   SEISMIC_AGENT: {
     title: "Seismic Design Assistant",

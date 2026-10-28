@@ -147,7 +147,7 @@ def parse_bays(text: str) -> BayParse:
             put_count(d, int(num))
         work = _mask(work, m)
     # 2b. «... در جهت y برابر ۱» (the noun was given once before)
-    for m in re.finditer(rf"{_dir('d')}\s*(?:is|=|:|برابر(?:\s*با)?|است)\s*(?P<num>{NUM_PATTERN})\s*(?P<unit>{UNIT_PATTERN})?", work):
+    for m in re.finditer(rf"{_dir('d')}\s*(?:is|=|:|برابر(?:\s*با)?|است)\s*(?P<num>{NUM_PATTERN})\s*(?P<unit>{UNIT_PATTERN})?(?!\s*(?:-|تا)?\s*{NOUN})", work):
         d, num = _letter(m, "d"), float(m.group("num"))
         if m.group("unit") or num != int(num):
             put_span(d, to_metres(num, m.group("unit")))
@@ -157,7 +157,7 @@ def parse_bays(text: str) -> BayParse:
 
     # 3. direction first: «در جهت x، ۳ دهانه ۵ متری», "in x: 3 bays of 5 m", "x direction 3 bays"
     for m in re.finditer(rf"{_dir('d')}\s*[:،,=-]?\s*(?P<c>\d+)(?![\d.])\s*(?:-|\s)?\s*(?:تا\s*)?{NOUN}{SUF}(?P<sp>{_span('a')})?", work):
-        if re.search(rf"\d\s*(?:-|تا)?\s*{NOUN}{SUF}\s*$", work[:m.start()]):
+        if re.search(rf"\d\s*(?:-|تا)?\s*{NOUN}{SUF}(?:{_span('z')})?\s*$", work[:m.start()]):
             continue  # «2 bays in x, 3 bays in y»: that count belongs to the direction before it (step 4)
         d = _letter(m, "d")
         put_count(d, int(m.group("c")))

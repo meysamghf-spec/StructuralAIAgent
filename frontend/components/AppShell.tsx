@@ -8,6 +8,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { ChatDock } from "@/components/chat/ChatDock";
 import { useUiLang } from "@/hooks/useUiLang";
 import { useDrawerDismiss } from "@/hooks/useDrawerDismiss";
+import { PageTitle } from "@/components/layout/PageTitle";
 import { SaiaLogo } from "@/components/brand/SaiaLogo";
 
 
@@ -77,7 +78,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <button type="button" className="drawer-close" aria-label="Close menu" data-testid="drawer-close" onClick={() => setNavOpen(false)}>✕</button>
         <div className="brand">
           <Link href="/" className="brand-link" aria-label="SAIA home"><SaiaLogo size="md" /></Link>
-          <h1>Engineering Workspace</h1>
+          <p className="brand-title">Engineering Workspace</p>
         </div>
         <MainNav onNavigate={() => setNavOpen(false)} />
         <div className="sidebar-lang">
@@ -102,7 +103,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           )}
         </div>
       </aside>
-      <main className="content">{children}</main>
+      <main className="content">
+        <PageTitle />
+        {children}
+      </main>
       {isAuthenticated ? <ChatDock /> : null}
     </div>
   );

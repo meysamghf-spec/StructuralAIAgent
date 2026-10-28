@@ -128,7 +128,7 @@ export default function IntegrationsWorkspaceClient() {
     <section className="panel-stack">
       <header className="page-header">
         <p className="eyebrow">Integrations</p>
-        <h2>Integrations</h2>
+        <h2 className="page-dup-title">Integrations</h2>
         <p className="subtitle">Connect local ETABS, SAP2000, or SAFE to export and analyze.</p>
       </header>
 
