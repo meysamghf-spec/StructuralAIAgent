@@ -69,8 +69,9 @@ def test_results_are_labelled_honestly() -> None:
 def test_missing_bays_gives_clear_message() -> None:
     payload = build_frame3d_payload("Analyze a 3-storey RC frame building")
     assert payload["status"] == "MISSING_REQUIRED_INPUT"
-    assert "bays" in payload["message"]
-    assert set(payload["missing_inputs"]) == {"bays_x", "bays_y"}
+    assert "bays" in payload["message"].lower() or "دهانه" in payload["message"]
+    assert set(payload["missing_inputs"]) == {"bays_x", "bays_y", "bay_x_m", "bay_y_m"}
+    assert "bays_x" not in payload["message"]  # friendly labels, never raw keys
 
 
 def test_without_seismic_coefficient_runs_gravity_only() -> None:

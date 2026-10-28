@@ -11,20 +11,21 @@ import { DownloadsPanel } from "@/components/frame3d/DownloadsPanel";
 import { makeT } from "@/lib/frame3d-i18n";
 import { projectChatHref } from "@/lib/current-project";
 import { ensureCurrentProject } from "@/lib/ensure-project";
-import { apiFetch } from "@/lib/api";
+import { runFrame3d } from "@/lib/frame3d-run";
+import { FrameModelForm } from "@/components/frame3d/FrameModelForm";
+import { MissingInputsForm } from "@/components/frame3d/MissingInputsForm";
 import { mapFrame3dResults } from "@/lib/chat-mappers";
 import { getCurrentProjectId, PROJECT_EVENT } from "@/lib/current-project";
 import {
   DEFAULT_FRAME_INPUTS,
   FRAME3D_EVENT,
-  FRAME_FORM_FIELDS,
-  formToInputs,
   inputsToForm,
   loadFrame3dInputs,
   loadFrame3dPayload,
   saveFrame3dInputs,
   saveFrame3dPayload,
 } from "@/lib/frame3d-store";
+import { missingGeometry } from "@/lib/input-labels";
 import { useUiLang } from "@/hooks/useUiLang";
 import { hydrateFrame3dFromServer } from "@/lib/chat-runs";
 
@@ -33,13 +34,7 @@ const FoundationView = dynamic(() => import("@/components/frame3d/FoundationView
 
 type Mode = "model" | "analysis" | "results" | "design" | "foundation";
 
-export async function runFrame3d(inputs: Record<string, unknown>, assumeDefaults = false): Promise<unknown> {
-  const res = await apiFetch<{ frame3d_analysis: unknown }>("/api/v1/frame3d/run", {
-    method: "POST",
-    body: JSON.stringify({ inputs, assume_defaults: assumeDefaults }),
-  });
-  return res.frame3d_analysis;
-}
+export { runFrame3d };
 
 export function isIncompleteFramePayload(payload: unknown): boolean {
   const p = payload as { status?: string; missing_inputs?: unknown[] } | null;
@@ -115,7 +110,6 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
   const incomplete = isIncompleteFramePayload(payload);
   const results = payload ? mapFrame3dResults(payload) : null;
   const saved = loadFrame3dInputs(projectId);
-  const groups = Array.from(new Set(FRAME_FORM_FIELDS.map((f) => f.group)));
 
   return (
     <section className="panel frame3d-panel" dir={lang === "fa" ? "rtl" : "ltr"} lang={lang}>
@@ -129,8 +123,14 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
           <p className="muted" style={{ margin: "0.3rem 0" }}>
             {t("Some required inputs are missing. I can complete them with typical values (4 storeys, 3×3 bays of 5 m, 3.2 m storey height, Iranian codes) and re-run; the assumptions are listed in the result.")}
           </p>
+          <MissingInputsForm
+            inputs={incompleteInputs(payload) ?? saved}
+            projectId={projectId}
+            keys={missingGeometry(incompleteInputs(payload) ?? saved ?? {})}
+            onDone={(p) => setPayload(p)}
+          />
           <button
-            className="button"
+            className="button secondary"
             type="button"
             disabled={busy}
             onClick={() => void run({ ...((incompleteInputs(payload) ?? {}) as Record<string, unknown>), lang }, true)}
@@ -140,62 +140,17 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
         </div>
       ) : null}
       {mode === "model" ? (
-        <form
-          className="frame3d-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void run(formToInputs(values, lang));
+        <FrameModelForm
+          values={values}
+          setValues={setValues}
+          busy={busy}
+          onRun={(inputs) => void run(inputs)}
+          onImport={() => {
+            const s = loadFrame3dInputs(projectId);
+            if (s) setValues(inputsToForm({ ...DEFAULT_FRAME_INPUTS, ...s }));
+            else setNote(t("No chat frame found for this project yet."));
           }}
-        >
-          {groups.map((g) => (
-            <fieldset key={g}>
-              <legend>{t(g)}</legend>
-              {FRAME_FORM_FIELDS.filter((f) => f.group === g).map((f) => (
-                <label key={f.key}>
-                  <span>
-                    {t(f.label)}
-                    {f.unit ? ` (${f.unit})` : ""}
-                  </span>
-                  {f.kind === "select" ? (
-                    <select value={values[f.key] ?? ""} onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}>
-                      {f.options!.map((o) => (
-                        <option key={o} value={o}>
-                          {o}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      dir="ltr"
-                      inputMode="decimal"
-                      value={values[f.key] ?? ""}
-                      onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}
-                    />
-                  )}
-                </label>
-              ))}
-            </fieldset>
-          ))}
-          <div className="frame3d-actions">
-            <button className="button" type="submit" disabled={busy}>
-              {busy ? t("Running…") : t("Run analysis + design")}
-            </button>
-            <button
-              className="button secondary"
-              type="button"
-              onClick={() => {
-                const s = loadFrame3dInputs(projectId);
-                if (s) setValues(inputsToForm({ ...DEFAULT_FRAME_INPUTS, ...s }));
-                else setNote(t("No chat frame found for this project yet."));
-              }}
-            >
-              {t("Import from last chat frame")}
-            </button>
-            <button className="button secondary" type="button" onClick={() => setValues(inputsToForm(DEFAULT_FRAME_INPUTS))}>
-              {t("Reset to defaults")}
-            </button>
-          </div>
-        </form>
+        />
       ) : mode === "analysis" ? (
         <div className="frame3d-actions">
           {saved ? (

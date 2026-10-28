@@ -42,7 +42,9 @@ export async function hydrateFrame3dFromServer(projectId: string | null): Promis
       !/missing|fail|error|blocked/i.test(r.status) &&
       r.inputs.bays_x != null &&
       r.inputs.bays_y != null &&
-      r.inputs.storeys != null;
+      r.inputs.storeys != null &&
+      r.inputs.bay_x_m != null &&
+      r.inputs.bay_y_m != null;
     const last = runs.find(usable);
     if (!last?.inputs) return false;
     // Drop nulls so form defaults stay in place for anything the chat did not specify.

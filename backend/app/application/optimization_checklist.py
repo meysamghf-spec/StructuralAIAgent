@@ -131,11 +131,15 @@ def _finish(steps: list[dict[str, Any]], ready: bool) -> dict[str, Any]:
 
 def checklist_for_chat(*, has_frame: bool, partial_missing: list[str] | None = None) -> dict[str, Any]:
     """Chat checklist: the in-chat optimizer re-analyses and re-designs internally, so only the frame is mandatory."""
+    from app.application.frame3d_followup import friendly_label
+
     partial_missing = partial_missing or []
+    partial_en = [friendly_label(k, False) for k in partial_missing]
+    partial_fa = [friendly_label(k, True) for k in partial_missing]
     model_detail_en = ("The frame is described." if has_frame else
-                       "No frame described yet" + (f" (missing: {', '.join(partial_missing)})" if partial_missing else "") + ".")
+                       "No frame described yet" + (f" (missing: {', '.join(partial_en)})" if partial_missing else "") + ".")
     model_detail_fa = ("قاب توصیف شده است." if has_frame else
-                       "هنوز قابی توصیف نشده" + (f" (کم: {'، '.join(partial_missing)})" if partial_missing else "") + ".")
+                       "هنوز قابی توصیف نشده" + (f" (کم: {'، '.join(partial_fa)})" if partial_missing else "") + ".")
     cmd = EXAMPLE_COMMAND_EN
     steps = [
         _step("model", has_frame, "Structural model (storeys, bays, spans)", "مدل سازه (طبقات، دهانه‌ها)", model_detail_en, model_detail_fa,

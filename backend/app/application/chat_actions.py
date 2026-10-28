@@ -169,7 +169,7 @@ def default_frame_inputs(fa: bool = False) -> tuple[dict[str, Any], list[str]]:
 
     inp = Frame3dInputs()
     assumed = fu.apply_defaults(inp)
-    d = {k: v for k, v in asdict(inp).items() if k != "parsed"}
+    d = {k: v for k, v in asdict(inp).items() if k not in ("parsed", "pending_bays", "spans_assumed")}
     if fa:
         names = {"storeys": f"{inp.storeys} طبقه", "bays_x": f"{inp.bays_x} دهانه در جهت X", "bays_y": f"{inp.bays_y} دهانه در جهت Y",
                  "bay_x_m": f"دهانه‌های {inp.bay_x_m:g} متری", "storey_height_m": f"ارتفاع طبقه {inp.storey_height_m:g} متر"}

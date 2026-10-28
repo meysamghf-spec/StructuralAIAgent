@@ -81,6 +81,11 @@ def model_edits(text: str) -> dict[str, Any]:
     m = _last(r"(\d)\s*x\s*(\d)\s*(?:bays?|dahane|دهانه)", t) or _last(rf"(?:bays?|dahane(?:\s*ha)?|دهانه(?:\s*ها)?){_TO}(\d)\s*x\s*(\d)(?!\s*(?:m\b|متر|metr))", t)
     if m:
         e["bays_x"], e["bays_y"] = int(m.group(1)), int(m.group(2))
+    from app.application.frame3d_bays import parse_bays  # shared parser: any unit (cm, mm, ft), Persian words / digits
+
+    bp = parse_bays(text)
+    e.update(bp.counts)
+    e.update(bp.spans)
     # --- storey height
     m = _last(rf"(?:stor(?:e)?y\s*height|floor\s*height|height\s*of\s*(?:each\s*)?(?:stor(?:e)?y|floor)|ertefa(?:'|e)?\s*(?:e\s*)?(?:tabaghe?(?:\s*ha|at)?)?|ارتفاع(?:\s*هر)?(?:\s*طبقه(?:\s*ها)?|\s*طبقات)?){_TO}{_N}", t)
     if m and 1.5 <= float(m.group(1)) <= 8:
@@ -172,23 +177,33 @@ def is_strong_frame_followup(text: str) -> bool:
 
 
 def merge_with_pending(text: str, previous_user_texts: list[str]) -> str:
-    """Reply to a missing-parameters question -> "<pending request>\\n<reply>". `previous_user_texts` newest first."""
+    """Reply to a missing-parameters question -> "<pending request> ؛ <replies> ؛ <reply>". `previous_user_texts` newest first.
+
+    Several short answers in a row («۲ در x و ۱ در y», then «۵ متر») are all merged into the original frame request, so
+    storeys / bays given earlier in the conversation are remembered."""
     from app.application import frame3d_chat_analysis as f3
 
     if f3.is_frame3d_request(text) and not f3.missing_inputs(f3.parse_frame3d_request(text)):
         return text
-    if not (is_assume_reply(text) or model_edits(text) or re.search(r"\d", norm(text))):
+    if not (is_assume_reply(text) or model_edits(text) or re.search(r"\d", norm(text)) or _DIRECTION_ONLY.match(norm(text))):
         return text
-    for prev in (previous_user_texts or [])[:4]:
+    chain = [text]
+    for prev in (previous_user_texts or [])[:6]:
         if not prev or prev.strip() == (text or "").strip():
             continue
         if f3.is_frame3d_request(prev) or (is_assume_reply(text) and re.search(r"\bframe\b|قاب|ghab", norm(prev), re.I)):
-            inp = f3.parse_frame3d_request(prev)
-            if f3.missing_inputs(inp):
-                return f"{prev} ؛ {text}"
-            return text  # last frame was complete: the reply is an edit of that model
-        break  # only the message right before the reply can be the pending question's request
+            earlier = " ؛ ".join([prev, *chain[:-1]])
+            if not f3.missing_inputs(f3.parse_frame3d_request(earlier)):
+                return text  # last frame was complete: the reply is an edit of that model
+            return " ؛ ".join([prev, *chain])
+        if len(norm(prev)) <= 90 and (model_edits(prev) or re.search(r"\d", norm(prev)) or _DIRECTION_ONLY.match(norm(prev))):
+            chain.insert(0, prev)  # an earlier short answer to the same question
+            continue
+        break
     return text
+
+
+_DIRECTION_ONLY = re.compile(r"^\W*(?:فقط\s*|only\s*|just\s*)?(?:(?:در|in)\s*)?(?:(?:جهت|راستای|direction)\s*)?(?:[xy]|هر\s*دو(?:\s*جهت)?|both(?:\s*directions?)?)\W*$", re.I)
 
 
 def apply_edits(inp: Any, edits: dict[str, Any]) -> list[str]:
@@ -211,6 +226,8 @@ def apply_defaults(inp: Any) -> list[str]:
         if getattr(inp, k) is None or (k not in inp.parsed and k in ("bay_x_m", "bay_y_m", "storey_height_m")):
             setattr(inp, k, v)
             assumed.append(k)
+            if k in ("bay_x_m", "bay_y_m"):
+                inp.spans_assumed = True  # the 5 m default was chosen on request; it is listed in the assumptions
     for key, (b, h) in (("column", (0.50, 0.50)), ("beam", (0.40, 0.50))):  # typical 4-storey RC IMF sizes
         if f"{key}_b_m" not in inp.parsed and f"{key}_h_m" not in inp.parsed:
             setattr(inp, f"{key}_b_m", b); setattr(inp, f"{key}_h_m", h)
@@ -223,9 +240,9 @@ def apply_defaults(inp: Any) -> list[str]:
 
 
 _LABELS = {
-    "storeys": ("number of storeys", "تعداد طبقات", "{}"), "bays_x": ("bays in X", "تعداد دهانه در جهت x", "{}"),
-    "bays_y": ("bays in Y", "تعداد دهانه در جهت y", "{}"), "bay_x_m": ("bay length X", "طول دهانه x", "{} m"),
-    "bay_y_m": ("bay length Y", "طول دهانه y", "{} m"), "storey_height_m": ("storey height", "ارتفاع طبقه", "{} m"),
+    "storeys": ("number of storeys", "تعداد طبقات", "{}"), "bays_x": ("bays in X", "تعداد دهانه x", "{}"),
+    "bays_y": ("bays in Y", "تعداد دهانه y", "{}"), "bay_x_m": ("bay span X (m)", "طول دهانه x (متر)", "{} m"),
+    "bay_y_m": ("bay span Y (m)", "طول دهانه y (متر)", "{} m"), "storey_height_m": ("storey height", "ارتفاع طبقه", "{} m"),
     "column_b_m": ("column b", "عرض ستون", "{} m"), "column_h_m": ("column h", "عمق ستون", "{} m"),
     "beam_b_m": ("beam b", "عرض تیر", "{} m"), "beam_h_m": ("beam h", "عمق تیر", "{} m"),
     "slab_t_m": ("slab thickness", "ضخامت دال", "{} m"), "dead_kn_m2": ("dead load", "بار مرده", "{} kN/m²"),
@@ -249,6 +266,12 @@ def p_delta_request(t: str) -> str | None:
     if re.search(rf"(?:with|include|including|consider|enable|turn\s*on|add|با|لحاظ)\s*(?:the\s*|اثر\s*)?{_PD}|{_PD}\s*(?:on|enabled|effects?)|اثر\s*{_PD}", t, re.I):
         return "on"
     return None
+
+
+def friendly_label(key: str, fa: bool) -> str:
+    """Friendly name of an input key (never show raw keys such as ``bays_x`` / ``bay_x_m`` to users)."""
+    en, f, _fmt = _LABELS.get(key, (key, key, "{}"))
+    return f if fa else en
 
 
 def describe(keys: list[str], inp: Any, fa: bool) -> str:

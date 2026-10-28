@@ -30,6 +30,8 @@ from app.application import csi_text_export as cte
 from app.application import detailing_assumptions as da
 from app.application import foundation_design as fnd
 from app.application import frame3d_followup as fu
+from app.application import frame3d_bays as bays_parser
+from app.application.length_units import normalize_digits, parse_length_m, to_metres
 from app.application import frame3d_i18n as i18n
 from app.application import iran2800
 from app.application import mabhas9_rc_design as m9
@@ -77,6 +79,8 @@ def _code_label(inp: "Frame3dInputs") -> str:
 
 MAX_STOREYS = 10
 MAX_BAYS = 6
+MIN_SPAN_M = 1.5
+MAX_SPAN_M = 15.0
 MAX_NODES = 220  # keeps the dense pure-Python solve within a few seconds
 
 _PERSIAN_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩٫", "01234567890123456789.")
@@ -124,6 +128,14 @@ class Frame3dInputs:
     # optional per-storey sections from the optimizer: {"C1": [b, h], "B1": [b, h], ...} (metres)
     group_sections: dict | None = None
     parsed: list[str] = field(default_factory=list)
+    # True when the user said "assume defaults" and the bay spans were filled with the 5 m default (stated in the assumptions)
+    spans_assumed: bool = False
+    # a bay count given without a direction («۲ دهانه», "3 bays"); never persisted, only used to ask "which direction?"
+    pending_bays: int | None = None
+
+
+INTERNAL_FIELDS = ("parsed", "pending_bays", "spans_assumed")
+SPAN_KEYS = ("bay_x_m", "bay_y_m")
 
 
 def _norm(text: str) -> str:
@@ -203,15 +215,21 @@ SPEC_TAG = "[frame3d-spec]"
 
 def frame3d_spec(inp: "Frame3dInputs") -> str:
     """Compact, re-parseable model spec stored as the first line of the project memory."""
-    d = {k: v for k, v in asdict(inp).items() if k != "parsed" and v != getattr(Frame3dInputs, k, None)}
+    d = {k: v for k, v in asdict(inp).items() if k not in ("parsed", "pending_bays") and v != getattr(Frame3dInputs, k, None)}
     d["_p"] = list(inp.parsed)
     return SPEC_TAG + json.dumps(d, separators=(",", ":"), ensure_ascii=False)
 
 
 def inputs_from_dict(data: dict[str, Any]) -> "Frame3dInputs":
-    allowed = {f.name for f in dc_fields(Frame3dInputs)} - {"parsed"}
+    allowed = {f.name for f in dc_fields(Frame3dInputs)} - {"parsed", "pending_bays"}
     inp = Frame3dInputs(**{k: v for k, v in data.items() if k in allowed})
     inp.parsed = [str(x) for x in data.get("_p", data.get("parsed_from_request", []))]
+    if ("_p" in data or "parsed_from_request" in data) and not inp.spans_assumed:
+        # specs / runs stored before spans were required: their spans were whatever the model used, count them as given
+        inp.parsed = [*inp.parsed, *[k for k in SPAN_KEYS if k not in inp.parsed]]
+    elif "_p" not in data and "parsed_from_request" not in data:
+        # a plain inputs dict (stored run / form / tool arguments): a span that is present was given
+        inp.parsed = [*inp.parsed, *[k for k in SPAN_KEYS if data.get(k) is not None and k not in inp.parsed]]
     for name in ("storeys", "bays_x", "bays_y"):
         v = getattr(inp, name)
         if v is not None:
@@ -258,45 +276,22 @@ def _section(t: str, words: str, inp: Frame3dInputs, b: str, h: str) -> None:
     inp.parsed += [b, h]
 
 
-_FA_NUM_WORDS = {"یک": 1, "یه": 1, "دو": 2, "سه": 3, "چهار": 4, "پنج": 5, "شش": 6, "شیش": 6, "هفت": 7, "هشت": 8, "نه": 9,
-                 "ده": 10, "یازده": 11, "دوازده": 12, "سیزده": 13, "چهارده": 14, "پانزده": 15, "پونزده": 15, "شانزده": 16,
-                 "هفده": 17, "هجده": 18, "نوزده": 19, "بیست": 20}
-_FA_WORD_RE = re.compile(r"(?<![\u0600-\u06FF])(" + "|".join(sorted(_FA_NUM_WORDS, key=len, reverse=True)) + r")(?=\s*(?:دهانه|طبقه|متر|عدد|تا\b|ستون|bays?|stor))")
-
-
 def _fa_numbers(t: str) -> str:
-    """«سه دهانه» -> «3 دهانه»; Persian decimal comma / slash between digits -> '.'; ZWNJ -> space; x/y lookalikes."""
-    t = t.replace("\u200c", " ")
-    t = re.sub(r"(?<=\d)[/،,](?=\d)", ".", t)
-    t = _FA_WORD_RE.sub(lambda m: str(_FA_NUM_WORDS[m.group(1)]), t)
-    return t.replace("ایکس", "x").replace("وای", "y")
+    """«سه دهانه» -> «3 دهانه»; Persian digits / decimal separators, ZWNJ, «دهنه»→«دهانه», x/y lookalikes (case kept)."""
+    return bays_parser.normalize(t, lower=False)
 
 
-def _parse_fa_bays(t: str, inp: "Frame3dInputs") -> None:
-    """«۳ دهانه ۵ متری در جهت x» / «در جهت x، ۳ دهانه به طول ۵ متر» / «طبقات به ارتفاع ۳.۲ متر»."""
-    dirs = r"(?:در\s*)?(?:جهت|راستای|راستا|امتداد|محور|سمت)\s*([xy])"
-    span = rf"(?:\s*(?:به\s*)?(?:طول|عرض|دهانه)?\s*{_NUM}\s*(?:m\b|متر(?:ی)?))?"
-    for m in re.finditer(rf"(\d+)\s*(?:تا\s*)?دهانه(?:\s*ی)?{span}\s*(?:،|,)?\s*{dirs}{span}", t, re.I):
-        _set_bay(inp, m.group(3).lower(), int(m.group(1)), m.group(2) or m.group(4))
-    for m in re.finditer(rf"{dirs}\s*(?:،|,|:)?\s*(\d+)\s*(?:تا\s*)?دهانه(?:\s*ی)?{span}", t, re.I):
-        _set_bay(inp, m.group(1).lower(), int(m.group(2)), m.group(3))
-    if not {"bays_x", "bays_y"} & set(inp.parsed):
-        m = re.search(rf"(\d+)\s*(?:تا\s*)?دهانه(?:\s*ی)?{span}\s*(?:،|,)?\s*(?:در\s*)?(?:هر\s*(?:دو\s*)?(?:جهت|راستا)|دو\s*جهت|هر\s*دو\s*طرف)", t)
-        if m:
-            for d in "xy":
-                _set_bay(inp, d, int(m.group(1)), m.group(2))
-    if "storey_height_m" not in inp.parsed:
-        m = re.search(rf"ارتفاع(?:\s*(?:هر|طبقات|طبقه|طبقه\s*ها))?[^\d]{{0,15}}{_NUM}\s*(?:m\b|متر)", t) or re.search(
-            rf"طبقه(?:\s*ها|ات)?[^\d]{{0,12}}(?:به\s*)?ارتفاع[^\d]{{0,6}}{_NUM}", t)
-        if m and 1.5 <= float(m.group(1)) <= 8:
-            inp.storey_height_m = float(m.group(1)); inp.parsed.append("storey_height_m")
-
-
-def _set_bay(inp: "Frame3dInputs", d: str, n: int, span: str | None) -> None:
-    if f"bays_{d}" not in inp.parsed:
-        setattr(inp, f"bays_{d}", n); inp.parsed.append(f"bays_{d}")
-    if span and f"bay_{d}_m" not in inp.parsed[-3:]:
-        setattr(inp, f"bay_{d}_m", float(span)); inp.parsed.append(f"bay_{d}_m")
+def _parse_fa_storey_height(t: str, inp: "Frame3dInputs") -> None:
+    """«طبقات به ارتفاع ۳.۲ متر» (also cm / mm)."""
+    if "storey_height_m" in inp.parsed:
+        return
+    u = rf"({bays_parser.UNIT_PATTERN})"
+    m = re.search(rf"ارتفاع(?:\s*(?:هر|طبقات|طبقه|طبقه\s*ها))?[^\d]{{0,15}}{_NUM}\s*{u}", t) or re.search(
+        rf"طبقه(?:\s*ها|ات)?[^\d]{{0,12}}(?:به\s*)?ارتفاع[^\d]{{0,6}}{_NUM}\s*{u}?", t)
+    if m:
+        v = to_metres(float(m.group(1)), m.group(2) if m.lastindex and m.lastindex >= 2 else None)
+        if 1.5 <= v <= 8:
+            inp.storey_height_m = v; inp.parsed.append("storey_height_m")
 
 
 def parse_frame3d_request(user_request: str) -> Frame3dInputs:
@@ -305,25 +300,17 @@ def parse_frame3d_request(user_request: str) -> Frame3dInputs:
     m = re.search(r"(\d+)\s*-?\s*(?:stor(?:e)?y|stories|storeys|floors?|طبقه)", t, re.I) or re.search(r"طبقات\s*[:=]?\s*(\d+)", t)
     if m:
         inp.storeys = int(m.group(1)); inp.parsed.append("storeys")
-    m = re.search(r"(\d+)\s*x\s*(\d+)\s*(?:bays?|دهانه)", t, re.I) or re.search(
-        r"(?:bays?|دهانه)\s*[:=]?\s*(\d+)\s*x\s*(\d+)", t, re.I)
-    if m:
-        inp.bays_x, inp.bays_y = int(m.group(1)), int(m.group(2)); inp.parsed += ["bays_x", "bays_y"]
-    else:
-        mx = re.search(r"(\d+)\s*bays?\s*(?:in|along)\s*x", t, re.I)
-        my = re.search(r"(\d+)\s*bays?\s*(?:in|along)\s*y", t, re.I)
-        if mx: inp.bays_x = int(mx.group(1)); inp.parsed.append("bays_x")
-        if my: inp.bays_y = int(my.group(1)); inp.parsed.append("bays_y")
-        me = re.search(r"(\d+)\s*bays?\s*(?:of\s*[\d.]+\s*m\s*)?(?:in\s*)?(?:each|both)\s*directions?", t, re.I)
-        if me and not (mx or my):
-            inp.bays_x = inp.bays_y = int(me.group(1)); inp.parsed += ["bays_x", "bays_y"]
-        _parse_fa_bays(t, inp)
-    m = re.search(rf"bays?\s*(?:of|=|:)?\s*{_NUM}\s*m\b", t, re.I) or re.search(rf"دهانه[^\d]{{0,10}}{_NUM}\s*(?:m|متر)", t)
-    if m and not ({"bay_x_m", "bay_y_m"} & set(inp.parsed)):
-        inp.bay_x_m = inp.bay_y_m = float(m.group(1)); inp.parsed += ["bay_x_m", "bay_y_m"]
-    _f(t, (rf"bay\s*(?:width|length|span)?\s*(?:in\s*)?x\s*[:=]?\s*{_NUM}\s*m",), inp, "bay_x_m")
-    _f(t, (rf"bay\s*(?:width|length|span)?\s*(?:in\s*)?y\s*[:=]?\s*{_NUM}\s*m",), inp, "bay_y_m")
-    _f(t, (rf"(?:stor(?:e)?y|floor)\s*height\s*(?:of|=|:)?\s*{_NUM}\s*m", rf"ارتفاع\s*طبقه[^\d]{{0,10}}{_NUM}"), inp, "storey_height_m")
+    bp = bays_parser.parse_bays(user_request)
+    for key, val in {**bp.counts, **bp.spans}.items():
+        setattr(inp, key, val); inp.parsed.append(key)
+    if not ({"bays_x", "bays_y"} & set(bp.counts)):
+        inp.pending_bays = bp.ambiguous
+    _parse_fa_storey_height(t, inp)
+    if "storey_height_m" not in inp.parsed:
+        mh = re.search(rf"(?:stor(?:e)?y|floor)\s*height\s*(?:of|=|:)?\s*{_NUM}\s*({bays_parser.UNIT_PATTERN})", t, re.I)
+        if mh:
+            inp.storey_height_m = to_metres(float(mh.group(1)), mh.group(2)); inp.parsed.append("storey_height_m")
+    _f(t, (rf"ارتفاع\s*طبقه[^\d]{{0,10}}{_NUM}",), inp, "storey_height_m")
     _section(t, "columns?|ستون", inp, "column_b_m", "column_h_m")
     _section(t, "beams?|تیر", inp, "beam_b_m", "beam_h_m")
     _f(t, (rf"slab\s*(?:thickness)?\s*(?:of|=|:)?\s*{_NUM}\s*cm",), inp, "slab_t_m", 0.01)
@@ -1036,11 +1023,27 @@ def _modal_response_spectrum(inp, lateral_prep, nodes, XS, YS, Z, W, centre, V_s
 # --------------------------------------------------------------------------- payload
 _LABELS = {
     "storeys": "number of storeys", "bays_x": "number of bays in X", "bays_y": "number of bays in Y",
+    "bay_x_m": "bay span in X (m)", "bay_y_m": "bay span in Y (m)",
+}
+_LABELS_FA = {
+    "storeys": "تعداد طبقات", "bays_x": "تعداد دهانه x", "bays_y": "تعداد دهانه y",
+    "bay_x_m": "طول دهانه x (متر)", "bay_y_m": "طول دهانه y (متر)",
 }
 
 
+def input_labels(keys: list[str], lang: str) -> list[str]:
+    """Friendly labels for raw input keys (never show ``bays_x`` / ``bay_x_m`` to users)."""
+    table = _LABELS_FA if lang == "fa" else _LABELS
+    return [table.get(k) or fu.friendly_label(k, lang == "fa") for k in keys]
+
+
 def missing_inputs(inp: Frame3dInputs) -> list[str]:
-    return [name for name in ("storeys", "bays_x", "bays_y") if getattr(inp, name) is None]
+    """Required geometry: storeys, bay counts and bay spans in X and Y. Counts / spans are never guessed silently;
+    spans count as given when the user wrote them (``parsed``) or said "assume defaults" (``spans_assumed``)."""
+    names = [name for name in ("storeys", "bays_x", "bays_y") if getattr(inp, name) is None]
+    if not inp.spans_assumed:
+        names += [name for name in SPAN_KEYS if name not in inp.parsed]
+    return names
 
 
 def _r(v: float, n: int = 2) -> float:
@@ -1228,7 +1231,7 @@ def _build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None 
         setattr(inp, k, v)
         inp.parsed = [*inp.parsed, k]
     changed = set(a_upd) | set(inp_upd)
-    inputs = {k: v for k, v in asdict(inp).items() if k != "parsed"}
+    inputs = {k: v for k, v in asdict(inp).items() if k not in INTERNAL_FIELDS}
     defaulted = [k for k in inputs if k not in inp.parsed and k not in ("seismic_code", "design_code", "accidental_ecc")]
     common = {
         "kind": KIND, "label": "3D FRAME ANALYSIS", "demo": False,
@@ -1246,27 +1249,37 @@ def _build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None 
     }
     missing = missing_inputs(inp)
     if missing:
-        if inp.lang == "fa":
-            fa_l = {"storeys": "تعداد طبقات", "bays_x": "تعداد دهانه در جهت x", "bays_y": "تعداد دهانه در جهت y"}
-            msg = ("لطفاً مشخص کنید: " + "، ".join(fa_l.get(m, m) for m in missing)
-                   + ". مثال: «۳ دهانه ۵ متری در جهت x و ۲ دهانه ۴ متری در جهت y، ۴ طبقه با ارتفاع ۳.۲ متر».")
-        else:
-            msg = ("Please specify: " + ", ".join(_LABELS[m] for m in missing)
-                   + ". Example: `3-storey RC moment frame, 2x2 bays of 5 m, storey height 3.2 m, C=0.165`.")
+        fa = inp.lang == "fa"
+        labels = input_labels(missing, inp.lang)
         d = fu.DEFAULTS
-        if inp.lang == "fa":
+        pend = inp.pending_bays
+        if fa:
+            msg = ""
+            if pend and {"bays_x", "bays_y"} & set(missing):
+                msg = f"{pend} دهانه را دریافت کردم ولی جهت آن مشخص نیست — در جهت x است، در جهت y، یا هر دو؟ "
+            msg += "لطفاً این مقادیر را برای ادامه وارد کنید: " + "، ".join(labels) + (
+                ". مثال: «۳ دهانه ۵ متری در جهت x و ۲ دهانه ۴ متری در جهت y، ۴ طبقه». هر واحدی بنویسید (متر، سانتی‌متر، میلی‌متر، فوت) به متر تبدیل می‌شود؛ بدون واحد = متر.")
             msg += (f" یا بنویسید «**پیش‌فرض‌ها را فرض کن**» تا با مقادیر معمول ({d['storeys']} طبقه، {d['bays_x']}×{d['bays_y']} دهانه "
-                    f"{d['bay_x_m']:g} متری، ارتفاع طبقه {d['storey_height_m']:g} متر، آیین‌نامه‌های ایران) ادامه دهم؛ فرض‌ها را در نتیجه می‌بینید.")
+                    f"{d['bay_x_m']:g} متری، ارتفاع طبقه {d['storey_height_m']:g} متر، آیین‌نامه‌های ایران) ادامه دهم؛ فرض‌ها (از جمله طول دهانه‌ها) را در نتیجه می‌بینید.")
         else:
+            msg = ""
+            if pend and {"bays_x", "bays_y"} & set(missing):
+                msg = f"I understood {pend} bays but not the direction — in X, in Y, or both? "
+            msg += ("Please specify: " + ", ".join(labels)
+                    + ". Example: `3 bays of 5 m in x and 2 bays of 4 m in y, 4 storeys`. Any length unit (m, cm, mm, ft) is converted to metres; no unit = metres.")
             msg += (f" Or reply **assume defaults** and I will continue with typical values ({d['storeys']} storeys, {d['bays_x']}x{d['bays_y']} bays of "
-                    f"{d['bay_x_m']:g} m, storey height {d['storey_height_m']:g} m, Iranian codes); the assumptions are listed in the result.")
-        return _loc({**common, "status": "MISSING_REQUIRED_INPUT", "missing_inputs": missing, "message": msg, "warnings": [msg],
+                    f"{d['bay_x_m']:g} m, storey height {d['storey_height_m']:g} m, Iranian codes); the assumptions (including the bay spans) are listed in the result.")
+        have = {k: getattr(inp, k) for k in ("storeys", "bays_x", "bays_y", "bay_x_m", "bay_y_m") if k not in missing}
+        return _loc({**common, "spec": "", "status": "MISSING_REQUIRED_INPUT", "missing_inputs": missing, "missing_labels": labels,
+                     "pending_bays": pend, "given_inputs": have, "message": msg, "warnings": [msg],
                      "can_assume_defaults": True, "defaults_if_assumed": dict(d), "assume_command": {"en": "assume defaults", "fa": "پیش‌فرض‌ها را فرض کن"}})
     limits = []
     if inp.storeys > MAX_STOREYS: limits.append(f"at most {MAX_STOREYS} storeys")
     if max(inp.bays_x, inp.bays_y) > MAX_BAYS: limits.append(f"at most {MAX_BAYS} bays per direction")
     if (inp.bays_x + 1) * (inp.bays_y + 1) * (inp.storeys + 1) > MAX_NODES: limits.append(f"at most {MAX_NODES} nodes")
     if min(inp.storeys, inp.bays_x, inp.bays_y) < 1: limits.append("at least 1 storey and 1 bay per direction")
+    if not (MIN_SPAN_M <= inp.bay_x_m <= MAX_SPAN_M and MIN_SPAN_M <= inp.bay_y_m <= MAX_SPAN_M):
+        limits.append(f"bay spans between {MIN_SPAN_M:g} and {MAX_SPAN_M:g} m (got X={inp.bay_x_m:g} m, Y={inp.bay_y_m:g} m; check the unit — default unit is metres)")
     if limits:
         msg = "This chat solver currently supports " + ", ".join(limits) + "."
         return _loc({**common, "status": "UNSUPPORTED_SIZE", "message": msg, "warnings": [msg]})
@@ -1627,8 +1640,12 @@ def frame3d_memory_summary(payload: dict[str, Any]) -> str:
 def run_frame3d_for_export(inputs: dict[str, Any]) -> tuple["Frame3dInputs", dict[str, Any], dict[str, Any] | None]:
     """Re-run the (deterministic) analysis for an export request coming from the result card."""
     inp = inputs_from_dict(inputs)
-    if missing_inputs(inp):
-        raise ValueError("storeys, bays_x and bays_y are required")
+    if "_p" not in inputs and "parsed_from_request" not in inputs:
+        inp.parsed = [k for k, v in inputs.items() if v is not None and not str(k).startswith("_")]  # a stored run's inputs are all given
+    miss = missing_inputs(inp)
+    if miss:
+        raise ValueError("The model is incomplete — not set: " + ", ".join(input_labels(miss, "en"))
+                         + ". / اطلاعات مدل کامل نیست؛ وارد نشده: " + "، ".join(input_labels(miss, "fa")))
     if (inp.storeys > MAX_STOREYS or max(inp.bays_x, inp.bays_y) > MAX_BAYS or min(inp.storeys, inp.bays_x, inp.bays_y) < 1
             or (inp.bays_x + 1) * (inp.bays_y + 1) * (inp.storeys + 1) > MAX_NODES):
         raise ValueError("model size outside the chat solver limits")

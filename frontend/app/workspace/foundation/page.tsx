@@ -5,7 +5,7 @@ export default function FoundationWorkspacePage() {
   return (
     <>
       <Frame3dWorkspacePanel mode="foundation" />
-      <ChatRunsSection kinds={["frame3d_analysis"]} title="Frame runs from chat (foundation results inside)" />
+      <ChatRunsSection kinds={["frame3d_analysis"]} />
     </>
   );
 }

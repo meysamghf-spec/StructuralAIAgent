@@ -79,6 +79,6 @@ def test_optimize_endpoint_requires_pro(monkeypatch):
     monkeypatch.setattr(billing, "consume", lambda acc, metric, n=1: None)
     from app.api.routes import frame3d as route
 
-    body = route.Frame3dOptimizeRequest(inputs={"storeys": 1, "bays_x": 1, "bays_y": 1}, options={"max_evaluations": 6})
+    body = route.Frame3dOptimizeRequest(inputs={"storeys": 1, "bays_x": 1, "bays_y": 1, "bay_x_m": 5, "bay_y_m": 5}, options={"max_evaluations": 6})
     out = route.optimize_frame3d(body, type("A", (), {"account_id": "x"})())
     assert "optimization" in calls and out["frame_optimization"]["kind"] == "frame_optimization"

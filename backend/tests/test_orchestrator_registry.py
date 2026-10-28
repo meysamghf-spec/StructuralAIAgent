@@ -145,7 +145,7 @@ def test_identical_write_calls_in_one_message_run_once() -> None:
 def test_analysis_is_consumed_once_per_identical_call() -> None:
     port = FakePort()
     ctx = ctx_for(port)
-    args = {"storeys": 2, "bays_x": 1, "bays_y": 1}
+    args = {"storeys": 2, "bays_x": 1, "bays_y": 1, "bay_x_m": 5, "bay_y_m": 5}
     assert tools.get_registry().execute(ctx, "analyze_frame", args).ok
     assert tools.get_registry().execute(ctx, "analyze_frame", args).status == "duplicate"
     assert port.analyses == 1
@@ -155,7 +155,7 @@ def test_analysis_is_consumed_once_per_identical_call() -> None:
 def test_destructive_overwrite_needs_confirmation_decided_by_the_platform() -> None:
     port = FakePort(model={"storeys": 3, "bays_x": 2, "bays_y": 2, "bay_x_m": 5, "bay_y_m": 5, "storey_height_m": 3.2})
     reg, ctx = tools.get_registry(), ctx_for(port)
-    res = reg.execute(ctx, "analyze_frame", {"mode": "new", "storeys": 6, "bays_x": 3, "bays_y": 3})
+    res = reg.execute(ctx, "analyze_frame", {"mode": "new", "storeys": 6, "bays_x": 3, "bays_y": 3, "bay_x_m": 5, "bay_y_m": 5})
     assert res.status == "confirmation_required" and ctx.pending["tool"] == "analyze_frame" and port.analyses == 0
     # the model cannot confirm by passing a flag
     assert reg.execute(ctx_for(port), "analyze_frame", {"mode": "new", "storeys": 6, "bays_x": 3, "bays_y": 3, "confirmed": True}).status == "invalid_arguments"
