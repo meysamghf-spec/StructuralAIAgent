@@ -59,7 +59,7 @@ def test_assume_routes_to_analysis():
 
 def test_reply_with_numbers_completes_pending(monkeypatch):
     _quick(monkeypatch)
-    p = f3.build_frame3d_payload(fu.merge_with_pending("3 طبقه، 2x2 دهانه", [PENDING]))
+    p = f3.build_frame3d_payload(fu.merge_with_pending("3 طبقه، 2x2 دهانه ۵ متری", [PENDING]))
     assert p["status"] == "completed"
     assert (p["inputs"]["storeys"], p["inputs"]["bays_x"], p["inputs"]["bays_y"]) == (3, 2, 2)
 

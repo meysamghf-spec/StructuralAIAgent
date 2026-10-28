@@ -160,7 +160,7 @@ export function ReportsList() {
   return (
     <section className="panel reports-page" dir={dir} data-testid="reports-page">
       <header className="page-header">
-        <h2>{t("Reports")}</h2>
+        <h2 className="page-dup-title">{t("Reports")}</h2>
         <p className="subtitle">{t("Project reports and calculation reports.")}</p>
       </header>
 

@@ -77,12 +77,12 @@ export const ASSISTANT_CONTEXTS: Record<string, AssistantContext> = {
     },
     "starters": {
       "en": [
-        "Check a steel beam IPE300, span 6 m, 20 kN/m",
-        "What can the steel assistant do?"
+        "Analyze a simply supported steel beam, span 6 m, 20 kN/m",
+        "What can and can't the steel assistant do?"
       ],
       "fa": [
-        "تیر فولادی IPE300 با دهانه ۶ متر و ۲۰ kN/m را کنترل کن",
-        "دستیار فولاد چه کارهایی می‌کند؟"
+        "تیر فولادی ساده با دهانه ۶ متر و بار ۲۰ kN/m را تحلیل کن",
+        "دستیار فولاد چه کارهایی می‌کند و چه کارهایی نمی‌کند؟"
       ]
     }
   },

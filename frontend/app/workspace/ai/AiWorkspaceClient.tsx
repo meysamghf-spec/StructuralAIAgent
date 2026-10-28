@@ -33,7 +33,7 @@ export default function AiWorkspaceClient() {
     <section className="panel-stack">
       <header className="page-header">
         <p className="eyebrow">Assistant</p>
-        <h2>AI Assistant</h2>
+        <h2 className="page-dup-title">AI Assistant</h2>
         <p className="subtitle">Ask engineering questions in plain language.</p>
       </header>
 

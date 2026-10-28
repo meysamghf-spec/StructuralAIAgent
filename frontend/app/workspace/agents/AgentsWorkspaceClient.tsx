@@ -259,7 +259,7 @@ export default function AgentsWorkspaceClient() {
     <section className="panel-stack">
       <header className="page-header">
         <p className="eyebrow">Engineering Assistants</p>
-        <h2>Assistants</h2>
+        <h2 className="page-dup-title">Assistants</h2>
         <p className="subtitle">Run structural workflows on a project with traceable assistants.</p>
       </header>
 
@@ -535,20 +535,17 @@ export default function AgentsWorkspaceClient() {
           <h3>Available assistants</h3>
           <p className="muted">Specialist engineering assistants available in your workspace.</p>
         </header>
-        {loading ? (
-          <p className="muted">Loading assistants…</p>
-        ) : (
-          <AgentOverviewGrid
-            assistants={assistants}
-            selectedAgentType={selectedAgentType || null}
-            projectId={selectedProjectId || null}
-            onSelect={(agentType) => {
-              if (agentType) {
-                setSelectedAgentType(agentType);
-              }
-            }}
-          />
-        )}
+        {/* Cards are static platform data: show them immediately, never behind the project/context load. */}
+        <AgentOverviewGrid
+          assistants={assistants}
+          selectedAgentType={selectedAgentType || null}
+          projectId={selectedProjectId || null}
+          onSelect={(agentType) => {
+            if (agentType) {
+              setSelectedAgentType(agentType);
+            }
+          }}
+        />
       </section>
 
       <section>

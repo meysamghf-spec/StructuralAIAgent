@@ -1,14 +1,10 @@
-import { Frame3dWorkspacePanel } from "@/components/frame3d/Frame3dWorkspacePanel";
-import { LegacySection } from "@/components/frame3d/LegacySection";
-import DesignWorkspaceClient from "./DesignWorkspaceClient";
+import { DesignRunPage } from "@/components/design/DesignRunPage";
 
+/**
+ * Design page: only the design results of the project and one "Design" button that runs the Mabhas 9 member design
+ * (plus isolated footings) on the saved, analysed 3D frame model and shows the new results here.
+ * Analysis tables live on Analysis/Results, drawings and downloads on their own pages.
+ */
 export default function DesignWorkspacePage() {
-  return (
-    <>
-      <Frame3dWorkspacePanel mode="design" />
-      <LegacySection label="design">
-        <DesignWorkspaceClient />
-      </LegacySection>
-    </>
-  );
+  return <DesignRunPage />;
 }

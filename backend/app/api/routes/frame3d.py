@@ -55,6 +55,25 @@ class Frame3dRunRequest(BaseModel):
     assume_defaults: bool = Field(default=False, description="fill missing storeys/bays/spans with the documented defaults and report them in assumed_defaults")
 
 
+def _validate_spans(inputs: dict[str, Any]) -> None:
+    """Bay spans must be metres within 1.5-15 m (a cm / mm value typed into a metre field is the usual mistake)."""
+    from app.application import frame3d_chat_analysis as f3
+
+    for key, label in (("bay_x_m", "bay span X"), ("bay_y_m", "bay span Y")):
+        v = inputs.get(key)
+        if v in (None, ""):
+            continue
+        try:
+            fv = float(v)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=f"{label} must be a number in metres") from exc
+        if not (f3.MIN_SPAN_M <= fv <= f3.MAX_SPAN_M):
+            raise HTTPException(
+                status_code=422,
+                detail=(f"{label} = {fv:g} m is outside {f3.MIN_SPAN_M:g}-{f3.MAX_SPAN_M:g} m. Values are in metres: "
+                        f"convert cm / mm / ft first (e.g. 600 cm = 6 m)."))
+
+
 @router.post("/run")
 def run_frame3d_manual(
     body: Frame3dRunRequest,
@@ -72,6 +91,7 @@ def run_frame3d_manual(
             if inputs.get(k) in (None, "", 0):
                 inputs[k] = v
                 assumed.append(k)
+    _validate_spans(inputs)
     try:
         payload = build_frame3d_payload("", manual_inputs=inputs)
         if assumed and isinstance(payload, dict):
@@ -102,7 +122,10 @@ def optimize_frame3d(
 
     try:
         data = {"seismic_code": "IRAN_2800", **body.inputs}
+        _validate_spans(data)
         inp = f3.inputs_from_dict(data)
+        if "_p" not in data and "parsed_from_request" not in data:
+            inp.parsed = [k for k, v in data.items() if v is not None and v != "" and not str(k).startswith("_")]
         missing = f3.missing_inputs(inp)
         assumed: list[str] = []
         if missing and body.assume_defaults:
@@ -111,7 +134,7 @@ def optimize_frame3d(
             assumed = fu.apply_defaults(inp)
             missing = f3.missing_inputs(inp)
         if missing:
-            raise ValueError("missing " + ", ".join(missing) + " (send assume_defaults=true to use typical defaults)")
+            raise ValueError("missing: " + ", ".join(f3.input_labels(missing, "en")) + " (send assume_defaults=true to use typical defaults)")
         if inp.storeys > f3.MAX_STOREYS or max(inp.bays_x, inp.bays_y) > f3.MAX_BAYS or min(inp.storeys, inp.bays_x, inp.bays_y) < 1:
             raise ValueError(f"supports 1-{f3.MAX_STOREYS} storeys and 1-{f3.MAX_BAYS} bays per direction")
         opts = {**body.options}
@@ -156,12 +179,17 @@ def _resolve(body, acc, conv, access):
             access.require_project(_UUID(body.project_id), acc)
         except ValueError as exc:
             raise HTTPException(422, "invalid project_id") from exc
+    from app.api.routes.autocad import latest_frame_inputs, missing_inputs_http
+
     inputs = body.inputs
     if not inputs and body.project_id:
-        from app.api.routes.autocad import latest_frame_inputs
-        inputs = latest_frame_inputs(conv, acc, body.project_id)
+        inputs = latest_frame_inputs(conv, acc, body.project_id)  # newest *complete* run; incomplete ones are skipped
     if not inputs:
-        raise HTTPException(409, "No 3D frame analysis yet — run one in chat or on the Model page first.")
+        raise HTTPException(409, "No complete 3D frame model yet — complete it on the Model page or in chat first. / "
+                                 "هنوز مدل کامل قابی نیست؛ ابتدا آن را در صفحه مدل یا چت کامل کنید.")
+    err = missing_inputs_http(inputs)
+    if err is not None:
+        raise err
     billing.check_frame_size(getattr(acc, "account_id", None), inputs)
     return inputs
 

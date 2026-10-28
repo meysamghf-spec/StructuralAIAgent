@@ -121,11 +121,16 @@ def analyze_beam_prompt(text: str) -> dict[str, Any] | None:
         "kind": "demo_rc_beam", "status": "completed", "label": "BEAM ANALYSIS", "demo": False,
         "disclaimer": "Deterministic rule-based calculation (no LLM). Verify before use in practice.",
         "code": "Mabhas 9 (Iran)" if rc else "Elastic beam theory",
+        # RC section defaults are inputs only when the beam is reinforced concrete; a steel beam must not
+        # be reported with an invented 300x500 mm / f'c section.
         "inputs": {"span_m": L, "uniform_load_kn_m": w, "point_load_kn": P, "support": support,
-                   "width_mm": b, "height_mm": h, "fc_mpa": fc, "fy_mpa": fy},
+                   **({"width_mm": b, "height_mm": h, "fc_mpa": fc, "fy_mpa": fy} if rc else {})},
         "results": {"max_moment_kn_m": round(M, 4), "max_shear_kn": round(V, 4), "max_deflection_mm": round(d * 1000, 3),
                     "diagram": {"x_m": [round(x, 3) for x in xs], "moment_kn_m": [round(m, 3) for m in Mx], "shear_kn": [round(v, 3) for v in Vx]}},
-        "design": design, "fields": fields, "assumptions": assumptions, "warnings": list((design or {}).get("notes") or []),
+        "design": design, "fields": fields, "assumptions": assumptions,
+        "warnings": list((design or {}).get("notes") or []) + ([] if rc else [
+            "Elastic beam analysis only (reactions, M, V, deflection). No steel member capacity check "
+            "(AISC 360 / Mabhas 10) was performed and the section shown is an assumed default."]),
     }
     lines = [f"**Beam analysis ({support.replace('_', ' ')}, L = {L:g} m)**", ""]
     lines += [f"- {f['label']}: {f['value']}{(' ' + f['unit']) if f['unit'] else ''}" for f in fields]

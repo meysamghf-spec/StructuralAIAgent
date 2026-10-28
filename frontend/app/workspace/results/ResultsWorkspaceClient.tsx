@@ -153,7 +153,7 @@ export default function ResultsWorkspaceClient() {
     <div className="workspace-page">
       <header className="page-header">
         <p className="eyebrow">Results</p>
-        <h2>Results</h2>
+        <h2 className="page-dup-title">Results</h2>
         <p className="subtitle">Review analysis, design, and optimization results.</p>
       </header>
       <ProjectScopePanel

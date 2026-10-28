@@ -127,11 +127,11 @@ def test_without_assume_defaults_the_tool_reports_missing_inputs(api_client: Tes
 
 def test_new_model_over_existing_needs_user_confirmation(api_client: TestClient) -> None:
     token, pid = _setup(api_client)
-    set_llm_for_tests(ScriptedLLM([tool_msg(call("analyze_frame", {"storeys": 3, "bays_x": 2, "bays_y": 2})), say("ok model 1")]))
+    set_llm_for_tests(ScriptedLLM([tool_msg(call("analyze_frame", {"storeys": 3, "bays_x": 2, "bays_y": 2, "bay_x_m": 5, "bay_y_m": 5})), say("ok model 1")]))
     first = _chat(api_client, token, pid, "یک قاب ۳ طبقه ۲ دهانه تحلیل کن")
     cid = first["conversation_id"]
     llm = ScriptedLLM([
-        tool_msg(call("analyze_frame", {"mode": "new", "storeys": 6, "bays_x": 3, "bays_y": 3})),
+        tool_msg(call("analyze_frame", {"mode": "new", "storeys": 6, "bays_x": 3, "bays_y": 3, "bay_x_m": 5, "bay_y_m": 5})),
         say("مدل فعلی جایگزین شود؟ (بله/خیر)"),
         say("قاب ۶ طبقه تحلیل شد."),
     ])
@@ -149,9 +149,9 @@ def test_new_model_over_existing_needs_user_confirmation(api_client: TestClient)
 
 def test_declining_a_confirmation_changes_nothing(api_client: TestClient) -> None:
     token, pid = _setup(api_client)
-    set_llm_for_tests(ScriptedLLM([tool_msg(call("analyze_frame", {"storeys": 3, "bays_x": 2, "bays_y": 2})), say("ok")]))
+    set_llm_for_tests(ScriptedLLM([tool_msg(call("analyze_frame", {"storeys": 3, "bays_x": 2, "bays_y": 2, "bay_x_m": 5, "bay_y_m": 5})), say("ok")]))
     cid = _chat(api_client, token, pid, "یک قاب ۳ طبقه ۲ دهانه تحلیل کن")["conversation_id"]
-    set_llm_for_tests(ScriptedLLM([tool_msg(call("analyze_frame", {"mode": "new", "storeys": 6, "bays_x": 3, "bays_y": 3})), say("تایید می‌کنید؟")]))
+    set_llm_for_tests(ScriptedLLM([tool_msg(call("analyze_frame", {"mode": "new", "storeys": 6, "bays_x": 3, "bays_y": 3, "bay_x_m": 5, "bay_y_m": 5})), say("تایید می‌کنید؟")]))
     _chat(api_client, token, pid, "یک قاب جدید بساز", cid)
     llm = ScriptedLLM([])  # no model call may happen on a plain "no"
     set_llm_for_tests(llm)
@@ -170,7 +170,7 @@ def test_model_outage_falls_back_to_rule_based_pipeline(api_client: TestClient) 
 
 def test_outage_after_tools_ran_returns_the_raw_results(api_client: TestClient) -> None:
     token, pid = _setup(api_client)
-    set_llm_for_tests(ScriptedLLM([tool_msg(call("analyze_frame", {"storeys": 3, "bays_x": 2, "bays_y": 2})), down()]))
+    set_llm_for_tests(ScriptedLLM([tool_msg(call("analyze_frame", {"storeys": 3, "bays_x": 2, "bays_y": 2, "bay_x_m": 5, "bay_y_m": 5})), down()]))
     reply = _chat(api_client, token, pid, "یک قاب ۳ طبقه ۲ دهانه بساز و بهینه کن")
     meta = _meta(reply)
     assert meta["orchestrator"]["degraded"] is True

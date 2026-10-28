@@ -31,7 +31,7 @@ export default function ProjectsPage() {
     <section className="panel-stack">
       <header className="page-header">
         <p className="eyebrow">Projects</p>
-        <h2>Projects</h2>
+        <h2 className="page-dup-title">Projects</h2>
         <p className="subtitle">Open a project or start a new one.</p>
         <Link className="button" href="/projects/new" data-testid="new-project-button">New project</Link>
       </header>

@@ -78,7 +78,7 @@ export default function PlatformIssuesClient() {
       <section className="panel-stack">
         <header className="page-header">
           <p className="eyebrow">Admin</p>
-          <h2>Platform issues</h2>
+          <h2 className="page-dup-title">Platform issues</h2>
         </header>
         <div className="alert error" role="alert">
           Platform admin access is required. Ask the owner to add your account to <code>PLATFORM_ADMIN_ACCOUNTS</code>.
@@ -91,7 +91,7 @@ export default function PlatformIssuesClient() {
     <section className="panel-stack">
       <header className="page-header">
         <p className="eyebrow">Admin</p>
-        <h2>Platform issues</h2>
+        <h2 className="page-dup-title">Platform issues</h2>
         <p className="muted">
           Problems the chat helper noticed or users reported. Fixes are drafts only: nothing is applied, merged or deployed from this page.
         </p>

@@ -9,6 +9,7 @@ from app.domain.models.units import EngineeringQuantityType, UnitConversionResul
 _TO_SI: dict[EngineeringQuantityType, dict[str, float]] = {
     EngineeringQuantityType.LENGTH: {
         "m": 1.0,
+        "cm": 0.01,
         "mm": 0.001,
         "ft": 0.3048,
         "in": 0.0254,

@@ -1,272 +1,203 @@
 "use client";
 
-import { ProjectScopePanel } from "@/components/workspace/ProjectScopePanel";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+import { AnalysisKpis, AnalysisSections } from "@/components/analysis/AnalysisResultsView";
+import { runFrame3d } from "@/components/frame3d/Frame3dWorkspacePanel";
 import { useProjectScope } from "@/hooks/useProjectScope";
+import { useUiLang } from "@/hooks/useUiLang";
 import {
-  formatAnalysisInventory,
-  getAnalysisCapabilityLabel,
-  getAnalysisStatusLabel,
-} from "@/lib/analysis-workspace";
+  inputLabel,
+  loadLastRun,
+  makeAnalysisT,
+  missingModelInputs,
+  saveLastRun,
+  summarizeAnalysis,
+  unitSystemLabel,
+  type LastRun,
+} from "@/lib/analysis-results";
+import { hydrateFrame3dFromServer } from "@/lib/chat-runs";
+import { PROJECT_EVENT } from "@/lib/current-project";
 import {
-  getAnalysisReadiness,
-  getLoadCombinationSummary,
-  listAnalysisRuns,
-  runAnalysis,
-  type AnalysisReadinessResponse,
-  type AnalysisResultResponse,
-  type AnalysisRunSummary,
-  type LoadCombinationSummaryResponse,
-} from "@/lib/analysis";
-import { listPemVersions } from "@/lib/model";
-import { formatWorkspaceDate, getValidationStatusLabel } from "@/lib/workspace";
-import { useCallback, useEffect, useState } from "react";
+  FRAME3D_EVENT,
+  loadFrame3dInputs,
+  loadFrame3dPayload,
+  saveFrame3dInputs,
+  saveFrame3dPayload,
+} from "@/lib/frame3d-store";
+import "@/components/analysis/analysis.css";
 
-const ANALYSIS_OPTIONS = [
-  { value: "STATIC", label: "Static analysis" },
-  { value: "MODAL", label: "Modal analysis" },
-  { value: "DRIFT", label: "Drift review" },
-  { value: "LATERAL_DRIFT", label: "Lateral drift review" },
-];
-
-function statusClass(status: string): string {
-  const normalized = status.toLowerCase();
-  if (normalized === "success") return "status-pass";
-  if (normalized === "failed" || normalized === "model_not_ready") return "status-error";
-  if (normalized === "warning" || normalized === "requires_solver") return "status-warning";
-  return "status-review";
-}
+type RunState = { kind: "idle" } | { kind: "running" } | { kind: "ok" } | { kind: "error"; message: string };
 
 export default function AnalysisWorkspaceClient() {
-  const { projects, selectedProjectId, setSelectedProjectId, loading, error, setError } =
-    useProjectScope();
-  const [analysisType, setAnalysisType] = useState("STATIC");
-  const [selectedVersion, setSelectedVersion] = useState<number | "current">("current");
-  const [versions, setVersions] = useState<number[]>([]);
-  const [readiness, setReadiness] = useState<AnalysisReadinessResponse | null>(null);
-  const [loadSummary, setLoadSummary] = useState<LoadCombinationSummaryResponse | null>(null);
-  const [runs, setRuns] = useState<AnalysisRunSummary[]>([]);
-  const [result, setResult] = useState<AnalysisResultResponse | null>(null);
-  const [busy, setBusy] = useState(false);
+  const { lang } = useUiLang();
+  const t = useMemo(() => makeAnalysisT(lang), [lang]);
+  const { projects, selectedProjectId, setSelectedProjectId, selectedProject, loading, error } = useProjectScope();
+  const [payload, setPayload] = useState<unknown>(null);
+  const [inputs, setInputs] = useState<Record<string, unknown> | null>(null);
+  const [lastRun, setLastRun] = useState<LastRun | null>(null);
+  const [run, setRun] = useState<RunState>({ kind: "idle" });
 
-  const loadAnalysisContext = useCallback(async () => {
+  const sync = useCallback(() => {
     if (!selectedProjectId) {
-      setReadiness(null);
-      setLoadSummary(null);
-      setRuns([]);
-      setVersions([]);
-      setResult(null);
+      setPayload(null);
+      setInputs(null);
+      setLastRun(null);
       return;
     }
-    setError(null);
-    const versionData = await listPemVersions(selectedProjectId);
-    setVersions(versionData.versions);
-    const pemVersion = selectedVersion === "current" ? undefined : selectedVersion;
-    const [readinessData, loadData, runData] = await Promise.all([
-      getAnalysisReadiness(selectedProjectId, pemVersion),
-      getLoadCombinationSummary(selectedProjectId),
-      listAnalysisRuns(selectedProjectId),
-    ]);
-    setReadiness(readinessData);
-    setLoadSummary(loadData);
-    setRuns(runData.runs);
-  }, [selectedProjectId, selectedVersion, setError]);
+    const saved = loadFrame3dInputs(selectedProjectId);
+    if (!saved) void hydrateFrame3dFromServer(selectedProjectId);
+    setInputs(saved);
+    setPayload(loadFrame3dPayload(selectedProjectId));
+    setLastRun(loadLastRun(selectedProjectId));
+  }, [selectedProjectId]);
 
   useEffect(() => {
-    async function load() {
-      try {
-        await loadAnalysisContext();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load analysis workspace");
-      }
-    }
-    void load();
-  }, [loadAnalysisContext, setError]);
+    setRun({ kind: "idle" });
+    sync();
+    window.addEventListener(FRAME3D_EVENT, sync);
+    window.addEventListener(PROJECT_EVENT, sync);
+    return () => {
+      window.removeEventListener(FRAME3D_EVENT, sync);
+      window.removeEventListener(PROJECT_EVENT, sync);
+    };
+  }, [sync]);
 
-  async function handleRun() {
-    if (!selectedProjectId) return;
-    setBusy(true);
-    setError(null);
+  const view = useMemo(() => summarizeAnalysis(payload), [payload]);
+  // The model the solver would run: the saved model inputs, or the inputs recorded in the last payload.
+  const modelInputs = inputs ?? view?.inputs ?? null;
+  const missing = missingModelInputs(modelInputs);
+  const noProject = !selectedProjectId;
+  const noModel = !noProject && !modelInputs;
+  const disabledReasons: string[] = [];
+  if (noProject) disabledReasons.push(t("Select a project first."));
+  else if (noModel) disabledReasons.push(t("No model saved for this project yet. Build one on the Model page or describe it in the chat."));
+  else if (missing.length) disabledReasons.push(`${t("Required inputs are missing:")} ${missing.map((k) => t(inputLabel(k))).join("، ")}`);
+  const running = run.kind === "running";
+  const disabled = running || disabledReasons.length > 0;
+
+  async function analyze() {
+    if (disabled || !modelInputs) return;
+    setRun({ kind: "running" });
     try {
-      const pemVersion = selectedVersion === "current" ? undefined : selectedVersion;
-      const runResult = await runAnalysis(selectedProjectId, analysisType, { pemVersion });
-      setResult(runResult);
-      await loadAnalysisContext();
+      const fresh = await runFrame3d(modelInputs);
+      saveFrame3dInputs(selectedProjectId, modelInputs);
+      saveFrame3dPayload(selectedProjectId, fresh);
+      const stamp = { at: new Date().toISOString(), ok: true };
+      saveLastRun(selectedProjectId, stamp);
+      setPayload(fresh);
+      setLastRun(stamp);
+      const fv = summarizeAnalysis(fresh);
+      if (fv && !fv.completed) setRun({ kind: "error", message: fv.message || t("Analysis failed") });
+      else setRun({ kind: "ok" });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Analysis failed");
-    } finally {
-      setBusy(false);
+      setRun({ kind: "error", message: err instanceof Error ? err.message : String(err) });
     }
   }
 
+  const hasResults = !!view && view.completed;
+  const nStoreys = modelInputs ? Number(modelInputs.storeys) : NaN;
+  const nBaysX = modelInputs ? Number(modelInputs.bays_x) : NaN;
+  const nBaysY = modelInputs ? Number(modelInputs.bays_y) : NaN;
+  const modelLine = Number.isFinite(nStoreys) && Number.isFinite(nBaysX) && Number.isFinite(nBaysY)
+    ? `${t("Current model")}: ${nStoreys} ${t("storeys")} · ${nBaysX}×${nBaysY} ${t("bays")}`
+    : null;
+  const dateText = lastRun
+    ? new Date(lastRun.at).toLocaleString(lang === "fa" ? "fa-IR" : "en-US", { dateStyle: "medium", timeStyle: "short" })
+    : t("Date not recorded");
+
+  const button = (
+    <button
+      type="button"
+      className="button an-analyze"
+      onClick={() => void analyze()}
+      disabled={disabled}
+      aria-busy={running}
+      aria-describedby={disabledReasons.length ? "an-why" : undefined}
+      data-testid="analyze-button"
+    >
+      {running ? t("Analyzing…") : t("Analyze")}
+    </button>
+  );
+
+  const messages = (
+    <>
+      {disabledReasons.length > 0 ? (
+        <div className="an-why" id="an-why" role="note" data-testid="analyze-disabled-reason">
+          <strong>{t("Analysis is disabled")}</strong>
+          <ul>{disabledReasons.map((r) => <li key={r}>{r}</li>)}</ul>
+          {!noProject ? <Link href="/workspace/model">{t("Model page")}</Link> : null}
+        </div>
+      ) : null}
+      {run.kind === "ok" ? <div className="an-msg ok" role="status" data-testid="analyze-success">{t("Analysis succeeded. The results below are updated.")}</div> : null}
+      {run.kind === "error" ? (
+        <div className="an-msg err" role="alert" data-testid="analyze-error">
+          <strong>{t("Analysis run failed")}</strong>: {run.message}
+          {hasResults ? <> {t("The previous results are still shown below.")}</> : null}
+        </div>
+      ) : null}
+    </>
+  );
+
   return (
-    <section className="panel-stack">
-      <header className="page-header">
-        <p className="eyebrow">Analysis</p>
-        <h2>Analysis</h2>
-        <p className="subtitle">Prepare analysis inputs and track analysis runs.</p>
+    <div className="an-page" dir={lang === "fa" ? "rtl" : "ltr"} data-testid="analysis-page">
+      <header className="an-head">
+        <div>
+          <p className="eyebrow">{t("Analysis")}</p>
+          <h2>{t("Project analysis")}</h2>
+          <p className="subtitle">{t("Results of the built-in 3D frame solver for the current model of this project.")}</p>
+        </div>
+        <label className="an-project">
+          <span>{t("Project")}</span>
+          <select className="input project-select" value={selectedProjectId} onChange={(e) => setSelectedProjectId(e.target.value)} disabled={loading || projects.length === 0}>
+            {projects.length === 0 ? <option value="">—</option> : null}
+            {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </label>
       </header>
 
-      <ProjectScopePanel
-        projects={projects}
-        selectedProjectId={selectedProjectId}
-        onProjectChange={setSelectedProjectId}
-        loading={loading}
-      />
+      {error ? <div className="an-msg err" role="alert">{error}</div> : null}
 
-      {selectedProjectId ? (
-        <section className="card">
-          <h3>Model revision</h3>
-          <div className="form-row">
-            <select
-              className="input"
-              value={selectedVersion === "current" ? "current" : String(selectedVersion)}
-              onChange={(event) => {
-                const value = event.target.value;
-                setSelectedVersion(value === "current" ? "current" : Number(value));
-              }}
-            >
-              <option value="current">Current model</option>
-              {versions.map((version) => (
-                <option key={version} value={version}>
-                  Version {version}
-                </option>
-              ))}
-            </select>
+      {hasResults && view ? (
+        <section className="an-run" data-testid="analysis-banner">
+          <div className="an-run-main">
+            <div className="an-run-info">
+              <div>
+                <span className="an-chip pass">✓ {t("Analysis completed")}</span>
+              </div>
+              <div className="an-run-chips">
+                <span><b>{t("Last analysis")}</b>{dateText}</span>
+                {view.seismicCode ? <span><b>{t("Seismic code")}</b><bdi>{view.seismicCode.replace(/_/g, " ")}</bdi></span> : null}
+                <span><b>{t("Units")}</b><bdi>{unitSystemLabel()}</bdi></span>
+              </div>
+              {modelLine || selectedProject ? <div className="an-run-model">{selectedProject?.name}{modelLine ? ` — ${modelLine}` : ""}</div> : null}
+              {view.code ? <div className="an-run-model" dir="auto"><b>{t("Design code")}:</b> <bdi>{view.code}</bdi></div> : null}
+            </div>
+            {button}
           </div>
+          {messages}
         </section>
-      ) : null}
-
-      <div className="grid cards-2">
-        <article className="card">
-          <h3>Model readiness</h3>
-          {readiness ? (
-            <>
-              <p className={`status-pill ${statusClass(readiness.readiness_status)}`}>
-                {getAnalysisStatusLabel(readiness.readiness_status)}
-              </p>
-              <p className="muted">{readiness.summary}</p>
-              <details className="meta-summary">
-                <summary>Details</summary>
-              <ul className="feature-list">
-                {formatAnalysisInventory(readiness.model_summary).map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-              {readiness.missing_requirements.length > 0 ? (
-                <ul className="feature-list">
-                  {readiness.missing_requirements.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              ) : null}
-              <p className="muted">
-                Validation: {getValidationStatusLabel(readiness.validation_status)}
-              </p>
-              </details>
-            </>
-          ) : (
-            <p className="muted">Select a project to review model readiness.</p>
-          )}
-        </article>
-
-        <article className="card">
-          <h3>Load combinations</h3>
-          {loadSummary ? (
-            <>
-              <p className="metric">{loadSummary.load_combination_count} combinations</p>
-              <p className="muted">{loadSummary.load_case_count} load cases</p>
-              <p className="muted">
-                Analysis model: {loadSummary.analysis_model_status.replaceAll("_", " ").toLowerCase()}
-              </p>
-              {loadSummary.load_combinations.length === 0 ? (
-                <p className="muted">No load combinations defined in the current model.</p>
-              ) : (
-                <ul className="feature-list">
-                  {loadSummary.load_combinations.slice(0, 6).map((combo) => (
-                    <li key={String(combo.id)}>{String(combo.name ?? combo.id)}</li>
-                  ))}
-                </ul>
-              )}
-            </>
-          ) : (
-            <p className="muted">Load combination summary will appear here.</p>
-          )}
-        </article>
-      </div>
-
-      <section className="card">
-        <h3>Run analysis</h3>
-        <div className="form-row">
-          <select
-            className="input"
-            value={analysisType}
-            onChange={(event) => setAnalysisType(event.target.value)}
-          >
-            {ANALYSIS_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <button
-            className="button"
-            type="button"
-            disabled={!selectedProjectId || busy}
-            onClick={() => void handleRun()}
-          >
-            {busy ? "Running…" : "Run analysis"}
-          </button>
-        </div>
-        <p className="muted">
-          The platform prepares deterministic model inputs and records the run. Forces, displacements,
-          and modal results are not generated until a solver adapter is connected.
-        </p>
-        <p className="muted">
-          This page does not read a prompt. To analyse a described 3D frame (e.g. “Analyze and design per Mabhas 9 a
-          3-storey RC frame, 2x2 bays of 5 m …”), send it in the <a href="/">Chat</a>: it runs the built-in 3D frame solver
-          and shows the result card.
-        </p>
-      </section>
-
-      {error ? <div className="alert error">{error}</div> : null}
-
-      {result ? (
-        <section className="card">
-          <h3>Latest run result</h3>
-          <p className={`status-pill ${statusClass(result.status)}`}>
-            {getAnalysisStatusLabel(result.status)}
-          </p>
-          <p className="muted">{getAnalysisCapabilityLabel(result.capability_status)}</p>
-          <div className="execution-result">
-            <p className="result-text">{result.message}</p>
+      ) : (
+        <section className="an-run empty" data-testid="analysis-empty">
+          <div className="an-run-main">
+            <div>
+              <h3>{view && !view.completed ? t("Model saved, not analysed yet") : t("No analysis results yet")}</h3>
+              <p className="muted">{t("Press Analyze to run the solver on the current model. Results will appear here.")}</p>
+              {modelLine ? <p className="an-run-model">{modelLine}</p> : null}
+            </div>
+            {button}
           </div>
-          {result.outputs?.engineering_results_available === false ? (
-            <p className="muted">No engineering analysis results were generated in this run.</p>
-          ) : null}
+          {messages}
         </section>
-      ) : null}
+      )}
 
-      <section className="card">
-        <h3>Run history</h3>
-        {runs.length === 0 ? (
-          <p className="muted">No analysis runs yet. Check readiness above, then start a run.</p>
-        ) : (
-          <ul className="timeline-list">
-            {runs.map((run) => (
-              <li key={run.id}>
-                <strong>
-                  {run.analysis_type} · {getAnalysisStatusLabel(run.status)}
-                </strong>
-                <span>{run.message}</span>
-                <span className="muted">
-                  Model v{run.pem_version} · {formatWorkspaceDate(run.created_at)}
-                  {run.created_by ? ` · ${run.created_by}` : ""}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </section>
+      {hasResults && view ? (
+        <>
+          <AnalysisKpis view={view} t={t} />
+          <AnalysisSections view={view} t={t} />
+        </>
+      ) : null}
+    </div>
   );
 }
