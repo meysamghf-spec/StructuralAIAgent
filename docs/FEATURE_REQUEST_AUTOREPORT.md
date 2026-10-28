@@ -33,7 +33,9 @@ The model only classifies and picks a size from the rubric. All user-facing text
 | `large` | several days (about 3-7 days) / چند روز | 72–168 | new analysis/design module or code clause set with its own validation tests |
 | `xlarge` | weeks (about 2-6 weeks) / چند هفته | 336–1008 | new solver class (nonlinear/time-domain), new product area, external data/licences |
 
-If Gemini is down, rate-limited, slow (> `FEATURE_REQUEST_LLM_TIMEOUT_SECONDS`) or answers outside the rubric, the catalogue's fixed size is used (unknown capabilities fall back to a keyword rubric, default `large`). The user still gets the message and the issue is still filed (`details.estimate.source = "rubric_fallback"`). An *unknown* request with the model down is left to the normal pipeline (nothing to say honestly).
+**Timeout and retry.** Each model attempt gets `FEATURE_REQUEST_LLM_TIMEOUT_SECONDS` (default **25 s**; the thinking-style Gemini models regularly need 5-17 s). A *transient* failure (timeout, network error, HTTP 5xx, "all providers failed" with at least one non-4xx cause) is retried **once** after about 1 s. Auth/quota/bad-request errors (4xx: 400/401/403/404/429), "no provider configured" and unparsable answers are **not** retried. Every attempt runs in a worker thread with a wall-clock limit (timeout + 2 s grace) because the provider client has its own internal retries/fallbacks, and all attempts together are capped by `FEATURE_REQUEST_LLM_TOTAL_SECONDS` (default **60 s**). Worst case for one user message is about 2 x 27 s + 1 s = 55 s. The retry does **not** count against `FEATURE_REQUEST_LLM_MAX_PER_HOUR`: that budget is charged once per classification.
+
+If Gemini is down, rate-limited, slow (> `FEATURE_REQUEST_LLM_TIMEOUT_SECONDS`, after the one retry) or answers outside the rubric, the catalogue's fixed size is used (unknown capabilities fall back to a keyword rubric, default `large`). The user still gets the message and the issue is still filed (`details.estimate.source = "rubric_fallback"`). An *unknown* request with the model down is left to the normal pipeline (nothing to say honestly).
 
 ### Dedupe, counters, rate limits
 * Capability key = ascii slug, generic words dropped, plurals stripped, tokens sorted (`Wind_CFD_Simulations` = `simulation cfd wind`). Catalogue entries have fixed keys. Issue `dedupe_key = sha256("feature_request|<key>")[:24]`.
@@ -51,7 +53,8 @@ If Gemini is down, rate-limited, slow (> `FEATURE_REQUEST_LLM_TIMEOUT_SECONDS`) 
 | `FEATURE_REQUEST_USER_DEDUPE_SECONDS` | `86400` | same user + same capability counted once per this window |
 | `FEATURE_REQUEST_LLM_MAX_PER_HOUR` | `30` | per user, model calls per hour |
 | `FEATURE_REQUEST_MIN_CONFIDENCE` | `0.6` | model confidence required to treat a message as unsupported |
-| `FEATURE_REQUEST_LLM_TIMEOUT_SECONDS` | `8` | hard cap on the single model call |
+| `FEATURE_REQUEST_LLM_TIMEOUT_SECONDS` | `25` | per-attempt cap on the model call (1 retry on transient failure) |
+| `FEATURE_REQUEST_LLM_TOTAL_SECONDS` | `60` | overall cap for all attempts of one user message |
 
 The model goes through the helper's existing provider chain (`LLM_GEMINI_API_KEY`, `LLM_PROVIDER` …, see PLATFORM_HELPER.md). The webhook uses the existing `PLATFORM_ISSUE_WEBHOOK_URL`, `PLATFORM_ISSUE_WEBHOOK_SECRET`, `PLATFORM_ISSUE_WEBHOOK_AUTH_TOKEN`; without a URL the request is still stored and listed for admins and the user is told it was "recorded" instead of "forwarded".
 
