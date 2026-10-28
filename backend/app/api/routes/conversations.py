@@ -50,8 +50,13 @@ def list_conversations(
     service: Annotated[ConversationService, Depends(get_conversation_service)],
     account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    project_id: Annotated[UUID | None, Query()] = None,
+    unassigned: Annotated[bool, Query()] = False,
 ) -> ConversationListResponse:
-    conversations = service.list_conversations(account, limit=limit)
+    """All of the account's chats, or only one project's (``project_id``) / those with no project (``unassigned``)."""
+    conversations = service.list_conversations(
+        account, limit=limit, project_id=project_id, unassigned=unassigned
+    )
     return ConversationListResponse(
         conversations=[ConversationResponse.from_domain(item) for item in conversations]
     )

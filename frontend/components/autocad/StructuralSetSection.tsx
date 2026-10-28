@@ -16,6 +16,10 @@ export function StructuralSetSection() {
     const p = getCurrentProjectId();
     setPid(p);
     setSets(null);
+    if (!p) {
+      setSets([]); // no active project: show nothing rather than every project's sets
+      return;
+    }
     listStructuralSets(p)
       .then(setSets)
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));

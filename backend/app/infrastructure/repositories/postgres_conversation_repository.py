@@ -59,18 +59,29 @@ class PostgresConversationRepository:
         account_id: str,
         *,
         limit: int = 100,
+        project_id: UUID | None = None,
+        unassigned: bool = False,
     ) -> list[Conversation]:
+        """Account conversations, newest first. ``project_id`` keeps one project's chats; ``unassigned`` keeps chats with no project."""
+        where = "account_id = %s"
+        params: list = [account_id]
+        if project_id is not None:
+            where += " AND project_id = %s"
+            params.append(project_id)
+        elif unassigned:
+            where += " AND project_id IS NULL"
+        params.append(limit)
         with get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """
+                    f"""
                     SELECT id, account_id, project_id, title, created_at, updated_at
                     FROM conversations
-                    WHERE account_id = %s
+                    WHERE {where}
                     ORDER BY updated_at DESC
                     LIMIT %s
                     """,
-                    (account_id, limit),
+                    tuple(params),
                 )
                 rows = cur.fetchall()
         return [Conversation.model_validate(row) for row in rows]

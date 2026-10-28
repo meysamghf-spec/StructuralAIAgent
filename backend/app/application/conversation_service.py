@@ -127,17 +127,20 @@ class ConversationService:
         account: AuthenticatedAccount,
         *,
         limit: int = 100,
+        project_id: UUID | None = None,
+        unassigned: bool = False,
     ) -> list[Conversation]:
-        return self._repo.list_for_account(account.account_id, limit=limit)
+        """The account's chats; ``project_id`` scopes to one project, ``unassigned`` to chats with no project."""
+        return self._repo.list_for_account(
+            account.account_id, limit=limit, project_id=project_id, unassigned=unassigned
+        )
 
     def list_project_chat_runs(self, account: AuthenticatedAccount, project_id: UUID) -> list[dict]:
         """Engineering runs from this account's chats in one project, newest first."""
         from app.application.chat_runs import extract_runs
 
         runs: list[dict] = []
-        for conv in self._repo.list_for_account(account.account_id, limit=500):
-            if conv.project_id != project_id:
-                continue
+        for conv in self._repo.list_for_account(account.account_id, limit=500, project_id=project_id):
             runs.extend(extract_runs(conv, self._repo.list_messages(conv.id)))
         runs.sort(key=lambda r: r["created_at"], reverse=True)
         return runs

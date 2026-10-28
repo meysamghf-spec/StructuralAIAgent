@@ -185,3 +185,33 @@ def test_delete_conversation(api_client: TestClient) -> None:
         headers=_auth_headers(token),
     )
     assert get_response.status_code == 404
+
+
+def test_list_conversations_scoped_by_project(api_client: TestClient) -> None:
+    token, _ = _register_and_token(api_client)
+    headers = _auth_headers(token)
+    project_a = _create_project(api_client, token, "Project A")
+    project_b = _create_project(api_client, token, "Project B")
+
+    def _make(project_id: str | None, title: str) -> str:
+        body: dict[str, str] = {"title": title}
+        if project_id:
+            body["project_id"] = project_id
+        response = api_client.post("/api/v1/conversations", json=body, headers=headers)
+        assert response.status_code == 201
+        return response.json()["id"]
+
+    chat_a = _make(project_a, "Chat A")
+    chat_b = _make(project_b, "Chat B")
+    chat_general = _make(None, "General chat")
+
+    def _ids(params: dict[str, str]) -> set[str]:
+        response = api_client.get("/api/v1/conversations", params=params, headers=headers)
+        assert response.status_code == 200
+        return {item["id"] for item in response.json()["conversations"]}
+
+    assert _ids({"project_id": project_a}) == {chat_a}
+    assert _ids({"project_id": project_b}) == {chat_b}
+    assert _ids({"unassigned": "true"}) == {chat_general}
+    # Unscoped listing keeps returning everything (backward compatible).
+    assert {chat_a, chat_b, chat_general} <= _ids({})
