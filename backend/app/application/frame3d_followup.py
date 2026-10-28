@@ -60,8 +60,9 @@ def model_edits(text: str) -> dict[str, Any]:
     t = norm(text).lower()
     e: dict[str, Any] = {}
     # --- storey count
-    m = _last(rf"(?:no\.?\s*of\s*)?(?:storeys?|stories|stor(?:e)?y\s*count|floors?|tabaghe?(?:\s*ha|at)?|t[a]?bagh[ae]t|تعداد\s*طبقات|طبقات|طبقه(?:\s*ها)?){_TO}(\d{{1,2}})(?!\s*(?:m\b|metr|متر|\.\d))", t) \
-        or _last(r"(\d{1,2})\s*-?\s*(?:tabaghe|طبقه|storeys?|stories|floors?)", t)
+    m = _last(rf"(?:no\.?\s*of\s*)?(?:storeys?|stories|stor(?:e)?y\s*count|floors?|tabaghe?(?:\s*ha|at)?|t[a]?bagh[ae]t|تعداد\s*طبقات|طبقات|طبقه(?:\s*ها)?){_TO}(\d{{1,2}})(?!\s*(?:m\b|metr|متر|\.\d|دهانه|dahane|bays?\b|spans?\b))", t) \
+        or _last(r"(\d{1,2})\s*-?\s*(?:tabaghe|طبقه|storeys?|stories|floors?)", t) \
+        or _last(rf"(?:storeys?|stories|floors?|tabaghe?|طبقات|طبقه){_TO}(\d{{1,2}})(?!\s*(?:m\b|metr|متر|\.\d))", t)
     if m:
         e["storeys"] = int(m.group(1))
     # --- bay count / span per direction

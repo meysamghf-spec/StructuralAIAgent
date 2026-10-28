@@ -48,7 +48,18 @@ export function parseChatActionMeta(metadata: Record<string, unknown> | null | u
   };
 }
 
-const ctxOf = (d: ChatDownloads): DownloadContext => ({ inputs: d.inputs, projectId: d.projectId, saveToFiles: Boolean(d.projectId) });
+const REQUIRED_MODEL_KEYS = ["storeys", "bays_x", "bays_y"] as const;
+
+/** Inputs frozen in an older chat card can come from an incomplete run (null storeys / bays): then let the server use the
+ *  project's newest complete run instead of failing with "storeys, bays_x and bays_y are required". */
+export function usableCardInputs(d: ChatDownloads): Record<string, unknown> | null {
+  const inp = d.inputs;
+  if (!inp) return null;
+  const complete = REQUIRED_MODEL_KEYS.every((k) => inp[k] !== null && inp[k] !== undefined);
+  return complete || !d.projectId ? inp : null;
+}
+
+const ctxOf = (d: ChatDownloads): DownloadContext => ({ inputs: usableCardInputs(d), projectId: d.projectId, saveToFiles: Boolean(d.projectId) });
 
 /** Start the downloads a chat reply promised. Single files / the ZIP start straight away; many items are bundled. */
 export async function runChatDownloads(d: ChatDownloads): Promise<void> {

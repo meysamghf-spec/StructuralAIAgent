@@ -162,3 +162,11 @@ def test_context_keeps_latest_frame_spec_last():
     mems = [N(content='[frame3d-spec]{"storeys":4}')] + [N(content=f"m{i}") for i in range(40)] + [N(content='[frame3d-spec]{"storeys":6}')]
     ctx = {"memories": [{"content": m.content} for m in _context_memories(mems)]}
     assert f3.prior_frame3d_spec(ctx)["storeys"] == 6
+
+
+def test_storeys_before_word_not_taken_from_following_bay_count():
+    # «۳ طبقه ۲ دهانه» is 3 storeys and 2 bays, not "storey 2"
+    e = fu.model_edits("قاب ۳ طبقه ۲ دهانه در x و ۱ دهانه در y با طول دهانه ۵۰۰ سانتی‌متر")
+    assert e["storeys"] == 3 and e["bays_x"] == 2 and e["bays_y"] == 1
+    assert fu.model_edits("storeys 3 bays 2")["storeys"] == 3
+    assert fu.model_edits("طبقات ۶ کن")["storeys"] == 6

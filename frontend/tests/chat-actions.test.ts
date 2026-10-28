@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseChatActionMeta, parseChatDownloads } from "@/lib/chat-actions";
+import { parseChatActionMeta, parseChatDownloads, usableCardInputs } from "@/lib/chat-actions";
 
 describe("chat actions metadata", () => {
   it("parses a ZIP download command", () => {
@@ -20,5 +20,14 @@ describe("chat actions metadata", () => {
     expect(a.switchAssistant).toBe("SEISMIC_AGENT");
     expect(a.projectSwitch).toEqual({ id: "x", name: "Tower" });
     expect(parseChatActionMeta({}).projectSwitch).toBeNull();
+  });
+  it("drops incomplete frozen card inputs so the server uses the project's newest complete run", () => {
+    const base = { zip: false, items: [{ kind: "drawing", name: "dxf_plans", format: "dxf", label: "Plans" }], lang: "fa", assumed: [] };
+    const stale = parseChatDownloads({ chat_downloads: { ...base, project_id: "p1", inputs: { storeys: null, bays_x: null, bays_y: null, bay_x_m: 5 } } })!;
+    expect(usableCardInputs(stale)).toBeNull();
+    const ok = parseChatDownloads({ chat_downloads: { ...base, project_id: "p1", inputs: { storeys: 3, bays_x: 2, bays_y: 1, bay_x_m: 5 } } })!;
+    expect(usableCardInputs(ok)).toMatchObject({ storeys: 3 });
+    const noProject = parseChatDownloads({ chat_downloads: { ...base, project_id: null, inputs: { storeys: null } } })!;
+    expect(usableCardInputs(noProject)).toEqual({ storeys: null });
   });
 });
