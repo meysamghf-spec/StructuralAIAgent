@@ -390,6 +390,23 @@ export async function createReport(
   });
 }
 
+export type ReportVersionDetail = ReportVersionSummary & {
+  project_id?: string;
+  output_format?: string;
+  traceability_metadata?: Record<string, unknown>;
+};
+
+/** One generated version of a report (existing GET /reports/{id}/versions/{version}). */
+export async function getReportVersion(
+  projectId: string,
+  reportId: string,
+  version: number,
+): Promise<ReportVersionDetail> {
+  return apiFetch<ReportVersionDetail>(
+    `/api/v1/reports/${reportId}/versions/${version}?project_id=${projectId}`,
+  );
+}
+
 export async function generateReportVersion(
   projectId: string,
   reportId: string,
