@@ -3155,3 +3155,7 @@ a.button,
 /* Login: "or" divider above the Google button */
 .google-divider { display: flex; align-items: center; gap: 0.75rem; margin: 0.9rem 0 0.6rem; color: var(--muted, #6b7280); font-size: 0.85rem; }
 .google-divider::before, .google-divider::after { content: ""; flex: 1; height: 1px; background: currentColor; opacity: 0.25; }
+
+/* Design card: keep member tables readable on narrow screens (scroll sideways instead of wrapping each cell). */
+[data-testid="frame3d-design-card"] .engineering-result-table th,
+[data-testid="frame3d-design-card"] .engineering-result-table td { white-space: nowrap; }

@@ -11,6 +11,7 @@ import { DetailingStep } from "@/components/frame3d/DetailingStep";
 import type { Frame3dExport, Frame3dResults } from "@/lib/chat-types";
 import dynamic from "next/dynamic";
 import { isRtl, makeT } from "@/lib/frame3d-i18n";
+import { summarizeDesign } from "@/lib/frame3d-design-summary";
 
 const Frame3dViewer = dynamic(() => import("./Frame3dViewer"), { ssr: false });
 const FoundationView = dynamic(() => import("@/components/frame3d/FoundationView"), { ssr: false });
@@ -230,6 +231,73 @@ export function Frame3dResultCard({ results, downloads = true }: Frame3dResultCa
       <TextList title={t("Assumptions")} items={results.assumptions} />
       <TextList title={t("Warnings")} items={results.warnings} />
 
+      {results.disclaimer ? <p className="muted chat-disclaimer">{results.disclaimer}</p> : null}
+    </section>
+  );
+}
+
+function dcText(value: number | null): string {
+  return value === null ? "—" : value.toFixed(2);
+}
+
+/**
+ * Design-only view of a frame run, used by the Design page: Mabhas 9 member design (D/C, rebar, strong column / weak beam)
+ * plus detailing. Analysis tables (drift, modal, forces) stay on the Results page.
+ */
+export function Frame3dDesignCard({ results }: { results: Frame3dResults }) {
+  const t = makeT(results.lang);
+  const rtl = isRtl(results.lang);
+  const design = results.design;
+  const completed = results.status === "completed";
+  const summary = design ? summarizeDesign(design) : null;
+  return (
+    <section className="engineering-result-card" aria-label={t("Member design")} data-testid="frame3d-design-card" dir={rtl ? "rtl" : "ltr"} lang={results.lang}>
+      <header className="engineering-result-header">
+        <div>
+          <p className="eyebrow">{t("Structural design")}</p>
+          <h3>{t("Member design")}</h3>
+        </div>
+        {design ? (
+          <div className="engineering-result-badges">
+            <span className={`chat-progress-badge ${design.status === "PASS" ? "" : "warning"}`}>{t(design.status)}</span>
+          </div>
+        ) : null}
+      </header>
+      {results.designCode || results.code ? (
+        <p className="muted engineering-result-code">{t("Code")}: {results.designCode ?? results.code}</p>
+      ) : null}
+      {!design ? (
+        <p className="muted" data-testid="frame3d-design-missing">
+          {completed
+            ? t("This run has no member design. Run analysis + design on the Model page, with a design code selected.")
+            : (results.message ?? "")}
+        </p>
+      ) : null}
+      {design && summary ? (
+        <div className="engineering-result-block">
+          <p className="engineering-result-label">{t("Design summary")}</p>
+          <dl className="engineering-result-grid" data-testid="frame3d-design-kpis">
+            <div className="engineering-result-field"><dt>{t("Beam groups")}</dt><dd>{summary.beamGroups}</dd></div>
+            <div className="engineering-result-field"><dt>{t("Column groups")}</dt><dd>{summary.columnGroups}</dd></div>
+            <div className="engineering-result-field"><dt>{t("Max beam D/C (flexure)")}</dt><dd>{dcText(summary.maxBeamFlexureDc)}</dd></div>
+            <div className="engineering-result-field"><dt>{t("Max beam D/C (shear)")}</dt><dd>{dcText(summary.maxBeamShearDc)}</dd></div>
+            <div className="engineering-result-field"><dt>{t("Max column D/C")}</dt><dd>{dcText(summary.maxColumnDc)}</dd></div>
+            <div className="engineering-result-field"><dt>{t("Groups with D/C > 1")}</dt><dd>{summary.overstressedGroups}</dd></div>
+            <div className="engineering-result-field"><dt>{t("Min ΣMnc/ΣMnb")}</dt><dd>{dcText(summary.scwbMinRatio)}</dd></div>
+          </dl>
+        </div>
+      ) : null}
+      {design ? <DesignSection design={design} t={t} /> : null}
+      {completed && results.inputs ? (
+        <DetailingStep
+          inputs={results.inputs as unknown as Record<string, unknown>}
+          projectId={getCurrentProjectId()}
+          hasDesign={Boolean(design && design.beams.length + design.columns.length > 0)}
+          lang={results.lang}
+        />
+      ) : null}
+      <TextList title={t("Assumptions")} items={results.assumptions} />
+      <TextList title={t("Warnings")} items={results.warnings} />
       {results.disclaimer ? <p className="muted chat-disclaimer">{results.disclaimer}</p> : null}
     </section>
   );
