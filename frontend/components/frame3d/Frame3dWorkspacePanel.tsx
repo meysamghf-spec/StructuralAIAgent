@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 
 import dynamic from "next/dynamic";
 
-import { Frame3dResultCard } from "@/components/chat/Frame3dResultCard";
+import { Frame3dDesignCard, Frame3dResultCard } from "@/components/chat/Frame3dResultCard";
 import { SectionErrorBoundary } from "@/components/common/SectionErrorBoundary";
 import { DownloadsPanel } from "@/components/frame3d/DownloadsPanel";
 import { makeT } from "@/lib/frame3d-i18n";
@@ -119,10 +119,18 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
 
   return (
     <section className="panel frame3d-panel" dir={lang === "fa" ? "rtl" : "ltr"} lang={lang}>
-      <h2>{mode === "foundation" ? t("Foundation design") : t("Quick 3D frame model")}</h2>
+      <h2>{mode === "foundation" ? t("Foundation design") : mode === "design" ? t("Member design") : t("Quick 3D frame model")}</h2>
       <p className="muted">
-        {t("Uses the built-in 3D frame solver, Standard 2800, Mabhas 9 design and isolated footings — same engine as the chat.")}
+        {mode === "design"
+          ? t("Mabhas 9 RC beam and column design (D/C, rebar, strong column / weak beam) from the latest 3D frame run, same engine as the chat.")
+          : t("Uses the built-in 3D frame solver, Standard 2800, Mabhas 9 design and isolated footings — same engine as the chat.")}
       </p>
+      {mode === "design" ? (
+        <p className="muted" data-testid="design-related-links">
+          {t("Related:")} <Link href="/workspace/results">{t("Results")}</Link> · <Link href="/workspace/foundation">{t("Foundation")}</Link> ·{" "}
+          <Link href="/workspace/analysis">{t("Analysis")}</Link>
+        </p>
+      ) : null}
       {incomplete ? (
         <div className="frame3d-repair" data-testid="frame3d-repair">
           <strong>{t("This model is incomplete")}</strong>
@@ -199,12 +207,12 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
       ) : null}
       {note ? <p className="muted">{note}</p> : null}
       {error ? <p className="alert error">{error}</p> : null}
-      {results?.viewer && mode !== "foundation" ? (
+      {results?.viewer && mode !== "foundation" && mode !== "design" ? (
         <SectionErrorBoundary label="3D viewer">
           <Frame3dViewer data={results.viewer} results={results} t={makeT(results.lang)} embedded />
         </SectionErrorBoundary>
       ) : null}
-      {results?.viewer?.footings?.length && (mode === "design" || mode === "results" || mode === "foundation") ? (
+      {results?.viewer?.footings?.length && (mode === "results" || mode === "foundation") ? (
         <SectionErrorBoundary label="Foundation">
           <FoundationView data={results.viewer} qa={results.foundation?.qaKpa ?? 150} t={makeT(results.lang)} />
         </SectionErrorBoundary>
@@ -215,7 +223,7 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
           projectId={projectId}
           groups={
             mode === "design"
-              ? ["design", "foundation", "drawings"]
+              ? ["design", "drawings"]
               : mode === "foundation"
                 ? ["foundation", "drawings"]
                 : mode === "model"
@@ -224,7 +232,9 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
           }
         />
       ) : null}
-      {results && mode !== "foundation" ? (
+      {results && mode === "design" ? (
+        <Frame3dDesignCard results={results} />
+      ) : results && mode !== "foundation" ? (
         <Frame3dResultCard results={results} downloads={false} />
       ) : mode !== "model" ? (
         <EmptyHint projectId={projectId} />

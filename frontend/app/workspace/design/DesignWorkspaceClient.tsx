@@ -19,9 +19,11 @@ import {
 } from "@/lib/design";
 import { listPemVersions } from "@/lib/model";
 import { formatWorkspaceDate, getValidationStatusLabel } from "@/lib/workspace";
+import Link from "next/link";
+import { useUiLang } from "@/hooks/useUiLang";
 import { useCallback, useEffect, useState } from "react";
 
-const DESIGN_OPTIONS = [
+export const DESIGN_OPTIONS = [
   { value: "CONCRETE_BEAM", label: "Concrete beam design" },
   { value: "STEEL_BEAM", label: "Steel beam design" },
   { value: "CONCRETE_COLUMN", label: "Concrete column design" },
@@ -43,6 +45,7 @@ function statusClass(status: string): string {
 }
 
 export default function DesignWorkspaceClient() {
+  const { lang, t } = useUiLang();
   const { projects, selectedProjectId, setSelectedProjectId, loading, error, setError } =
     useProjectScope();
   const [designType, setDesignType] = useState("CONCRETE_BEAM");
@@ -109,11 +112,14 @@ export default function DesignWorkspaceClient() {
   }
 
   return (
-    <section className="panel-stack">
+    <section className="panel-stack" dir={lang === "fa" ? "rtl" : "ltr"} lang={lang} data-testid="project-design-checks">
       <header className="page-header">
-        <p className="eyebrow">Design</p>
-        <h2>Design</h2>
-        <p className="subtitle">Run code-based design checks from your model.</p>
+        <p className="eyebrow">{t("Design")}</p>
+        <h2>{t("Project design checks")}</h2>
+        <p className="subtitle">{t("Run code-based design checks from your model.")}</p>
+        <p className="muted">
+          {t("Design checks need analysis runs from:")} <Link href="/workspace/analysis">{t("Analysis")}</Link>
+        </p>
       </header>
 
       <ProjectScopePanel
@@ -125,7 +131,7 @@ export default function DesignWorkspaceClient() {
 
       {selectedProjectId ? (
         <section className="card">
-          <h3>Model revision</h3>
+          <h3>{t("Model revision")}</h3>
           <div className="form-row">
             <select
               className="input"
@@ -135,10 +141,10 @@ export default function DesignWorkspaceClient() {
                 setSelectedVersion(value === "current" ? "current" : Number(value));
               }}
             >
-              <option value="current">Current model</option>
+              <option value="current">{t("Current model")}</option>
               {versions.map((version) => (
                 <option key={version} value={version}>
-                  Version {version}
+                  {t("Version")} {version}
                 </option>
               ))}
             </select>
@@ -148,47 +154,48 @@ export default function DesignWorkspaceClient() {
 
       <div className="grid cards-2">
         <article className="card">
-          <h3>Design readiness</h3>
+          <h3>{t("Design readiness")}</h3>
           {readiness ? (
             <>
               <p className={`status-pill ${statusClass(readiness.readiness_status)}`}>
-                {getDesignStatusLabel(readiness.readiness_status)}
+                {t(getDesignStatusLabel(readiness.readiness_status))}
               </p>
               <p className="muted">{readiness.summary}</p>
               <details className="meta-summary">
-                <summary>Details</summary>
-              <ul className="feature-list">
-                {formatDesignInventory(readiness.model_summary).map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
+                <summary>{t("Details")}</summary>
+                <ul className="feature-list">
+                  {formatDesignInventory(readiness.model_summary).map((item) => {
+                    const [label, ...rest] = item.split(": ");
+                    return <li key={item}>{t(label)}: {rest.join(": ")}</li>;
+                  })}
+                </ul>
               </details>
-              <p className="muted">Governing steel code: {readiness.code_edition ?? "—"}</p>
+              <p className="muted">{t("Governing steel code")}: {readiness.code_edition ?? "—"}</p>
               <p className="muted">
-                Validation: {getValidationStatusLabel(readiness.validation_status)}
+                {t("Validation")}: {t(getValidationStatusLabel(readiness.validation_status))}
               </p>
               <p className="muted">
-                Usable analysis runs: {readiness.usable_analysis_runs} /{" "}
-                {readiness.available_analysis_runs}
+                {t("Usable analysis runs")}: {readiness.usable_analysis_runs} / {readiness.available_analysis_runs}
               </p>
             </>
           ) : (
-            <p className="muted">Select a project to review design readiness.</p>
+            <p className="muted">{t("Select a project to review design readiness.")}</p>
           )}
         </article>
 
         <article className="card">
-          <h3>Available analysis runs</h3>
+          <h3>{t("Available analysis runs")}</h3>
           {analysisRuns.length === 0 ? (
-            <p className="muted">No analysis runs yet. Run one on the Analysis page first.</p>
+            <p className="muted">
+              {t("No analysis runs yet. Run one on the Analysis page first.")}{" "}
+              <Link href="/workspace/analysis">{t("Analysis")}</Link>
+            </p>
           ) : (
             <ul className="feature-list">
               {analysisRuns.slice(0, 6).map((run) => (
                 <li key={run.id}>
                   {run.analysis_type} · v{run.pem_version} ·{" "}
-                  {run.engineering_results_available
-                    ? "Engineering outputs available"
-                    : "No engineering outputs yet"}
+                  {run.engineering_results_available ? t("Engineering outputs available") : t("No engineering outputs yet")}
                 </li>
               ))}
             </ul>
@@ -197,25 +204,27 @@ export default function DesignWorkspaceClient() {
       </div>
 
       <section className="card">
-        <h3>Run design check</h3>
+        <h3>{t("Run design check")}</h3>
         <div className="form-row">
           <select
             className="input"
+            aria-label={t("Design type")}
             value={designType}
             onChange={(event) => setDesignType(event.target.value)}
           >
             {DESIGN_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
-                {option.label}
+                {t(option.label)}
               </option>
             ))}
           </select>
           <select
             className="input"
+            aria-label={t("Analysis run")}
             value={selectedAnalysisRunId}
             onChange={(event) => setSelectedAnalysisRunId(event.target.value)}
           >
-            <option value="">Auto-select latest analysis run</option>
+            <option value="">{t("Auto-select latest analysis run")}</option>
             {analysisRuns.map((run) => (
               <option key={run.id} value={run.id}>
                 {run.analysis_type} · v{run.pem_version}
@@ -228,49 +237,45 @@ export default function DesignWorkspaceClient() {
             disabled={!selectedProjectId || busy}
             onClick={() => void handleRun()}
           >
-            {busy ? "Running…" : "Run design check"}
+            {busy ? t("Running…") : t("Run design check")}
           </button>
         </div>
-        <p className="muted">
-          {getDesignCapabilityLabel("REQUIRES_SOLVER")}
-        </p>
+        <p className="muted">{t(getDesignCapabilityLabel("REQUIRES_SOLVER"))}</p>
       </section>
 
-      {error ? <div className="alert error">{error}</div> : null}
+      {error ? <div className="alert error">{t(error)}</div> : null}
 
       {result ? (
         <section className="card">
-          <h3>Latest design result</h3>
+          <h3>{t("Latest design result")}</h3>
           <p className={`status-pill ${statusClass(result.status)}`}>
-            {getDesignStatusLabel(result.status)}
+            {t(getDesignStatusLabel(result.status))}
           </p>
-          <p className="muted">{getDesignCapabilityLabel(result.capability_status)}</p>
-          <p className="muted">{getDesignCapabilityLabel(result.capability_status)}</p>
+          <p className="muted">{t(getDesignCapabilityLabel(result.capability_status))}</p>
           <div className="execution-result">
             <p className="result-text">{result.message}</p>
           </div>
           {result.outputs?.engineering_design_results_available === false ? (
-            <p className="muted">No code-based design calculations were performed in this run.</p>
+            <p className="muted">{t("No code-based design calculations were performed in this run.")}</p>
           ) : null}
         </section>
       ) : null}
 
       <section className="card">
-        <h3>Design run history</h3>
+        <h3>{t("Design run history")}</h3>
         {runs.length === 0 ? (
-          <p className="muted">No design runs yet. Link an analysis run, then start a design check.</p>
+          <p className="muted">{t("No design runs yet. Link an analysis run, then start a design check.")}</p>
         ) : (
           <ul className="timeline-list">
             {runs.map((run) => (
               <li key={run.id}>
                 <strong>
-                  {run.design_type} · {getDesignStatusLabel(run.status)}
+                  {run.design_type} · {t(getDesignStatusLabel(run.status))}
                 </strong>
                 <span>{run.message}</span>
                 <span className="muted">
-                  Model v{run.pem_version}
-                  {run.code_edition ? ` · ${run.code_edition}` : ""} ·{" "}
-                  {formatWorkspaceDate(run.created_at)}
+                  {t("Model")} v{run.pem_version}
+                  {run.code_edition ? ` · ${run.code_edition}` : ""} · {formatWorkspaceDate(run.created_at)}
                 </span>
               </li>
             ))}
