@@ -1,0 +1,64 @@
+.page { display: grid; gap: 1.1rem; max-width: 1100px; min-width: 0; }
+.header { border-inline-start: 4px solid #a78bfa; padding-inline-start: 0.9rem; }
+.header h2 { font-size: 1.9rem; margin-bottom: 0.35rem; }
+.eyebrow { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.75rem; color: #c4b5fd; margin-bottom: 0.35rem; }
+
+.action { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 0.9rem 1.1rem; }
+.actionEmpty { flex-direction: column; text-align: center; border: 2px dashed #7c3aed; background: linear-gradient(180deg, #1e1b4b 0%, #1e293b 100%); padding: 2rem 1.25rem; }
+.emptyText h3 { font-size: 1.25rem; margin-bottom: 0.4rem; }
+.lastRun { color: #cbd5e1; font-size: 0.9rem; }
+.designButton { background: #7c3aed; border-color: #7c3aed; color: #fff; min-width: 9rem; font-weight: 700; }
+.designButton:hover:not(:disabled) { background: #6d28d9; }
+.designButton:disabled { opacity: 0.55; cursor: not-allowed; }
+.designButtonBig { font-size: 1.2rem; padding: 0.85rem 2.75rem; min-width: 14rem; }
+
+.missing { background: #422006; border: 1px solid #b45309; color: #fde68a; border-radius: 10px; padding: 0.8rem 1rem; }
+.missing ul { margin: 0.4rem 0 0; padding-inline-start: 1.2rem; display: grid; gap: 0.25rem; }
+.missing a { color: #fbbf24; text-decoration: underline; }
+
+.status { border-radius: 10px; padding: 0.65rem 0.9rem; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; }
+.statusOk { border-color: #15803d; background: #052e16; color: #bbf7d0; }
+.statusErr { border-color: #b91c1c; background: #450a0a; color: #fecaca; }
+
+.banner { display: flex; align-items: center; justify-content: space-between; gap: 1rem; border-radius: 12px; padding: 1rem 1.2rem; border: 1px solid #334155; border-inline-start-width: 6px; background: #1e293b; }
+.banner_pass { border-color: #15803d; background: #052e16; }
+.banner_review { border-color: #b45309; background: #422006; }
+.banner_fail { border-color: #b91c1c; background: #450a0a; }
+.bannerLabel { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: #cbd5e1; }
+.bannerText { font-size: 1.1rem; font-weight: 600; margin: 0.15rem 0; }
+.bannerMeta { color: #cbd5e1; font-size: 0.85rem; }
+
+.kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.75rem; }
+.kpi { display: grid; gap: 0.3rem; align-content: start; background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 0.85rem 1rem; min-width: 0; }
+.kpiLabel { font-size: 0.75rem; color: #94a3b8; }
+.kpiValue { font-size: 1.5rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.kpiValue small { font-size: 0.75rem; font-weight: 400; color: #94a3b8; }
+
+.chip { display: inline-block; width: fit-content; border-radius: 999px; padding: 0.15rem 0.6rem; font-size: 0.75rem; font-weight: 700; white-space: nowrap; }
+.chip_pass { background: #14532d; color: #bbf7d0; }
+.chip_review { background: #78350f; color: #fde68a; }
+.chip_fail { background: #7f1d1d; color: #fecaca; }
+
+.message { color: #cbd5e1; }
+.section { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 1rem; display: grid; gap: 0.6rem; min-width: 0; }
+.section h3 { font-size: 1.1rem; }
+.tableWrap { overflow-x: auto; border-radius: 8px; border: 1px solid #334155; }
+.table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.table th, .table td { padding: 0.45rem 0.65rem; text-align: start; white-space: nowrap; border-bottom: 1px solid #334155; }
+.table th { background: #0f172a; color: #94a3b8; font-weight: 600; }
+.table tbody tr:last-child td { border-bottom: 0; }
+.name { font-weight: 600; }
+.num { font-variant-numeric: tabular-nums; text-align: end !important; }
+.dcFail { color: #fca5a5; font-weight: 700; }
+
+.noteBlock h4 { font-size: 0.9rem; margin-bottom: 0.25rem; color: #cbd5e1; }
+.noteBlock ul { padding-inline-start: 1.2rem; display: grid; gap: 0.2rem; color: #cbd5e1; font-size: 0.9rem; }
+
+@media (max-width: 760px) {
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .header h2 { font-size: 1.5rem; }
+  .banner { flex-direction: column; align-items: flex-start; }
+  .action { flex-direction: column; align-items: stretch; }
+  .designButton { width: 100%; }
+  .actionEmpty .designButtonBig { width: 100%; min-width: 0; }
+}
