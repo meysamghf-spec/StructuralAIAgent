@@ -18,10 +18,12 @@ import {
   type LoadCombinationSummaryResponse,
 } from "@/lib/analysis";
 import { listPemVersions } from "@/lib/model";
+import { useUiLang } from "@/hooks/useUiLang";
+import Link from "next/link";
 import { formatWorkspaceDate, getValidationStatusLabel } from "@/lib/workspace";
 import { useCallback, useEffect, useState } from "react";
 
-const ANALYSIS_OPTIONS = [
+export const ANALYSIS_OPTIONS = [
   { value: "STATIC", label: "Static analysis" },
   { value: "MODAL", label: "Modal analysis" },
   { value: "DRIFT", label: "Drift review" },
@@ -37,6 +39,7 @@ function statusClass(status: string): string {
 }
 
 export default function AnalysisWorkspaceClient() {
+  const { lang, t } = useUiLang();
   const { projects, selectedProjectId, setSelectedProjectId, loading, error, setError } =
     useProjectScope();
   const [analysisType, setAnalysisType] = useState("STATIC");
@@ -99,11 +102,15 @@ export default function AnalysisWorkspaceClient() {
   }
 
   return (
-    <section className="panel-stack">
+    <section className="panel-stack" dir={lang === "fa" ? "rtl" : "ltr"} lang={lang} data-testid="project-analysis">
       <header className="page-header">
-        <p className="eyebrow">Analysis</p>
-        <h2>Analysis</h2>
-        <p className="subtitle">Prepare analysis inputs and track analysis runs.</p>
+        <p className="eyebrow">{t("Analysis")}</p>
+        <h2>{t("Project analysis")}</h2>
+        <p className="subtitle">{t("Prepare analysis inputs and track analysis runs.")}</p>
+        <p className="muted">
+          {t("Quick analysis of a 3D frame:")} <Link href="/workspace/model">{t("Model page")}</Link> ·{" "}
+          <Link href="/">{t("Chat")}</Link>
+        </p>
       </header>
 
       <ProjectScopePanel
@@ -115,20 +122,21 @@ export default function AnalysisWorkspaceClient() {
 
       {selectedProjectId ? (
         <section className="card">
-          <h3>Model revision</h3>
+          <h3>{t("Model revision")}</h3>
           <div className="form-row">
             <select
               className="input"
+              aria-label={t("Model revision")}
               value={selectedVersion === "current" ? "current" : String(selectedVersion)}
               onChange={(event) => {
                 const value = event.target.value;
                 setSelectedVersion(value === "current" ? "current" : Number(value));
               }}
             >
-              <option value="current">Current model</option>
+              <option value="current">{t("Current model")}</option>
               {versions.map((version) => (
                 <option key={version} value={version}>
-                  Version {version}
+                  {t("Version")} {version}
                 </option>
               ))}
             </select>
@@ -138,48 +146,49 @@ export default function AnalysisWorkspaceClient() {
 
       <div className="grid cards-2">
         <article className="card">
-          <h3>Model readiness</h3>
+          <h3>{t("Model readiness")}</h3>
           {readiness ? (
             <>
               <p className={`status-pill ${statusClass(readiness.readiness_status)}`}>
-                {getAnalysisStatusLabel(readiness.readiness_status)}
+                {t(getAnalysisStatusLabel(readiness.readiness_status))}
               </p>
               <p className="muted">{readiness.summary}</p>
               <details className="meta-summary">
-                <summary>Details</summary>
-              <ul className="feature-list">
-                {formatAnalysisInventory(readiness.model_summary).map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-              {readiness.missing_requirements.length > 0 ? (
+                <summary>{t("Details")}</summary>
                 <ul className="feature-list">
-                  {readiness.missing_requirements.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
+                  {formatAnalysisInventory(readiness.model_summary).map((item) => {
+                    const [label, ...rest] = item.split(": ");
+                    return <li key={item}>{t(label)}: {rest.join(": ")}</li>;
+                  })}
                 </ul>
-              ) : null}
-              <p className="muted">
-                Validation: {getValidationStatusLabel(readiness.validation_status)}
-              </p>
+                {readiness.missing_requirements.length > 0 ? (
+                  <ul className="feature-list">
+                    {readiness.missing_requirements.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                ) : null}
+                <p className="muted">
+                  {t("Validation")}: {t(getValidationStatusLabel(readiness.validation_status))}
+                </p>
               </details>
             </>
           ) : (
-            <p className="muted">Select a project to review model readiness.</p>
+            <p className="muted">{t("Select a project to review model readiness.")}</p>
           )}
         </article>
 
         <article className="card">
-          <h3>Load combinations</h3>
+          <h3>{t("Load combinations")}</h3>
           {loadSummary ? (
             <>
-              <p className="metric">{loadSummary.load_combination_count} combinations</p>
-              <p className="muted">{loadSummary.load_case_count} load cases</p>
+              <p className="metric">{loadSummary.load_combination_count} {t("combinations")}</p>
+              <p className="muted">{loadSummary.load_case_count} {t("load cases")}</p>
               <p className="muted">
-                Analysis model: {loadSummary.analysis_model_status.replaceAll("_", " ").toLowerCase()}
+                {t("Analysis model")}: {loadSummary.analysis_model_status.replaceAll("_", " ").toLowerCase()}
               </p>
               {loadSummary.load_combinations.length === 0 ? (
-                <p className="muted">No load combinations defined in the current model.</p>
+                <p className="muted">{t("No load combinations defined in the current model.")}</p>
               ) : (
                 <ul className="feature-list">
                   {loadSummary.load_combinations.slice(0, 6).map((combo) => (
@@ -189,22 +198,23 @@ export default function AnalysisWorkspaceClient() {
               )}
             </>
           ) : (
-            <p className="muted">Load combination summary will appear here.</p>
+            <p className="muted">{t("Load combination summary will appear here.")}</p>
           )}
         </article>
       </div>
 
       <section className="card">
-        <h3>Run analysis</h3>
+        <h3>{t("Run analysis")}</h3>
         <div className="form-row">
           <select
             className="input"
+            aria-label={t("Analysis type")}
             value={analysisType}
             onChange={(event) => setAnalysisType(event.target.value)}
           >
             {ANALYSIS_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
-                {option.label}
+                {t(option.label)}
               </option>
             ))}
           </select>
@@ -214,52 +224,50 @@ export default function AnalysisWorkspaceClient() {
             disabled={!selectedProjectId || busy}
             onClick={() => void handleRun()}
           >
-            {busy ? "Running…" : "Run analysis"}
+            {busy ? t("Running…") : t("Run analysis")}
           </button>
         </div>
         <p className="muted">
-          The platform prepares deterministic model inputs and records the run. Forces, displacements,
-          and modal results are not generated until a solver adapter is connected.
+          {t("The platform prepares deterministic model inputs and records the run. Forces, displacements, and modal results are not generated until a solver adapter is connected.")}
         </p>
         <p className="muted">
-          This page does not read a prompt. To analyse a described 3D frame (e.g. “Analyze and design per Mabhas 9 a
-          3-storey RC frame, 2x2 bays of 5 m …”), send it in the <a href="/">Chat</a>: it runs the built-in 3D frame solver
-          and shows the result card.
+          {t("This page does not read a prompt. To analyse a described 3D frame, send it in the Chat or build it on the Model page: it runs the built-in 3D frame solver and shows the result card.")}{" "}
+          <Link href="/">{t("Chat")}</Link> · <Link href="/workspace/model">{t("Model page")}</Link>
         </p>
       </section>
 
-      {error ? <div className="alert error">{error}</div> : null}
+      {error ? <div className="alert error">{t(error)}</div> : null}
 
       {result ? (
         <section className="card">
-          <h3>Latest run result</h3>
+          <h3>{t("Latest run result")}</h3>
           <p className={`status-pill ${statusClass(result.status)}`}>
-            {getAnalysisStatusLabel(result.status)}
+            {t(getAnalysisStatusLabel(result.status))}
           </p>
-          <p className="muted">{getAnalysisCapabilityLabel(result.capability_status)}</p>
+          <p className="muted">{t(getAnalysisCapabilityLabel(result.capability_status))}</p>
           <div className="execution-result">
             <p className="result-text">{result.message}</p>
           </div>
           {result.outputs?.engineering_results_available === false ? (
-            <p className="muted">No engineering analysis results were generated in this run.</p>
+            <p className="muted">{t("No engineering analysis results were generated in this run.")}</p>
           ) : null}
         </section>
       ) : null}
 
       <section className="card">
-        <h3>Run history</h3>
+        <h3>{t("Run history")}</h3>
         {runs.length === 0 ? (
-          <p className="muted">No analysis runs yet. Check readiness above, then start a run.</p>
+          <p className="muted">{t("No analysis runs yet. Check readiness above, then start a run.")}</p>
         ) : (
           <ul className="timeline-list">
             {runs.map((run) => (
               <li key={run.id}>
                 <strong>
-                  {run.analysis_type} · {getAnalysisStatusLabel(run.status)}
+                  {run.analysis_type} · {t(getAnalysisStatusLabel(run.status))}
                 </strong>
                 <span>{run.message}</span>
                 <span className="muted">
-                  Model v{run.pem_version} · {formatWorkspaceDate(run.created_at)}
+                  {t("Model")} v{run.pem_version} · {formatWorkspaceDate(run.created_at)}
                   {run.created_by ? ` · ${run.created_by}` : ""}
                 </span>
               </li>
