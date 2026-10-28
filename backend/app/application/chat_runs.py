@@ -56,3 +56,29 @@ def extract_runs(conversation, messages) -> list[dict[str, Any]]:
                          if isinstance(md.get("engineering_task"), dict) else "Assistant run",
                          "status": str(md.get("execution_status") or "completed"), "inputs": None, "summary": {}})
     return runs
+
+
+# ---- which frame runs can be used to build drawings / downloads / follow-ups
+_BAD_STATUS = ("MISSING", "FAIL", "ERROR", "UNSUPPORTED", "BLOCKED")
+_REQUIRED_RUN_KEYS = ("storeys", "bays_x", "bays_y")
+
+
+def is_usable_frame_run(run: dict[str, Any]) -> bool:
+    """A frame3d_analysis run that really holds a model: not blocked / failed / missing inputs, with storeys and bay counts set."""
+    if run.get("kind") != "frame3d_analysis":
+        return False
+    if any(w in str(run.get("status") or "").upper() for w in _BAD_STATUS):
+        return False
+    inputs = run.get("inputs")
+    return isinstance(inputs, dict) and all(inputs.get(k) is not None for k in _REQUIRED_RUN_KEYS)
+
+
+def pick_usable_frame_run(runs: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Newest usable frame run (the newest incomplete / failed run is skipped, the previous complete one is used)."""
+    ordered = sorted(runs, key=lambda r: str(r.get("created_at") or ""), reverse=True)
+    return next((r for r in ordered if is_usable_frame_run(r)), None)
+
+
+def newest_frame_run(runs: list[dict[str, Any]]) -> dict[str, Any] | None:
+    ordered = sorted(runs, key=lambda r: str(r.get("created_at") or ""), reverse=True)
+    return next((r for r in ordered if r.get("kind") == "frame3d_analysis"), None)

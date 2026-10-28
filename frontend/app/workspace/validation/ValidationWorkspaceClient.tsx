@@ -32,7 +32,7 @@ export default function ValidationWorkspaceClient() {
     <section className="panel-stack">
       <header className="page-header">
         <p className="eyebrow">Quality</p>
-        <h2>Validation</h2>
+        <h2 className="page-dup-title">Validation</h2>
         <p className="subtitle">Check configuration and code setup before analysis. The default profile is the Iranian national set (Mabhas 6/9/10 + Standard 2800).</p>
       </header>
 

@@ -1,4 +1,5 @@
 // Last 3D-frame inputs/payload per project, shared by chat cards and the Model/Analysis/Results/Design pages.
+import { parseNumber, typedToMetres, type LengthUnit } from "./length-units";
 const PREFIX = "sa.frame3d";
 
 function key(kind: "inputs" | "payload", projectId: string | null): string {
@@ -75,7 +76,8 @@ export const FRAME_FORM_FIELDS: FrameFormField[] = [
 ];
 
 export const DEFAULT_FRAME_INPUTS: Record<string, unknown> = {
-  storeys: 3, bays_x: 2, bays_y: 2, bay_x_m: 5, bay_y_m: 5, storey_height_m: 3.2,
+  // storeys / bays_x / bays_y / bay_x_m / bay_y_m are REQUIRED and deliberately have NO default (placeholders only).
+  storey_height_m: 3.2,
   column_b_m: 0.4, column_h_m: 0.4, beam_b_m: 0.3, beam_h_m: 0.45, slab_t_m: 0.12,
   fc_mpa: 30, fy_mpa: 400, dead_kn_m2: 6, live_kn_m2: 2, roof_live_kn_m2: 1.5, wall_kn_m: 7,
   seismic_code: "IRAN_2800", zone: "HIGH", soil: "II", importance: 1, system: "RC_IMF", seismic_c: null,
@@ -83,20 +85,30 @@ export const DEFAULT_FRAME_INPUTS: Record<string, unknown> = {
 };
 
 /** Convert the form's string values to typed solver inputs (blank numeric -> null). */
-export function formToInputs(values: Record<string, string>, lang: "en" | "fa"): Record<string, unknown> {
+export function formToInputs(
+  values: Record<string, string>,
+  lang: "en" | "fa",
+  units: Partial<Record<string, LengthUnit>> = {},
+): Record<string, unknown> {
   const out: Record<string, unknown> = { foundation: true, lang };
   for (const f of FRAME_FORM_FIELDS) {
     const raw = (values[f.key] ?? "").trim();
     if (f.kind === "select") out[f.key] = raw || null;
     else if (raw === "") out[f.key] = null;
+    else if (units[f.key] && units[f.key] !== "m") out[f.key] = typedToMetres(raw, units[f.key]!);
     else {
-      const n = Number(raw.replace(",", "."));
-      out[f.key] = Number.isFinite(n) ? (f.kind === "int" ? Math.round(n) : n) : null;
+      const n = parseNumber(raw);
+      out[f.key] = n !== null ? (f.kind === "int" ? Math.round(n) : n) : null;
     }
   }
   if (out.seismic_code === "IRAN_2800") out.seismic_c = null;
   return Object.fromEntries(Object.entries(out).filter(([, v]) => v !== null));
 }
+
+/** Placeholders (not values!) for the required geometry fields. */
+export const GEOMETRY_PLACEHOLDERS: Record<string, string> = {
+  storeys: "e.g. 3", bays_x: "e.g. 2", bays_y: "e.g. 2", bay_x_m: "e.g. 5", bay_y_m: "e.g. 5",
+};
 
 export function inputsToForm(inputs: Record<string, unknown>): Record<string, string> {
   const out: Record<string, string> = {};

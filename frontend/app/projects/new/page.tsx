@@ -34,7 +34,7 @@ export default function NewProjectPage() {
     <section className="panel-stack">
       <header className="page-header">
         <p className="eyebrow">Projects</p>
-        <h2>New Project</h2>
+        <h2 className="page-dup-title">New Project</h2>
         <p className="subtitle">Name your structural engineering project to create it.</p>
       </header>
       <form className="card form-row" onSubmit={handleCreate}>

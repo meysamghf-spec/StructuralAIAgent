@@ -37,7 +37,7 @@ export default function TraceabilityWorkspaceClient() {
     <section className="panel-stack">
       <header className="page-header">
         <p className="eyebrow">Lineage</p>
-        <h2>Traceability</h2>
+        <h2 className="page-dup-title">Traceability</h2>
         <p className="subtitle">See how files, decisions, and results connect.</p>
       </header>
 

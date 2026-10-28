@@ -6,7 +6,10 @@ import { makeUiT } from "@/lib/ui-i18n";
 
 describe("manual frame form", () => {
   it("round-trips defaults and types numbers", () => {
-    const form = inputsToForm(DEFAULT_FRAME_INPUTS);
+    // Geometry (storeys, bays, spans) has no default: it must be provided by the user.
+    for (const k of ["storeys", "bays_x", "bays_y", "bay_x_m", "bay_y_m"]) expect(k in DEFAULT_FRAME_INPUTS).toBe(false);
+    expect(inputsToForm(DEFAULT_FRAME_INPUTS).storeys).toBe("");
+    const form = inputsToForm({ ...DEFAULT_FRAME_INPUTS, storeys: 3, bays_x: 2, bays_y: 2, bay_x_m: 5, bay_y_m: 5 });
     expect(form.storeys).toBe("3");
     const inputs = formToInputs({ ...form, storeys: "4.0", bay_x_m: "6,5", seismic_c: "" }, "fa");
     expect(inputs.storeys).toBe(4);
@@ -14,7 +17,10 @@ describe("manual frame form", () => {
     expect(inputs.lang).toBe("fa");
     expect(inputs.foundation).toBe(true);
     expect("seismic_c" in inputs).toBe(false);
-    expect(FRAME_FORM_FIELDS.every((f) => f.key in DEFAULT_FRAME_INPUTS)).toBe(true);
+    const geometry = new Set(["storeys", "bays_x", "bays_y", "bay_x_m", "bay_y_m"]);
+    expect(FRAME_FORM_FIELDS.every((f) => geometry.has(f.key) || f.key in DEFAULT_FRAME_INPUTS)).toBe(true);
+    // a typed span in cm/ft converts to metres
+    expect(formToInputs({ bay_x_m: "600" }, "en", { bay_x_m: "cm" }).bay_x_m).toBe(6);
   });
   it("drops blank values so backend defaults apply", () => {
     const inputs = formToInputs({ storeys: "", zone: "" }, "en");

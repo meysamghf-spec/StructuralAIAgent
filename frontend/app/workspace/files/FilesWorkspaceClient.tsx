@@ -65,7 +65,7 @@ export default function FilesWorkspaceClient() {
     <section className="panel-stack">
       <header className="page-header">
         <p className="eyebrow">Documents</p>
-        <h2>Files</h2>
+        <h2 className="page-dup-title">Files</h2>
         <p className="subtitle">Upload drawings, models, and specs for this project.</p>
       </header>
 

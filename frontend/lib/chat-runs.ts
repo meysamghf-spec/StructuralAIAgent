@@ -31,19 +31,34 @@ export function listProjectChatRuns(projectId: string, fresh = false): Promise<C
   return cache.get(projectId)!;
 }
 
+const GEOMETRY_KEYS = ["storeys", "bays_x", "bays_y", "bay_x_m", "bay_y_m"] as const;
+
+/** A frame run that can be re-run as is: not failed/missing and with every geometry input present. */
+export function isUsableFrameRun(r: ChatRun): boolean {
+  return (
+    r.kind === "frame3d_analysis" &&
+    !!r.inputs &&
+    !/missing|fail|error|blocked|incomplete/i.test(r.status) &&
+    GEOMETRY_KEYS.every((k) => r.inputs![k] != null)
+  );
+}
+
+/**
+ * The newest frame run that stopped for missing inputs, but ONLY when the project has no usable frame run
+ * (otherwise the usable result is what is shown and the incomplete attempt is just history).
+ */
+export function incompleteFrameRun(runs: ChatRun[]): ChatRun | null {
+  const frames = runs.filter((r) => r.kind === "frame3d_analysis");
+  if (frames.some(isUsableFrameRun)) return null;
+  return frames[0] ?? null;
+}
+
 /** If this browser has no saved frame for the project, restore the latest frame analysis run in chat (any device). */
 export async function hydrateFrame3dFromServer(projectId: string | null): Promise<boolean> {
   if (!projectId || loadFrame3dInputs(projectId)) return false;
   try {
     const runs = await listProjectChatRuns(projectId);
-    const usable = (r: ChatRun) =>
-      r.kind === "frame3d_analysis" &&
-      !!r.inputs &&
-      !/missing|fail|error|blocked/i.test(r.status) &&
-      r.inputs.bays_x != null &&
-      r.inputs.bays_y != null &&
-      r.inputs.storeys != null;
-    const last = runs.find(usable);
+    const last = runs.find(isUsableFrameRun);
     if (!last?.inputs) return false;
     // Drop nulls so form defaults stay in place for anything the chat did not specify.
     const clean = Object.fromEntries(Object.entries(last.inputs).filter(([, v]) => v !== null && v !== undefined));

@@ -588,8 +588,10 @@ class ConversationService:
         runs = extract_runs(conversation, self._repo.list_messages(conversation.id))
         if conversation.project_id is not None:
             runs += self.list_project_chat_runs(account, conversation.project_id)
-        runs.sort(key=lambda r: r["created_at"], reverse=True)
-        return next((r["inputs"] for r in runs if r.get("kind") == "frame3d_analysis" and r.get("inputs")), None)
+        from app.application.chat_runs import pick_usable_frame_run
+
+        run = pick_usable_frame_run(runs)  # skips the newest blocked / incomplete run: its bays are null
+        return run["inputs"] if run else None
 
     @staticmethod
     def _plan_exports(account) -> Any:

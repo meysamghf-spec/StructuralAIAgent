@@ -154,13 +154,42 @@ class StructuralSetBody(BaseModel):
     inputs: dict | None = None
 
 
-def latest_frame_inputs(conv_service, account, project_id: str | None) -> dict | None:
+def latest_frame_run(conv_service, account, project_id: str | None) -> dict | None:
+    """Newest *usable* frame run of the project: blocked / failed / incomplete runs (null bays) are skipped."""
     if not project_id:
         return None
-    for r in conv_service.list_project_chat_runs(account, _UUID(project_id)):
-        if r.get("kind") == "frame3d_analysis" and r.get("inputs"):
-            return r["inputs"]
-    return None
+    from app.application.chat_runs import pick_usable_frame_run
+
+    return pick_usable_frame_run(list(conv_service.list_project_chat_runs(account, _UUID(project_id))))
+
+
+def latest_frame_inputs(conv_service, account, project_id: str | None) -> dict | None:
+    run = latest_frame_run(conv_service, account, project_id)
+    return run["inputs"] if run else None
+
+
+def frame_source(run: dict | None) -> dict | None:
+    """Which run the drawings / downloads were built from (shown in the UI)."""
+    if not run:
+        return None
+    return {k: run.get(k) for k in ("message_id", "conversation_id", "conversation_title", "created_at", "label", "status")}
+
+
+def missing_inputs_http(inputs: dict | None, newest: dict | None = None) -> HTTPException | None:
+    """422 with a readable fa / en message when the model inputs lack storeys / bay counts / spans, else None."""
+    from app.application import frame3d_chat_analysis as f3
+
+    data = inputs or {}
+    keys = [k for k in ("storeys", "bays_x", "bays_y", "bay_x_m", "bay_y_m") if data.get(k) is None]
+    if not keys:
+        return None
+    lang = str(data.get("lang") or "")
+    fa = f3.input_labels(keys, "fa")
+    en = f3.input_labels(keys, "en")
+    msg_fa = ("اطلاعات مدل کامل نیست؛ این موارد وارد نشده: " + "، ".join(fa) + ". مقادیر را در صفحه مدل یا در چت کامل کنید.")
+    msg_en = ("The model is incomplete — not set: " + ", ".join(en) + ". Complete the values on the Model page or in chat.")
+    detail = msg_fa if lang == "fa" else msg_en if lang == "en" else f"{msg_fa}\n{msg_en}"
+    return HTTPException(422, detail)
 
 
 @router.post("/structural-set")
@@ -175,10 +204,20 @@ def structural_set(body: StructuralSetBody, account: Annotated[AuthenticatedAcco
             project = access.require_project(_UUID(body.project_id), account)
         except ValueError:
             raise HTTPException(422, "invalid project_id")
-    inputs = body.inputs or latest_frame_inputs(conv, account, body.project_id)
+    source_run = None
+    if body.inputs:
+        inputs = body.inputs
+    else:
+        source_run = latest_frame_run(conv, account, body.project_id)
+        inputs = source_run["inputs"] if source_run else None
     if not inputs:
-        raise HTTPException(409, "No 3D frame analysis in this project yet — run one in chat first "
-                                 "(e.g. '3 bays x 5 m, 2 bays y 4 m, 4 storeys 3.2 m').")
+        raise HTTPException(
+            409, "No complete 3D frame model in this project yet — complete the model (storeys, bays X/Y, spans X/Y) on the Model page "
+                 "or in chat first (e.g. '3 bays of 5 m in x, 2 bays of 4 m in y, 4 storeys'). / "
+                 "هنوز مدل کامل قابی در این پروژه نیست؛ مدل را (طبقات، دهانه‌ها و طول دهانه‌ها) در صفحه مدل یا چت کامل کنید.")
+    err = missing_inputs_http(inputs)
+    if err is not None:
+        raise err
     pid = body.project_id
 
     def _save(name: str, data: bytes, ctype: str):
@@ -186,8 +225,11 @@ def structural_set(body: StructuralSetBody, account: Annotated[AuthenticatedAcco
                                        created_by=account.account_id).id)
 
     try:
-        return ss.generate_and_store(inputs, owner=_owner(account), project_id=pid,
-                                     project_name=getattr(project, "name", None), save_project_file=_save if pid else None)
+        result = ss.generate_and_store(inputs, owner=_owner(account), project_id=pid,
+                                       project_name=getattr(project, "name", None), save_project_file=_save if pid else None)
+        if isinstance(result, dict):
+            result = {**result, "built_from": frame_source(source_run) or {"label": "request inputs", "created_at": None}}
+        return result
     except ValueError as exc:
         raise HTTPException(422, str(exc))
 

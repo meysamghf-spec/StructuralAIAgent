@@ -30,7 +30,7 @@ def test_plain_answer_without_tools() -> None:
 def test_step_cap_forces_a_final_answer_with_tools_disabled() -> None:
     # a model that keeps asking for tools: the last round must be tool_choice=none; if it still asks, we summarise ourselves
     loops = [tool_msg(call("get_platform_state", cid=f"c{i}")) for i in range(10)]
-    loops[0] = tool_msg(call("analyze_frame", {"storeys": 2, "bays_x": 1, "bays_y": 1}))
+    loops[0] = tool_msg(call("analyze_frame", {"storeys": 2, "bays_x": 1, "bays_y": 1, "bay_x_m": 5, "bay_y_m": 5}))
     llm = ScriptedLLM(loops)
     out = run(llm, settings=S(max_steps=3))
     assert len(llm.calls) == 3 and llm.calls[-1]["tool_choice"] == "none" and llm.calls[0]["tool_choice"] == "auto"
@@ -145,8 +145,9 @@ def test_tool_output_with_injected_instructions_is_just_data() -> None:
     ("یک قاب ۵ طبقه ۳ دهانه بساز، تحلیل کن و بهینه کن", True),
     ("yek ghab 5 tabaghe besaz va behine kon", True),
     ("build a frame, analyse it and export the e2k", True),
-    ("قاب ۴ طبقه ۳×۳ دهانه تحلیل کن", False),   # complete simple request: the fast rule-based path
-    ("قاب ۴ طبقه تحلیل کن", True),             # incomplete inputs (bays missing): the orchestrator assumes defaults instead of asking
+    ("قاب ۴ طبقه ۳×۳ دهانه ۵ متری تحلیل کن", False),   # complete simple request: the fast rule-based path
+    ("قاب ۴ طبقه ۳×۳ دهانه تحلیل کن", True),           # spans missing: the orchestrator asks (never guesses)
+    ("قاب ۴ طبقه تحلیل کن", True),             # incomplete inputs (bays missing): the orchestrator asks for them
     ("سلام", False), ("", False), ("ok", False),
 ])
 def test_auto_mode_gating(text: str, expect: bool) -> None:

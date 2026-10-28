@@ -157,7 +157,7 @@ export default function OptimizationWorkspaceClient() {
     <section className="panel-stack">
       <header className="page-header">
         <p className="eyebrow">Optimization</p>
-        <h2>Optimization</h2>
+        <h2 className="page-dup-title">Optimization</h2>
         <p className="subtitle">Set optimization goals from your model and recorded runs.</p>
       </header>
 

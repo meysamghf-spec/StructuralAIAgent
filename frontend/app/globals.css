@@ -31,7 +31,7 @@ a {
   min-height: 0;
 }
 
-.brand h1 {
+.brand h1, .brand .brand-title {
   font-size: 1.125rem;
   margin-bottom: 1.5rem;
 }
@@ -3017,7 +3017,7 @@ a.button,
 .saia-logo--lg { gap: 0.9rem; }
 
 .brand-link { display: inline-block; max-width: 100%; margin-bottom: 0.9rem; }
-.brand h1 { font-size: 0.95rem; font-weight: 500; color: #94a3b8; margin-bottom: 1.1rem; }
+.brand h1, .brand .brand-title { font-size: 0.95rem; font-weight: 500; color: #94a3b8; margin-bottom: 1.1rem; }
 .chat-sidebar-header .brand-link { margin-bottom: 0.6rem; }
 .chat-header-logo { margin-bottom: 0.15rem; }
 .chat-hero-title { display: flex; justify-content: center; }
@@ -3155,6 +3155,55 @@ a.button,
 /* Login: "or" divider above the Google button */
 .google-divider { display: flex; align-items: center; gap: 0.75rem; margin: 0.9rem 0 0.6rem; color: var(--muted, #6b7280); font-size: 0.85rem; }
 .google-divider::before, .google-divider::after { content: ""; flex: 1; height: 1px; background: currentColor; opacity: 0.25; }
+
+/* required geometry fields (Model form + inline missing-input forms) */
+.geo-field { display: grid; gap: 0.25rem; font-size: 0.85rem; min-width: 0; }
+.geo-field label { display: block; font-size: 0.85rem; }
+.frame3d-form .geo-field label { display: block; grid-template-columns: none; }
+.geo-req { color: #f87171; }
+.geo-row { display: flex; gap: 0.4rem; align-items: stretch; min-width: 0; }
+.geo-row input { flex: 1 1 auto; min-width: 0; }
+.geo-row select { flex: 0 0 auto; width: 5rem; }
+.geo-conv { opacity: 0.85; }
+.geo-error { color: #f87171; }
+.geo-field[data-invalid="true"] input { border-color: #f87171; outline-color: #f87171; }
+.geo-hint { grid-column: 1 / -1; margin: 0; }
+.missing-inputs-form { display: grid; gap: 0.6rem; margin: 0.5rem 0; }
+.missing-inputs-form .geo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.6rem; }
+.incomplete-inputs { display: grid; gap: 0.4rem; }
+
+/* shared page title (h1) */
+.page-title { font-size: 1.75rem; line-height: 1.2; margin: 0 0 0.9rem; }
+@media (max-width: 600px) { .page-title { font-size: 1.4rem; } }
+/* the page's own header h2 repeated the section name: keep it for assistive tech only, the shared h1 is the visible title */
+.page-dup-title { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); border: 0; }
+.page-header:has(> .page-dup-title) > .eyebrow { display: none; }
+.brand .brand-title { margin-top: 0; }
+
+/* Assistant cards: the whole card is one link to the assistant page */
+a.agent-card-link { color: inherit; text-decoration: none; cursor: pointer; transition: border-color 0.15s, transform 0.15s, background 0.15s; }
+a.agent-card-link:hover { border-color: #38bdf8; background: rgba(56, 189, 248, 0.06); transform: translateY(-1px); }
+a.agent-card-link:focus-visible { outline: 2px solid #38bdf8; outline-offset: 2px; }
+.agent-card-title { font-size: 1.05rem; font-weight: 600; }
+.agent-capabilities { display: grid; gap: 0.15rem; padding: 0; margin: 0; }
+.agent-capability::before { content: "• "; color: #38bdf8; }
+.agent-card-cta { color: #38bdf8; font-size: 0.85rem; font-weight: 600; }
+.agent-card-disabled { opacity: 0.6; }
+@media (prefers-reduced-motion: reduce) { a.agent-card-link { transition: none; transform: none !important; } }
+
+/* Dedicated assistant page */
+.assistant-page { display: grid; gap: 1rem; max-width: 60rem; }
+.assistant-page-head { display: grid; gap: 0.35rem; }
+.assistant-page-back { font-size: 0.9rem; }
+.assistant-page-cols { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }
+.assistant-page-list { margin: 0.5rem 0 0; padding-inline-start: 1.1rem; display: grid; gap: 0.35rem; }
+.assistant-page-limits { border-inline-start: 3px solid #f59e0b; }
+.assistant-chat-log { display: grid; gap: 0.75rem; max-height: 28rem; overflow-y: auto; padding: 0.25rem; }
+.assistant-chat-msg { padding: 0.6rem 0.8rem; border-radius: 0.75rem; border: 1px solid var(--border, #334155); overflow-wrap: anywhere; }
+.assistant-chat-msg.user { background: rgba(56, 189, 248, 0.08); }
+.assistant-chat-form { display: grid; gap: 0.5rem; margin-top: 0.75rem; }
+.assistant-chat-form textarea { min-height: 4.5rem; width: 100%; }
+@media (max-width: 640px) { .assistant-chat-log { max-height: 22rem; } }
 
 /* Design card: keep member tables readable on narrow screens (scroll sideways instead of wrapping each cell). */
 [data-testid="frame3d-design-card"] .engineering-result-table th,

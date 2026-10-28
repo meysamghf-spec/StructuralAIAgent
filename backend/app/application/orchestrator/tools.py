@@ -55,7 +55,7 @@ def _guard_quota(ctx: Any, fn: Any, *a: Any) -> None:
 
 
 def _inputs_dict(inp: f3.Frame3dInputs, fa: bool) -> dict[str, Any]:
-    d = {k: v for k, v in asdict(inp).items() if k != "parsed"}
+    d = {k: v for k, v in asdict(inp).items() if k not in ("parsed", "pending_bays", "spans_assumed")}
     d["lang"] = "fa" if fa else "en"
     return d
 
@@ -151,10 +151,11 @@ def _create_project(ctx: Any, args: dict[str, Any]) -> ToolResult:
 _ANALYZE_PROPS: dict[str, Any] = {
     "mode": {"type": "string", "enum": ["edit", "new"],
              "description": "edit (default): change only the given fields of the current model. new: build a fresh model (asks the user to confirm when a model exists)."},
-    "assume_defaults": {"type": "boolean", "description": "true: fill any missing geometry with the documented defaults (4 storeys, 3x3 bays of 5 m, 3.2 m height) and say so. Use it whenever the user did not give numbers."},
+    "assume_defaults": {"type": "boolean", "description": "true: fill missing geometry with the documented defaults (4 storeys, 3x3 bays of 5 m, 3.2 m height) and say so. Use it ONLY when the user explicitly asks to assume defaults; otherwise leave it out so missing storeys / bay counts / spans are asked, never guessed."},
     "storeys": _num(1, 10, "number of storeys", True),
     "bays_x": _num(1, 6, "number of bays in X", True), "bays_y": _num(1, 6, "number of bays in Y", True),
-    "bay_x_m": _num(1.5, 15, "bay length in X [m]"), "bay_y_m": _num(1.5, 15, "bay length in Y [m]"),
+    "bay_x_m": _num(1.5, 15, "bay span in X [m] (required with the bay counts unless assume_defaults; convert cm/mm/ft to metres)"),
+    "bay_y_m": _num(1.5, 15, "bay span in Y [m] (required with the bay counts unless assume_defaults; convert cm/mm/ft to metres)"),
     "storey_height_m": _num(2.2, 6, "storey height [m]"),
     "column_b_cm": _num(20, 150, "column width [cm]"), "column_h_cm": _num(20, 150, "column depth [cm]"),
     "beam_b_cm": _num(15, 100, "beam width [cm]"), "beam_h_cm": _num(20, 150, "beam depth [cm]"),
@@ -217,9 +218,10 @@ def _build_inputs(ctx: Any, args: dict[str, Any]) -> tuple[f3.Frame3dInputs, lis
         inp.parsed = list(given)
         if f3.missing_inputs(inp) and not args.get("assume_defaults"):
             miss = f3.missing_inputs(inp)
-            raise ToolError("MISSING_INPUTS", f"داده‌های لازم ناقص است: {', '.join(miss)}", f"Missing required inputs: {', '.join(miss)}",
+            raise ToolError("MISSING_INPUTS", "داده‌های لازم ناقص است: " + "، ".join(f3.input_labels(miss, "fa")),
+                            "Missing required inputs: " + ", ".join(f3.input_labels(miss, "en")),
                             {"missing": miss, "defaults_available": fu.DEFAULTS,
-                             "hint": "Call again with assume_defaults=true (preferred) or ask the user only for these."}, status="missing_inputs")
+                             "hint": "Ask the user only for these values (any length unit; convert to metres). Use assume_defaults=true only if the user explicitly said to assume defaults."}, status="missing_inputs")
         assumed = fu.apply_defaults(inp)
         for explicit in ("seismic_code", "design_code"):  # apply_defaults must not override what the user asked for
             if explicit in given:
@@ -257,7 +259,7 @@ def _optimize_frame(ctx: Any, args: dict[str, Any]) -> ToolResult:
     if cur is None or f3.missing_inputs(f3.inputs_from_dict(cur)):
         if not args.get("assume_defaults"):
             raise ToolError("NO_MODEL", "برای بهینه‌سازی باید ابتدا مدلی وجود داشته باشد.", "There is no model to optimize yet.",
-                            {"hint": "Call analyze_frame first, or call optimize_frame with assume_defaults=true.", "defaults_available": fu.DEFAULTS},
+                            {"hint": "Call analyze_frame first, or call optimize_frame with assume_defaults=true only if the user explicitly said to assume defaults.", "defaults_available": fu.DEFAULTS},
                             status="missing_inputs")
         inp = f3.Frame3dInputs()
         assumed = fu.apply_defaults(inp)

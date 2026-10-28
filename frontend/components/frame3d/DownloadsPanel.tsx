@@ -3,7 +3,9 @@
 import { useState } from "react";
 
 import { SectionErrorBoundary } from "@/components/common/SectionErrorBoundary";
+import { MissingInputsForm } from "@/components/frame3d/MissingInputsForm";
 import { useUiLang } from "@/hooks/useUiLang";
+import { inputLabels, missingGeometry } from "@/lib/input-labels";
 import { DOWNLOADS, download, downloadAll, fetchDownload, type DownloadGroup, type ZipProgress, type DownloadItem } from "@/lib/frame3d-downloads";
 
 type Props = {
@@ -36,29 +38,42 @@ const GROUP_LABEL: Record<DownloadGroup, string> = {
   drawings: "Drawings", models: "Model exports", reports: "Reports",
 };
 
-const REQUIRED = ["storeys", "bays_x", "bays_y"] as const;
-
-/** Required geometry keys that are present but empty (a run that stopped at "missing required input"). */
+/** Required geometry keys that are absent or empty (a run that stopped at "missing required input"). null inputs → []. */
 export function missingInputs(inputs: Record<string, unknown> | null | undefined): string[] {
-  if (!inputs || typeof inputs !== "object") return [];
-  return REQUIRED.filter((k) => k in inputs && (inputs[k] === null || inputs[k] === "" || inputs[k] === undefined));
+  return missingGeometry(inputs);
 }
 
-export function IncompleteInputsNote({ missing, lang }: { missing: string[]; lang?: string }) {
+export function IncompleteInputsNote({
+  missing,
+  lang,
+  inputs,
+  projectId,
+  onDone,
+}: {
+  missing: string[];
+  lang?: string;
+  inputs?: Record<string, unknown> | null;
+  projectId?: string | null;
+  onDone?: (payload: unknown, merged: Record<string, unknown>) => void;
+}) {
   const fa = lang === "fa";
+  const l = fa ? "fa" : "en";
   return (
-    <p className="alert" role="note" data-testid="incomplete-inputs-note" dir={fa ? "rtl" : "ltr"}>
-      {fa
-        ? `ورودی‌های این اجرا کامل نیست${missing.length ? ` (${missing.join("، ")})` : ""}. لطفاً ورودی‌ها را در چت کامل کنید تا دانلودها فعال شوند.`
-        : `This run's inputs are incomplete${missing.length ? ` (${missing.join(", ")})` : ""}. Complete the inputs in chat to enable downloads.`}
-    </p>
+    <div className="incomplete-inputs" data-testid="incomplete-inputs-note" dir={fa ? "rtl" : "ltr"}>
+      <p className="alert" role="note">
+        {fa
+          ? `ورودی‌های این اجرا کامل نیست${missing.length ? ` (${inputLabels(missing, l)})` : ""}. مقادیر را همین‌جا وارد کنید و دوباره اجرا کنید تا دانلودها فعال شوند.`
+          : `This run's inputs are incomplete${missing.length ? ` (${inputLabels(missing, l)})` : ""}. Enter the missing values here and re-run to enable downloads.`}
+      </p>
+      {missing.length ? <MissingInputsForm inputs={inputs ?? {}} projectId={projectId} keys={missing} onDone={onDone} compact /> : null}
+    </div>
   );
 }
 
 export function DownloadsPanel(props: Props) {
   const { lang } = useUiLang();
   const missing = missingInputs(props.inputs);
-  if (missing.length) return <IncompleteInputsNote missing={missing} lang={lang} />;
+  if (missing.length) return <IncompleteInputsNote missing={missing} lang={lang} inputs={props.inputs} projectId={props.projectId} />;
   return (
     <SectionErrorBoundary label="Downloads">
       <DownloadsPanelInner {...props} />

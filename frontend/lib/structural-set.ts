@@ -1,5 +1,7 @@
 import { getApiBaseUrl } from "./api";
 import { getAuthHeaders } from "./auth-session";
+import { loadFrame3dInputs } from "./frame3d-store";
+import { geometryComplete } from "./input-labels";
 
 export type StructuralSheet = {
   sheet_no: string;
@@ -54,10 +56,12 @@ export async function listStructuralSets(projectId?: string | null): Promise<Str
 }
 
 export async function generateStructuralSet(projectId: string | null): Promise<StructuralSet> {
+  const saved = loadFrame3dInputs(projectId);
   const res = await fetch(`${base()}/structural-set`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-    body: JSON.stringify({ project_id: projectId }),
+    // The Model-form inputs saved in this browser win over the last chat run (the server falls back to it when absent).
+    body: JSON.stringify({ project_id: projectId, inputs: saved && geometryComplete(saved) ? saved : undefined }),
   });
   return (await (await ok(res)).json()) as StructuralSet;
 }
