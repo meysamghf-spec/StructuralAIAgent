@@ -28,6 +28,9 @@ def is_fa(text: str) -> bool:
 
 
 # ------------------------------------------------------------------------------------------- downloads
+# bare noun-phrase download requests with no verb: "plans DXF", "DXF plans", "drawings in DXF", "dxf files"
+_BARE_DXF = (r"^(?:the |my |all )?(?:(?:plans?|drawings?|sheets?) ?(?:in |as |\()?(?:dxf|autocad|cad)\)?|"
+             r"(?:dxf|autocad|cad) (?:plans?|drawings?|sheets?|files?))[.!]?$")
 _DL_VERB = (r"download|دانلود|export|اکسپورت|get me|give me|send me|generate|produce|save|\bzip\b|زیپ|بده|بدی|بگیر|بفرست|بساز|تهیه کن|"
             r"بزن|درآور|دراور|خروجی بگیر|\bpdf\b|\bbede\b|\bbegir\b|\bbede(?:h)?\b|\bdownload\b")
 # "detail the rebar" / "دیتیلینگ آرماتور را بده": the Detailing step that follows Design (maps to the rebar DXF sheets)
@@ -67,7 +70,7 @@ def parse_download(text: str) -> dict[str, Any] | None:
     if not t or len(t) > 200:
         return None
     detail_cmd = bool(re.search(_DETAIL_CMD, t))
-    if not re.search(_DL_VERB, t) and not detail_cmd:
+    if not re.search(_DL_VERB, t) and not detail_cmd and not re.search(_BARE_DXF, t):
         return None
     if detail_cmd and not re.search(_DL_VERB, t) and re.search(_DETAIL_QUESTION, t):
         return None  # "what is rebar detailing?" is a question, not a command
