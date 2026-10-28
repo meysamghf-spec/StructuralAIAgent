@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import time
 import uuid
 from types import SimpleNamespace
 from typing import Any
@@ -15,7 +16,7 @@ from app.application import platform_helper_factory as factory
 from app.infrastructure.repositories.postgres_platform_issue_repository import PostgresPlatformIssueRepository
 from app.platform_helper.config import load_settings
 from app.platform_helper.issues import IssueNotifier, IssueReport, InMemoryIssueStore
-from app.platform_helper.llm import LLMUnavailableError
+from app.platform_helper.llm import LLMError, LLMUnavailableError
 from app.platform_helper.service import HelperService
 from tests.test_api_chat import _headers, _project, _register
 from tests.test_chat_workflow_honesty import _chat
@@ -25,6 +26,7 @@ FA_PILE = "طراحی پی عمیق شمع برای ساختمان را انجا
 FINGLISH_TH = "lotfan tahlil tarikhche zamani gheyre khatti ro anjam bede"
 EN_PUSH = "please run a pushover analysis on my frame"
 SETTINGS = fr.FeatureRequestSettings(enabled=True)
+SLEPT: list[float] = []
 
 
 class FakeGemini:
@@ -51,7 +53,9 @@ def verdict(**kw) -> dict:
 
 
 @pytest.fixture(autouse=True)
-def _clean():
+def _clean(monkeypatch):
+    monkeypatch.setattr(fr, "_sleep", lambda s: SLEPT.append(s))
+    SLEPT.clear()
     fr.reset_state()
     fr.set_llm_for_tests(None)
     yield
@@ -208,6 +212,103 @@ def test_model_down_unknown_request_falls_through_to_normal_pipeline() -> None:
     svc = _svc()
     assert run("please add a CFD wind simulation around my building", svc) is None
     assert svc.store.list(limit=10) == []
+
+
+# ------------------------------------------------------------------------------------------------ unit: timeout + retry
+class SlowThenOk(FakeGemini):
+    """First call hangs longer than the deadline, the next ones answer."""
+
+    def chat(self, messages, **opts):
+        self.calls.append({"messages": messages, "opts": opts})
+        if len(self.calls) == 1:
+            time.sleep(1.8)
+            raise LLMUnavailableError("late")
+        return SimpleNamespace(text=json.dumps(verdict()))
+
+
+def _model(llm, settings=None, user="acct-1", text="please add a CFD wind simulation for my building"):
+    fr.set_llm_for_tests(llm)
+    return fr._ask_model(_svc(), settings or SETTINGS, user, text, None)
+
+
+def test_default_timeout_is_25s_with_env_override(monkeypatch) -> None:
+    monkeypatch.delenv("FEATURE_REQUEST_LLM_TIMEOUT_SECONDS", raising=False)
+    assert fr.load_settings().llm_timeout_s == 25.0
+    assert fr.FeatureRequestSettings().llm_timeout_s == 25.0 and fr.FeatureRequestSettings().llm_total_s == 60.0
+    monkeypatch.setenv("FEATURE_REQUEST_LLM_TIMEOUT_SECONDS", "12")
+    assert fr.load_settings().llm_timeout_s == 12.0
+
+
+def test_timeout_then_success(monkeypatch) -> None:
+    monkeypatch.setattr(fr, "_ATTEMPT_GRACE_S", 0.0)
+    llm = SlowThenOk()
+    out = _model(llm, fr.FeatureRequestSettings(enabled=True, llm_timeout_s=1.0, llm_total_s=60.0))
+    assert out and out["verdict"] == "unsupported"
+    assert len(llm.calls) == 2 and SLEPT == [fr._RETRY_BACKOFF_S]
+
+
+def test_503_then_success() -> None:
+    llm = FakeGemini(replies=[LLMError("gemini: HTTP 503", provider="gemini", status=503), verdict()])
+    out = _model(llm)
+    assert out and out["capability_key"] == "wind_cfd_simulation"
+    assert len(llm.calls) == 2 and SLEPT == [1.0]
+
+
+def test_all_providers_failed_then_success() -> None:
+    llm = FakeGemini(replies=[LLMUnavailableError("all LLM providers failed: gemini: HTTP 503; pollinations: HTTP 402"), verdict()])
+    assert _model(llm) is not None and len(llm.calls) == 2
+
+
+def test_two_failures_give_up_after_exactly_one_retry_and_fall_back() -> None:
+    llm = FakeGemini(default=None)
+    assert _model(llm) is None
+    assert len(llm.calls) == 2
+    # the public path still informs the user with the fixed rubric and files the known gap
+    llm2 = FakeGemini(default=None)
+    fr.set_llm_for_tests(llm2)
+    svc = _svc()
+    text, meta = run(EN_PUSH, svc)
+    assert meta["feature_request"]["estimate_source"] == "rubric_fallback" and len(llm2.calls) == 2
+    assert len(svc.store.list(limit=10)) == 1
+
+
+@pytest.mark.parametrize("exc", [
+    LLMError("gemini: HTTP 401", provider="gemini", status=401),
+    LLMError("gemini: HTTP 403", provider="gemini", status=403),
+    LLMError("gemini: HTTP 429", provider="gemini", status=429),
+    LLMError("gemini: HTTP 400", provider="gemini", status=400),
+    LLMUnavailableError("all LLM providers failed: gemini: HTTP 401; pollinations: HTTP 402"),
+    LLMUnavailableError("no LLM provider configured"),
+    ValueError("boom"),
+])
+def test_4xx_and_non_transient_errors_are_not_retried(exc) -> None:
+    llm = FakeGemini(replies=[exc, verdict()])
+    assert _model(llm) is None
+    assert len(llm.calls) == 1 and SLEPT == []
+
+
+def test_retry_does_not_double_count_the_hourly_budget() -> None:
+    llm = FakeGemini(replies=[LLMError("x", status=503), verdict()])
+    s = fr.FeatureRequestSettings(enabled=True, llm_max_per_hour=1)
+    assert _model(llm, s, user="acct-budget") is not None  # 2 attempts, 1 budget unit
+    assert len(llm.calls) == 2
+    assert _model(FakeGemini(default=verdict()), s, user="acct-budget") is None  # budget (1) is now used up
+
+
+def test_total_budget_caps_the_whole_request() -> None:
+    class Slow503(FakeGemini):
+        def chat(self, messages, **opts):
+            self.calls.append({"messages": messages, "opts": opts})
+            time.sleep(1.6)
+            raise LLMError("gemini: HTTP 503", provider="gemini", status=503)
+
+    llm = Slow503()
+    # attempt 1 gets 1.5 s (3.5 total - grace); after it fails at ~1.6 s there is no room for a second attempt
+    assert _model(llm, fr.FeatureRequestSettings(enabled=True, llm_timeout_s=25.0, llm_total_s=3.5)) is None
+    assert len(llm.calls) == 1 and llm.calls[0]["opts"]["timeout"] == pytest.approx(1.5, abs=0.05)
+    # defaults: worst case 2 x (25 s + grace) + backoff stays under the 60 s overall cap
+    d = fr.FeatureRequestSettings()
+    assert 2 * (d.llm_timeout_s + fr._ATTEMPT_GRACE_S) + fr._RETRY_BACKOFF_S <= d.llm_total_s
 
 
 def test_model_sizes_known_gap_and_caches_it() -> None:
