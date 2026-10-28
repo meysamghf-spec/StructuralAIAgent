@@ -31,11 +31,16 @@ import re
 import threading
 import time
 from collections import defaultdict, deque
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeout
 from dataclasses import dataclass, field
 from typing import Any
 
+import httpx
+
 from app.platform_helper.intents import _ENGINEERING, _ENGINEERING_VERB, classify, is_explain_question, normalize
 from app.platform_helper.issues import KIND_FEATURE_REQUEST, IssueReport, redact
+from app.platform_helper.llm import LLMError
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +70,8 @@ class FeatureRequestSettings:
     user_dedupe_seconds: int = 86400     # FEATURE_REQUEST_USER_DEDUPE_SECONDS (same user + same capability counted once)
     llm_max_per_hour: int = 30           # FEATURE_REQUEST_LLM_MAX_PER_HOUR (per user, model calls)
     min_confidence: float = 0.6          # FEATURE_REQUEST_MIN_CONFIDENCE
-    llm_timeout_s: float = 8.0           # FEATURE_REQUEST_LLM_TIMEOUT_SECONDS
+    llm_timeout_s: float = 25.0          # FEATURE_REQUEST_LLM_TIMEOUT_SECONDS (per attempt; one retry on transient failure)
+    llm_total_s: float = 60.0            # FEATURE_REQUEST_LLM_TOTAL_SECONDS (overall cap for all attempts of one request)
 
 
 def load_settings() -> FeatureRequestSettings:
@@ -76,7 +82,8 @@ def load_settings() -> FeatureRequestSettings:
         user_dedupe_seconds=int(_env_num("FEATURE_REQUEST_USER_DEDUPE_SECONDS", 86400, 0, 30 * 86400)),
         llm_max_per_hour=int(_env_num("FEATURE_REQUEST_LLM_MAX_PER_HOUR", 30, 1, 1000)),
         min_confidence=_env_num("FEATURE_REQUEST_MIN_CONFIDENCE", 0.6, 0.0, 1.0),
-        llm_timeout_s=_env_num("FEATURE_REQUEST_LLM_TIMEOUT_SECONDS", 8.0, 1.0, 60.0),
+        llm_timeout_s=_env_num("FEATURE_REQUEST_LLM_TIMEOUT_SECONDS", 25.0, 1.0, 60.0),
+        llm_total_s=_env_num("FEATURE_REQUEST_LLM_TOTAL_SECONDS", 60.0, 5.0, 120.0),
     )
 
 
@@ -378,19 +385,75 @@ def _parse_json(raw: str) -> dict[str, Any] | None:
     return out if isinstance(out, dict) else None
 
 
+_RETRY_BACKOFF_S = 1.0       # pause before the single retry
+_ATTEMPT_GRACE_S = 2.0       # wall-clock slack on top of the per-attempt timeout (connect/read timeouts are per phase)
+_sleep = time.sleep          # tests replace this
+
+
+def _is_transient(exc: BaseException) -> bool:
+    """True for timeouts, network errors, 5xx and "every provider failed" with at least one non-4xx cause.
+
+    Never for auth/quota/bad-request (4xx, incl. 401/403/429) or "no provider configured": retrying cannot help.
+    """
+    if isinstance(exc, (TimeoutError, httpx.HTTPError)):
+        return True
+    if isinstance(exc, LLMError):
+        if exc.status is not None:
+            return exc.status >= 500
+        msg = str(exc)
+        if "no LLM provider configured" in msg or "no tool-capable" in msg:
+            return False
+        # "all LLM providers failed: gemini: HTTP 401; pollinations: HTTP 402" -> permanent (every cause is 4xx);
+        # a 5xx, timeout, network or empty-answer cause anywhere in the list -> transient
+        causes = [c for c in msg.split(": ", 1)[-1].split("; ") if c.strip()]
+        return not causes or any(not re.search(r"HTTP 4\d\d", c) for c in causes)
+    return False
+
+
+def _call_with_deadline(llm: Any, messages: list[dict[str, str]], timeout: float) -> Any:
+    """``llm.chat`` with a hard wall-clock limit. The provider client retries internally (per provider, per HTTP phase),
+    so its own timeout alone does not bound the wall time; a worker thread does. An abandoned worker ends on its own."""
+    pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="fr-llm")
+    try:
+        fut = pool.submit(lambda: llm.chat(messages, max_tokens=350, temperature=0.0, timeout=timeout))
+        try:
+            return fut.result(timeout=timeout + _ATTEMPT_GRACE_S)
+        except FuturesTimeout as exc:
+            raise TimeoutError("feature-request model call exceeded its time limit") from exc
+    finally:
+        pool.shutdown(wait=False)
+
+
 def _ask_model(svc: Any, settings: FeatureRequestSettings, account_id: str, text: str, known: KnownGap | None) -> dict[str, Any] | None:
-    """One bounded model call. None on any failure (down, rate limited, timeout, garbage)."""
+    """Bounded model call: one try plus ONE retry on a transient failure, all within ``llm_total_s``.
+
+    None on any final failure (down, rate limited, timeout, garbage) -> the caller uses the catalogue / rubric.
+    The per-user hourly model budget is charged once per classification, not per attempt."""
     llm = _get_llm(svc)
     if llm is None or not settings.llm_enabled:
         return None
     if not _llm_budget(account_id, settings.llm_max_per_hour):
         logger.info("feature-request model budget reached for an account")
         return None
-    try:
-        res = llm.chat(_classifier_messages(text, known), max_tokens=350, temperature=0.0, timeout=settings.llm_timeout_s)
-    except Exception as exc:  # noqa: BLE001 - LLMUnavailableError, timeouts, anything: fall back to the rubric
-        logger.info("feature-request model unavailable (%s)", type(exc).__name__)
-        return None
+    messages = _classifier_messages(text, known)
+    started = time.monotonic()
+    res = None
+    for attempt in (1, 2):
+        remaining = settings.llm_total_s - (time.monotonic() - started)
+        timeout = min(settings.llm_timeout_s, remaining - _ATTEMPT_GRACE_S)
+        if timeout < 1.0:
+            logger.info("feature-request model: no time budget left for attempt %d", attempt)
+            return None
+        try:
+            res = _call_with_deadline(llm, messages, timeout)
+            break
+        except Exception as exc:  # noqa: BLE001 - LLMUnavailableError, timeouts, anything: fall back to the rubric
+            retry = attempt == 1 and _is_transient(exc)
+            logger.info("feature-request model unavailable (%s) attempt %d%s", type(exc).__name__, attempt,
+                        ", retrying" if retry else "")
+            if not retry:
+                return None
+            _sleep(_RETRY_BACKOFF_S)
     return _parse_json(getattr(res, "text", ""))
 
 
