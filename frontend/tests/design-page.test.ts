@@ -37,26 +37,18 @@ describe("design summary (Mabhas 9 rows of the latest frame run)", () => {
 });
 
 describe("design page is design-specific", () => {
-  it("page shows the design panel and the PEM design checks without a collapsed wrapper", () => {
+  it("page renders only the design results + Design button page (no analysis panel, no PEM check panel)", () => {
     const page = read("app/workspace/design/page.tsx");
-    expect(page).toContain('mode="design"');
-    expect(page).toContain("<DesignWorkspaceClient />");
+    expect(page).toContain("<DesignRunPage />");
+    expect(page).not.toContain("Frame3dWorkspacePanel");
+    expect(page).not.toContain("DesignWorkspaceClient");
     expect(page).not.toContain("LegacySection");
   });
 
-  it("design mode no longer repeats the analysis viewer, foundation view or full analysis card", () => {
-    const panel = read("components/frame3d/Frame3dWorkspacePanel.tsx");
-    expect(panel).toContain('mode === "design" ? (\n        <Frame3dDesignCard');
-    expect(panel).toContain('mode !== "foundation" && mode !== "design"');
-    expect(panel).toContain('(mode === "results" || mode === "foundation") ? (\n        <SectionErrorBoundary label="Foundation">');
-    expect(panel).toContain('["design", "drawings"]');
-  });
-
-  it("keeps the PEM design endpoints and links back to analysis", () => {
+  it("keeps the PEM design endpoints module and its options (unused by the page, unchanged)", () => {
     const client = read("app/workspace/design/DesignWorkspaceClient.tsx");
     expect(client).toContain("runDesign(");
     expect(client).toContain("listAvailableAnalysisRuns(");
-    expect(client).toContain('href="/workspace/analysis"');
     expect(DESIGN_OPTIONS.map((o) => o.value)).toEqual(["CONCRETE_BEAM", "STEEL_BEAM", "CONCRETE_COLUMN", "STEEL_COLUMN"]);
   });
 
