@@ -37,12 +37,11 @@ describe("design summary (Mabhas 9 rows of the latest frame run)", () => {
 });
 
 describe("design page is design-specific", () => {
-  it("page renders only the design results + Design button page (no analysis panel, no PEM check panel)", () => {
+  it("page shows the design results + Design button and the restored 3D frame section and design tools", () => {
     const page = read("app/workspace/design/page.tsx");
     expect(page).toContain("<DesignRunPage />");
-    expect(page).not.toContain("Frame3dWorkspacePanel");
-    expect(page).not.toContain("DesignWorkspaceClient");
-    expect(page).not.toContain("LegacySection");
+    expect(page).toContain('<Frame3dWorkspacePanel mode="design" />');
+    expect(page).toContain("<DesignLegacyClient />");
   });
 
   it("keeps the PEM design endpoints module and its options (unused by the page, unchanged)", () => {
