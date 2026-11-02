@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { SectionErrorBoundary } from "@/components/common/SectionErrorBoundary";
-import { getCurrentProjectId } from "@/lib/current-project";
+import { ChatCardProjectContext, useChatCardProjectId } from "@/lib/chat-card-project";
+import { useContext } from "react";
 import { saveFrame3dInputs } from "@/lib/frame3d-store";
 
 import { downloadFrame3dExport } from "@/lib/api";
@@ -29,9 +30,11 @@ export function Frame3dResultCard({ results, downloads = true }: Frame3dResultCa
   const rtl = isRtl(results.lang);
   const is2800 = results.seismicCode === "IRAN_2800";
   const [viewerOpen, setViewerOpen] = useState(results.animateMode != null);
+  const cardProjectId = useChatCardProjectId();
+  const foreign = useContext(ChatCardProjectContext) === null; // legacy no-project chat: never write into the active project
   useEffect(() => {
-    if (results.status === "completed" && results.inputs) saveFrame3dInputs(getCurrentProjectId(), results.inputs);
-  }, [results.status, results.inputs]);
+    if (results.status === "completed" && results.inputs && !foreign) saveFrame3dInputs(cardProjectId, results.inputs);
+  }, [results.status, results.inputs, cardProjectId, foreign]);
 
   return (
     <section className="engineering-result-card" aria-label={t("3D frame analysis")} dir={rtl ? "rtl" : "ltr"} lang={results.lang}>
@@ -169,7 +172,7 @@ export function Frame3dResultCard({ results, downloads = true }: Frame3dResultCa
       {completed && results.inputs ? (
         <DetailingStep
           inputs={results.inputs as unknown as Record<string, unknown>}
-          projectId={getCurrentProjectId()}
+          projectId={cardProjectId}
           hasDesign={Boolean(results.design && results.design.beams.length + results.design.columns.length > 0)}
           lang={results.lang}
         />
@@ -188,7 +191,7 @@ export function Frame3dResultCard({ results, downloads = true }: Frame3dResultCa
       ) : null}
 
       {downloads && completed && results.inputs ? (
-        <DownloadsPanel inputs={results.inputs as unknown as Record<string, unknown>} projectId={getCurrentProjectId()} collapsed title={results.lang === "fa" ? "دانلود همه خروجی‌ها" : "Download all outputs"} />
+        <DownloadsPanel inputs={results.inputs as unknown as Record<string, unknown>} projectId={cardProjectId} collapsed title={results.lang === "fa" ? "دانلود همه خروجی‌ها" : "Download all outputs"} />
       ) : null}
 
       {results.storeyForces.length > 0 ? (
@@ -245,6 +248,7 @@ function dcText(value: number | null): string {
  * plus detailing. Analysis tables (drift, modal, forces) stay on the Results page.
  */
 export function Frame3dDesignCard({ results }: { results: Frame3dResults }) {
+  const cardProjectId = useChatCardProjectId();
   const t = makeT(results.lang);
   const rtl = isRtl(results.lang);
   const design = results.design;
@@ -291,7 +295,7 @@ export function Frame3dDesignCard({ results }: { results: Frame3dResults }) {
       {completed && results.inputs ? (
         <DetailingStep
           inputs={results.inputs as unknown as Record<string, unknown>}
-          projectId={getCurrentProjectId()}
+          projectId={cardProjectId}
           hasDesign={Boolean(design && design.beams.length + design.columns.length > 0)}
           lang={results.lang}
         />

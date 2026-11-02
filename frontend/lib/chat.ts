@@ -250,21 +250,38 @@ export function replaceOptimisticMessages(
   ];
 }
 
-export function getStoredActiveConversationId(): string | null {
+/** Each project remembers its own open conversation ("" = no project), so switching project switches history. */
+function activeKey(projectId: string | null | undefined): string {
+  return projectId ? `${ACTIVE_CONVERSATION_KEY}.${projectId}` : ACTIVE_CONVERSATION_KEY;
+}
+
+export function getStoredActiveConversationId(projectId: string | null = null): string | null {
   if (typeof window === "undefined") {
     return null;
   }
-  return window.localStorage.getItem(ACTIVE_CONVERSATION_KEY);
+  return window.localStorage.getItem(activeKey(projectId));
 }
 
-export function storeActiveConversationId(conversationId: string | null): void {
+export function storeActiveConversationId(conversationId: string | null, projectId: string | null = null): void {
   if (typeof window === "undefined") {
     return;
   }
   if (conversationId) {
-    window.localStorage.setItem(ACTIVE_CONVERSATION_KEY, conversationId);
+    window.localStorage.setItem(activeKey(projectId), conversationId);
   } else {
-    window.localStorage.removeItem(ACTIVE_CONVERSATION_KEY);
+    window.localStorage.removeItem(activeKey(projectId));
+  }
+}
+
+/** Sign-out: forget every project's remembered conversation. */
+export function clearStoredActiveConversations(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  for (const key of Object.keys(window.localStorage)) {
+    if (key === ACTIVE_CONVERSATION_KEY || key.startsWith(`${ACTIVE_CONVERSATION_KEY}.`)) {
+      window.localStorage.removeItem(key);
+    }
   }
 }
 

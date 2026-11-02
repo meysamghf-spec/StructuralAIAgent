@@ -21,6 +21,9 @@ from app.application import frame3d_followup as fu
     ("خروجی ایتبس بده", "e2k", False),
     ("گزارش PDF بگیر", "report_pdf", False),
     ("DXF را دانلود کن", "dxf_plans", False),
+    ("plans DXF", "dxf_plans", False),
+    ("DXF plans", "dxf_plans", False),
+    ("drawings in DXF", "dxf_plans", False),
     ("نقشه فونداسیون را بده", "dxf_foundation", False),
     ("excel tables please download", "all", False),
 ])
@@ -31,7 +34,7 @@ def test_parse_download(text, name, zip_):
         assert spec["items"][0]["name"] == name
 
 
-@pytest.mark.parametrize("text", ["3 storey RC frame, export to ETABS", "what is drift?", "show me the results", "Extract requirements from the specification PDF and summarize design parameters."])
+@pytest.mark.parametrize("text", ["3 storey RC frame, export to ETABS", "what is drift?", "draw me a floor plan", "floor plan dxf", "floor plan for a 3 bedroom apartment dxf", "convert this plan to dxf", "show me the results", "Extract requirements from the specification PDF and summarize design parameters."])
 def test_parse_download_ignores_other_requests(text):
     assert ca.parse_download(text) is None
 

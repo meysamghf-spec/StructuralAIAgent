@@ -3221,3 +3221,45 @@ a.agent-card-link:focus-visible { outline: 2px solid #38bdf8; outline-offset: 2p
 /* Design card: keep member tables readable on narrow screens (scroll sideways instead of wrapping each cell). */
 [data-testid="frame3d-design-card"] .engineering-result-table th,
 [data-testid="frame3d-design-card"] .engineering-result-table td { white-space: nowrap; }
+
+/* ===== New project dialog + project switcher ===== */
+.np-backdrop { position: fixed; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center; padding: 1rem; background: rgba(2, 6, 23, 0.7); }
+.np-dialog { width: min(100%, 26rem); display: grid; gap: 0.6rem; padding: 1.25rem; background: #111827; border: 1px solid #334155; border-radius: 0.8rem; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); color: #e2e8f0; }
+.np-title { margin: 0; font-size: 1.15rem; }
+.np-label { font-size: 0.8rem; color: #94a3b8; }
+.np-input { width: 100%; font-size: 1rem; }
+.np-hint { margin: 0; font-size: 0.8rem; line-height: 1.4; }
+.np-error { margin: 0; }
+.np-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.4rem; }
+.np-actions .button { min-height: 2.5rem; }
+
+.project-switcher { position: relative; min-width: 0; }
+.project-switcher-button { display: flex; align-items: center; gap: 0.5rem; width: 100%; min-height: 2.5rem; padding: 0.35rem 0.7rem; background: #0f172a; border: 1px solid #334155; border-radius: 0.5rem; color: #e2e8f0; cursor: pointer; text-align: start; font: inherit; }
+.project-switcher-button:disabled { opacity: 0.6; cursor: not-allowed; }
+.project-switcher-button:hover:not(:disabled) { border-color: #475569; }
+.project-switcher-kicker { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: #94a3b8; flex: none; }
+.project-switcher-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.project-switcher-caret { flex: none; color: #94a3b8; }
+.project-switcher-bar { min-width: 11rem; max-width: 18rem; }
+.project-switcher-menu { z-index: 60; display: grid; gap: 0.25rem; padding: 0.35rem; background: #111827; border: 1px solid #334155; border-radius: 0.5rem; margin-top: 0.3rem; }
+.project-switcher-bar .project-switcher-menu { position: absolute; inset-inline-start: 0; top: 100%; width: max(100%, 16rem); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45); }
+.project-switcher-list { list-style: none; margin: 0; padding: 0; max-height: 14rem; overflow-y: auto; display: grid; gap: 0.15rem; }
+.project-switcher-item { width: 100%; text-align: start; background: transparent; border: 1px solid transparent; border-radius: 0.4rem; padding: 0.45rem 0.55rem; color: #e2e8f0; cursor: pointer; font: inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-switcher-item:hover { background: #1e293b; }
+.project-switcher-item.active { background: #1e293b; border-color: #2563eb; }
+.project-switcher-new { width: 100%; text-align: start; background: transparent; border: 1px dashed #334155; border-radius: 0.4rem; padding: 0.45rem 0.55rem; color: #93c5fd; cursor: pointer; font: inherit; }
+.project-switcher-new:hover { background: #1e293b; }
+.project-switcher-empty { padding: 0.4rem 0.55rem; font-size: 0.85rem; }
+.sidebar-project { margin: 0.25rem 0 0.75rem; }
+.chat-history-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.chat-history-head .chat-sidebar-label { margin: 0; min-width: 0; }
+.chat-history-new { white-space: nowrap; flex-shrink: 0; }
+.chat-history-new, .chat-general-toggle { background: transparent; border: none; color: #93c5fd; cursor: pointer; font: inherit; font-size: 0.8rem; padding: 0.15rem 0.1rem; text-align: start; }
+.chat-general { display: grid; gap: 0.35rem; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #334155; }
+.chat-general-toggle { color: #94a3b8; }
+@media (max-width: 960px) {
+  .sidebar-project { display: none; }
+  .mobile-topbar .project-switcher-bar { flex: 1; max-width: none; min-width: 0; }
+  .mobile-topbar .project-switcher-kicker { display: none; }
+  .chat-main-header .project-switcher-bar { max-width: none; width: 100%; }
+}

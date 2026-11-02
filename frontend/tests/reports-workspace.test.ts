@@ -82,15 +82,14 @@ describe("report version viewer", () => {
   });
 });
 
-describe("Reports page contains only reports", () => {
+describe("Reports page (full content restored)", () => {
   const root = resolve(__dirname, "..");
   const page = readFileSync(resolve(root, "app/workspace/reports/page.tsx"), "utf8");
   const list = readFileSync(resolve(root, "components/reports/ReportsList.tsx"), "utf8");
 
-  it("renders just the reports list", () => {
-    expect(page).toContain("ReportsList");
-    for (const banned of ["FrameDownloads", "DownloadsPanel", "LegacySection", "ReportPanel", "Optimization", "DxfViewer", "ProjectScopePanel"]) {
-      expect(page).not.toContain(banned);
+  it("renders the reports list plus the calculation report, downloads and report tools", () => {
+    for (const part of ["<ReportsList />", "<ReportPanel />", "<FrameDownloads />", "<ReportsWorkspaceClient />"]) {
+      expect(page).toContain(part);
     }
   });
 
