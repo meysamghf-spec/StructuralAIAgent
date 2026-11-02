@@ -32,7 +32,7 @@ import { hydrateFrame3dFromServer, incompleteFrameRun, listProjectChatRuns } fro
 const Frame3dViewer = dynamic(() => import("@/components/chat/Frame3dViewer"), { ssr: false });
 const FoundationView = dynamic(() => import("@/components/frame3d/FoundationView"), { ssr: false });
 
-type Mode = "model" | "results" | "design" | "foundation";
+type Mode = "model" | "analysis" | "results" | "design" | "foundation";
 
 export { runFrame3d };
 
@@ -178,15 +178,26 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
             else setNote(t("No chat frame found for this project yet."));
           }}
         />
+      ) : mode === "analysis" ? (
+        <div className="frame3d-actions">
+          {saved ? (
+            <button className="button" type="button" disabled={busy} onClick={() => void run({ ...saved, lang })}>
+              {busy ? t("Running…") : t("Rerun with saved model")}
+            </button>
+          ) : null}
+          <Link className="button secondary" href="/workspace/model">
+            {t("Go to Model")}
+          </Link>
+        </div>
       ) : null}
       {note ? <p className="muted">{note}</p> : null}
       {error ? <p className="alert error">{error}</p> : null}
-      {results?.viewer && mode !== "foundation" && mode !== "design" ? (
+      {results?.viewer && mode !== "foundation" ? (
         <SectionErrorBoundary label="3D viewer">
           <Frame3dViewer data={results.viewer} results={results} t={makeT(results.lang)} embedded />
         </SectionErrorBoundary>
       ) : null}
-      {results?.viewer?.footings?.length && (mode === "results" || mode === "foundation") ? (
+      {results?.viewer?.footings?.length && (mode === "design" || mode === "results" || mode === "foundation") ? (
         <SectionErrorBoundary label="Foundation">
           <FoundationView data={results.viewer} qa={results.foundation?.qaKpa ?? 150} t={makeT(results.lang)} />
         </SectionErrorBoundary>
@@ -196,8 +207,10 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
           inputs={(results?.inputs as Record<string, unknown> | null) ?? saved}
           projectId={projectId}
           groups={
-            mode === "design"
-              ? ["design", "drawings"]
+            mode === "analysis"
+              ? ["analysis", "figures", "models"]
+              : mode === "design"
+              ? ["design", "foundation", "drawings"]
               : mode === "foundation"
                 ? ["foundation", "drawings"]
                 : mode === "model"
@@ -207,7 +220,10 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
         />
       ) : null}
       {results && mode === "design" ? (
-        <Frame3dDesignCard results={results} />
+        <>
+          <Frame3dDesignCard results={results} />
+          <Frame3dResultCard results={results} downloads={false} />
+        </>
       ) : results && mode !== "foundation" ? (
         <Frame3dResultCard results={results} downloads={false} />
       ) : mode !== "model" && !incomplete ? (

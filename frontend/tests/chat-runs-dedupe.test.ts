@@ -25,9 +25,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 describe("results page wiring", () => {
-  it("hides frame3d_analysis in the chat-runs list and keeps one frame section", () => {
+  it("shows the full chat-runs list again and keeps one frame section", () => {
     const src = readFileSync(join(__dirname, "../app/workspace/results/page.tsx"), "utf8");
-    expect(src).toMatch(/excludeKinds=\{\["frame3d_analysis"\]\}/);
+    expect(src).toContain("<ChatRunsSection />");
     expect((src.match(/<Frame3dWorkspacePanel/g) ?? []).length).toBe(1);
   });
 });

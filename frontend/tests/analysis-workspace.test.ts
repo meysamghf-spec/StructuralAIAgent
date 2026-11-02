@@ -97,17 +97,17 @@ describe("project analysis page (results + one Analyze button)", () => {
   const read = (rel: string) => readFileSync(resolve(root, rel), "utf8");
   const client = read("app/workspace/analysis/AnalysisWorkspaceClient.tsx");
 
-  it("renders only the analysis workspace, not the duplicate 3D frame panel or the legacy wrapper", () => {
+  it("restores the full analysis page: results + Analyze button, the 3D frame section and the legacy tools", () => {
     const page = read("app/workspace/analysis/page.tsx");
-    expect(page).toContain("AnalysisWorkspaceClient");
-    expect(page).not.toContain("Frame3dWorkspacePanel");
-    expect(page).not.toContain("LegacySection");
+    expect(page).toContain("<AnalysisWorkspaceClient />");
+    expect(page).toContain('<Frame3dWorkspacePanel mode="analysis" />');
+    expect(page).toContain("<AnalysisLegacyClient />");
   });
 
-  it("frame3d panel no longer has an analysis mode", () => {
+  it("frame3d panel has an analysis mode again", () => {
     const panel = read("components/frame3d/Frame3dWorkspacePanel.tsx");
-    expect(panel).not.toContain('mode === "analysis"');
-    expect(panel).not.toMatch(/type Mode = [^;]*"analysis"/);
+    expect(panel).toContain('mode === "analysis"');
+    expect(panel).toMatch(/type Mode = [^;]*"analysis"/);
   });
 
   it("has exactly one Analyze button wired to the frame3d solver, with disabled/loading/error states", () => {
