@@ -65,8 +65,17 @@ async function chatFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export async function listConversations(): Promise<ChatConversation[]> {
-  const response = await chatFetch<{ conversations: ChatConversation[] }>("/api/v1/conversations");
+/** The account's chats; pass `project_id` for one project's history or `unassigned` for chats with no project. */
+export async function listConversations(
+  scope: { project_id?: string; unassigned?: boolean } = {},
+): Promise<ChatConversation[]> {
+  const query = new URLSearchParams();
+  if (scope.project_id) query.set("project_id", scope.project_id);
+  else if (scope.unassigned) query.set("unassigned", "true");
+  const qs = query.toString();
+  const response = await chatFetch<{ conversations: ChatConversation[] }>(
+    `/api/v1/conversations${qs ? `?${qs}` : ""}`,
+  );
   return response.conversations;
 }
 

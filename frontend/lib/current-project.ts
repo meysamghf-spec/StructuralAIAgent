@@ -21,6 +21,17 @@ export function setCurrentProjectId(id: string | null): void {
   } catch {
     /* storage unavailable */
   }
+  // getCurrentProjectId() prefers ?project=, so a stale URL value would keep pages on the previous project.
+  try {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("project") && url.searchParams.get("project") !== id) {
+      if (id) url.searchParams.set("project", id);
+      else url.searchParams.delete("project");
+      window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+    }
+  } catch {
+    /* non-browser environment */
+  }
   window.dispatchEvent(new CustomEvent(PROJECT_EVENT, { detail: id }));
 }
 

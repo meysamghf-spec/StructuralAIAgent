@@ -15,7 +15,12 @@ export function ArchitecturalSetSection() {
   useEffect(() => {
     const sync = () => {
       setSets(null);
-      listArchSets(scope === "project" ? getCurrentProjectId() : null)
+      const pid = getCurrentProjectId();
+      if (scope === "project" && !pid) {
+        setSets([]); // no active project: show nothing rather than every project's sets
+        return;
+      }
+      listArchSets(scope === "project" ? pid : null)
         .then((s) => { setSets(s); setOpen((o) => o ?? s[0]?.id ?? null); })
         .catch((e) => setError(e instanceof Error ? e.message : String(e)));
     };

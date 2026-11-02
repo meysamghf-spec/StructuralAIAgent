@@ -5,7 +5,6 @@ import { agentRunToMetadata, applyAgentRunEvent } from "@/lib/agent-run-sse";
 import {
   createConversation,
   deleteConversation,
-  getConversation,
   listConversationMessages,
   listConversations,
   renameConversation as apiRenameConversation,
@@ -42,6 +41,8 @@ type UseChatOptions = {
   selectedProjectId: string;
   setSelectedProjectId: (projectId: string) => void;
   assistant?: string | null;
+  /** False while the project list is still loading, so history is not loaded for the wrong project. */
+  projectsReady?: boolean;
   /** Chat commands that change UI state ("switch to the seismic assistant", "open project …"). */
   onChatAction?: (action: { switchAssistant: string | null; projectSwitch: { id: string; name: string } | null }) => void;
 };
@@ -52,9 +53,13 @@ export function useChat({
   selectedProjectId,
   setSelectedProjectId,
   assistant,
+  projectsReady = true,
   onChatAction,
 }: UseChatOptions) {
+  // History is per project: `conversations` are the active project's chats only; `generalConversations` are older
+  // chats that never had a project (kept reachable in a separate "General" list, never mixed into a project).
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
+  const [generalConversations, setGeneralConversations] = useState<ChatConversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [content, setContent] = useState("");
@@ -83,11 +88,24 @@ export function useChat({
     return null;
   }, [executionPhase]);
 
-  const refreshConversations = useCallback(async () => {
-    const items = await listConversations();
-    setConversations(items);
-    return items;
+  const fetchScopedConversations = useCallback(async (projectId: string) => {
+    if (!projectId) {
+      const general = await listConversations({ unassigned: true });
+      return { items: general, general: [] as ChatConversation[] };
+    }
+    const [items, general] = await Promise.all([
+      listConversations({ project_id: projectId }),
+      listConversations({ unassigned: true }).catch(() => [] as ChatConversation[]),
+    ]);
+    return { items, general };
   }, []);
+
+  const refreshConversations = useCallback(async () => {
+    const { items, general } = await fetchScopedConversations(selectedProjectId);
+    setConversations(items);
+    setGeneralConversations(general);
+    return items;
+  }, [fetchScopedConversations, selectedProjectId]);
 
   const loadMessages = useCallback(async (conversationId: string) => {
     setLoadingMessages(true);
@@ -99,27 +117,44 @@ export function useChat({
     }
   }, []);
 
+  // (Re)load the history whenever the active project changes: its own list, its own open conversation.
   useEffect(() => {
     if (!isAuthenticated || authLoading) {
       setBootstrapping(false);
       return;
     }
+    if (!projectsReady) {
+      return;
+    }
     let active = true;
     async function bootstrap() {
+      setConversations([]);
+      setActiveConversationId(null);
+      setMessages([]);
+      setRetryRequest(null);
+      setPendingAttachments([]);
       try {
-        const items = await refreshConversations();
-        const storedId = getStoredActiveConversationId();
-        const initialId =
-          storedId && items.some((item) => item.id === storedId) ? storedId : items[0]?.id ?? null;
+        const { items, general } = await fetchScopedConversations(selectedProjectId);
         if (!active) {
           return;
         }
+        setConversations(items);
+        setGeneralConversations(general);
+        const storedId = getStoredActiveConversationId(selectedProjectId || null);
+        const initialId =
+          storedId && items.some((item) => item.id === storedId) ? storedId : items[0]?.id ?? null;
         setActiveConversationId(initialId);
         if (initialId) {
-          await loadMessages(initialId);
-          const conversation = await getConversation(initialId);
-          if (conversation.project_id) {
-            setSelectedProjectId(conversation.project_id);
+          setLoadingMessages(true);
+          try {
+            const loaded = await listConversationMessages(initialId);
+            if (active) {
+              setMessages(loaded);
+            }
+          } finally {
+            if (active) {
+              setLoadingMessages(false);
+            }
           }
         }
       } catch (err) {
@@ -136,7 +171,7 @@ export function useChat({
     return () => {
       active = false;
     };
-  }, [authLoading, isAuthenticated, loadMessages, refreshConversations, setSelectedProjectId]);
+  }, [authLoading, isAuthenticated, projectsReady, selectedProjectId, fetchScopedConversations]);
 
   async function ensureConversation(): Promise<string> {
     if (activeConversationId) {
@@ -148,7 +183,7 @@ export function useChat({
     });
     setConversations((current) => [conversation, ...current]);
     setActiveConversationId(conversation.id);
-    storeActiveConversationId(conversation.id);
+    storeActiveConversationId(conversation.id, selectedProjectId || null);
     return conversation.id;
   }
 
@@ -217,7 +252,7 @@ export function useChat({
         response = await sendChatMessage(payload);
       }
       setActiveConversationId(response.conversation_id);
-      storeActiveConversationId(response.conversation_id);
+      storeActiveConversationId(response.conversation_id, selectedProjectId || null);
       setMessages((current) =>
         replaceOptimisticMessages(
           current,
@@ -311,9 +346,10 @@ export function useChat({
     }
     try {
       const updated = await apiRenameConversation(conversationId, clean);
-      setConversations((current) =>
-        current.map((item) => (item.id === conversationId ? { ...item, title: updated.title } : item)),
-      );
+      const retitle = (list: ChatConversation[]) =>
+        list.map((item) => (item.id === conversationId ? { ...item, title: updated.title } : item));
+      setConversations(retitle);
+      setGeneralConversations(retitle);
     } catch (err) {
       setError(formatChatError(err));
     }
@@ -395,7 +431,7 @@ export function useChat({
       });
       setConversations((current) => [conversation, ...current]);
       setActiveConversationId(conversation.id);
-      storeActiveConversationId(conversation.id);
+      storeActiveConversationId(conversation.id, selectedProjectId || null);
       setMessages([]);
       setContent("");
       setPendingAttachments([]);
@@ -409,14 +445,10 @@ export function useChat({
     setRetryRequest(null);
     setSidebarOpen(false);
     setActiveConversationId(conversationId);
-    storeActiveConversationId(conversationId);
+    storeActiveConversationId(conversationId, selectedProjectId || null);
     setPendingAttachments([]);
     try {
       await loadMessages(conversationId);
-      const conversation = await getConversation(conversationId);
-      if (conversation.project_id) {
-        setSelectedProjectId(conversation.project_id);
-      }
     } catch (err) {
       setError(formatChatError(err));
     }
@@ -428,10 +460,11 @@ export function useChat({
       await deleteConversation(conversationId);
       const remaining = conversations.filter((item) => item.id !== conversationId);
       setConversations(remaining);
+      setGeneralConversations((current) => current.filter((item) => item.id !== conversationId));
       if (activeConversationId === conversationId) {
         const nextId = remaining[0]?.id ?? null;
         setActiveConversationId(nextId);
-        storeActiveConversationId(nextId);
+        storeActiveConversationId(nextId, selectedProjectId || null);
         setMessages([]);
         setRetryRequest(null);
         if (nextId) {
@@ -522,6 +555,7 @@ export function useChat({
     handleRegenerate,
     handleRenameConversation,
     conversations,
+    generalConversations,
     activeConversationId,
     messages,
     content,

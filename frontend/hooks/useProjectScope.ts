@@ -3,6 +3,7 @@
 import { apiFetch, type ProjectListResponse, type ProjectSummary } from "@/lib/api";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getCurrentProjectId, PROJECT_EVENT, setCurrentProjectId } from "@/lib/current-project";
+import { PROJECTS_EVENT } from "@/lib/project-actions";
 
 export function useProjectScope(initialProjectId?: string | null) {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -28,6 +29,13 @@ export function useProjectScope(initialProjectId?: string | null) {
     setProjects(list);
     return list;
   }, []);
+
+  // A project was created elsewhere (New project dialog): keep this list current.
+  useEffect(() => {
+    const onCreated = () => void refreshProjects().catch(() => undefined);
+    window.addEventListener(PROJECTS_EVENT, onCreated);
+    return () => window.removeEventListener(PROJECTS_EVENT, onCreated);
+  }, [refreshProjects]);
 
   useEffect(() => {
     async function load() {

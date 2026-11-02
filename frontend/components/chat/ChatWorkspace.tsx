@@ -3,6 +3,8 @@
 import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ChatContextPanel } from "@/components/chat/ChatContextPanel";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
+import { ChatCardProjectContext } from "@/lib/chat-card-project";
+import { ProjectSwitcher } from "@/components/project/ProjectSwitcher";
 import { AssistantContextStrip } from "@/components/chat/AssistantContextStrip";
 import { ChatThread } from "@/components/chat/ChatThread";
 import { SaiaLogo } from "@/components/brand/SaiaLogo";
@@ -12,7 +14,7 @@ import { useChat } from "@/hooks/useChat";
 import { useProjectFiles } from "@/hooks/useProjectFiles";
 import { useProjectScope } from "@/hooks/useProjectScope";
 import { downloadProjectFile, uploadProjectFile, type ProjectFileSummary } from "@/lib/api";
-import { shouldShowProminentPrompt, storeActiveConversationId } from "@/lib/chat";
+import { clearStoredActiveConversations, shouldShowProminentPrompt } from "@/lib/chat";
 import { mapBackendMessage } from "@/lib/chat-mappers";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -50,6 +52,7 @@ export default function ChatWorkspace() {
     selectedProjectId,
     setSelectedProjectId,
     assistant,
+    projectsReady: !projectsLoading,
     onChatAction: (action) => {
       if (action.switchAssistant) setAssistant(action.switchAssistant);
       if (action.projectSwitch) void refreshProjects().catch(() => undefined);
@@ -66,9 +69,14 @@ export default function ChatWorkspace() {
     setSelectedFile(null);
   }, [selectedProjectId]);
 
-  const activeConversation = chat.conversations.find(
-    (item) => item.id === chat.activeConversationId,
-  );
+  const activeConversation =
+    chat.conversations.find((item) => item.id === chat.activeConversationId) ??
+    chat.generalConversations.find((item) => item.id === chat.activeConversationId);
+
+  // Open conversation is an older chat that never had a project (listed under "General").
+  const legacyChatOpen =
+    Boolean(selectedProjectId) &&
+    chat.generalConversations.some((item) => item.id === chat.activeConversationId);
 
   const latestEngineering = useMemo(() => {
     for (let index = chat.messages.length - 1; index >= 0; index -= 1) {
@@ -141,7 +149,7 @@ export default function ChatWorkspace() {
 
   function handleLogout() {
     logout();
-    storeActiveConversationId(null);
+    clearStoredActiveConversations();
     router.replace("/login");
   }
 
@@ -175,6 +183,8 @@ export default function ChatWorkspace() {
     <div className="chat-shell" data-context-open={contextOpen ? "true" : "false"}>
       <ChatSidebar
         conversations={chat.conversations}
+        generalConversations={chat.generalConversations}
+        projectScope={{ projects, selectedProjectId, selectedProject, setSelectedProjectId }}
         activeConversationId={chat.activeConversationId}
         open={chat.sidebarOpen}
         projectId={selectedProjectId || null}
@@ -232,9 +242,9 @@ export default function ChatWorkspace() {
             {!showProminentPrompt ? (
               <div>
                 <SaiaLogo size="sm" tagline={false} className="chat-header-logo" />
-                <h2>{activeConversation?.title ?? "New Chat"}</h2>
+                <h2>{activeConversation?.title ?? t("New chat")}</h2>
                 {selectedProject ? (
-                  <span className="chat-project-badge">Project: {selectedProject.name}</span>
+                  <span className="chat-project-badge">{t("Project")}: {selectedProject.name}</span>
                 ) : (
                   <span className="chat-project-badge muted">
                     No project selected — required for file attachments
@@ -245,30 +255,20 @@ export default function ChatWorkspace() {
               <SaiaLogo size="md" className="chat-header-logo" />
             )}
           </div>
-          <label className="chat-project-select">
-            <span className="chat-project-select-label">Project context</span>
-            <select
-              className="input"
-              value={selectedProjectId ?? ""}
-              onChange={(event) => setSelectedProjectId(event.target.value)}
+          <div className="chat-project-select">
+            <ProjectSwitcher
+              variant="bar"
               disabled={projectsLoading || chat.busy}
-              aria-label="Select project for this conversation"
-            >
-              <option value="">General Q&amp;A (no project)</option>
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name}
-                </option>
-              ))}
-            </select>
+              scope={{ projects, selectedProjectId, selectedProject, setSelectedProjectId }}
+            />
             {showProminentPrompt ? (
-              <span className="chat-project-select-hint muted">
+              <span className="chat-project-select-hint muted" dir="auto">
                 {selectedProject
-                  ? `Files and workflows will use ${selectedProject.name}.`
-                  : "Select a project before attaching engineering files."}
+                  ? t("This chat and its model, results and reports belong to this project.")
+                  : t("Create a project first — chats, files and results are kept per project.")}
               </span>
             ) : null}
-          </label>
+          </div>
           <div className="chat-header-status">
             <span className="chat-connection-status">{user ? "Signed in" : "Offline"}</span>
             <button
@@ -351,6 +351,7 @@ export default function ChatWorkspace() {
               />
             ) : null}
             <div className="chat-main-body">
+              <ChatCardProjectContext.Provider value={legacyChatOpen ? null : undefined}>
               <ChatThread
                 messages={chat.messages}
                 busy={chat.busy}
@@ -362,6 +363,7 @@ export default function ChatWorkspace() {
                 onApprovalResolved={() => void chat.handleApprovalResolved()}
                 onRegenerate={() => void chat.handleRegenerate()}
               />
+              </ChatCardProjectContext.Provider>
             </div>
             <ChatComposer variant="default" {...composerProps} />
           </div>

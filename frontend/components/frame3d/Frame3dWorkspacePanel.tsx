@@ -71,6 +71,8 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
       const pid = getCurrentProjectId();
       if (!pid) void ensureCurrentProject();
       setProjectId(pid);
+      setError(null);
+      setNote(null);
       setPayload(loadFrame3dPayload(pid));
       const saved = loadFrame3dInputs(pid);
       setSavedKey(saved ? JSON.stringify(saved) : "");
@@ -88,7 +90,8 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
             .catch(() => undefined);
         }
       }
-      if (saved && mode === "model") setValues(inputsToForm({ ...DEFAULT_FRAME_INPUTS, ...saved }));
+      // A project without saved inputs shows the defaults, never the previous project's form values.
+      if (mode === "model") setValues(inputsToForm({ ...DEFAULT_FRAME_INPUTS, ...(saved ?? {}) }));
     };
     sync();
     window.addEventListener(PROJECT_EVENT, sync);
@@ -244,6 +247,7 @@ export function useLatestFrame3d() {
     const sync = () => {
       const pid = getCurrentProjectId();
       setProjectId(pid);
+      setError(null);
       const saved = loadFrame3dInputs(pid);
       if (!saved) void hydrateFrame3dFromServer(pid);
       setInputs(saved);

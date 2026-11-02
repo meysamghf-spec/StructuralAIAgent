@@ -10,6 +10,7 @@ import { useUiLang } from "@/hooks/useUiLang";
 import { useDrawerDismiss } from "@/hooks/useDrawerDismiss";
 import { PageTitle } from "@/components/layout/PageTitle";
 import { SaiaLogo } from "@/components/brand/SaiaLogo";
+import { ProjectSwitcher } from "@/components/project/ProjectSwitcher";
 
 
 const AUTH_PATHS = new Set(["/login", "/register"]);
@@ -63,6 +64,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           {navOpen ? "✕" : "☰"}
         </button>
         <Link href="/" className="mobile-topbar-title" aria-label="SAIA"><SaiaLogo size="sm" tagline={false} /></Link>
+        {isAuthenticated ? <ProjectSwitcher variant="bar" /> : null}
       </header>
       <button
         type="button"
@@ -80,6 +82,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Link href="/" className="brand-link" aria-label="SAIA home"><SaiaLogo size="md" /></Link>
           <p className="brand-title">Engineering Workspace</p>
         </div>
+        {isAuthenticated ? (
+          <div className="sidebar-project" data-testid="sidebar-project">
+            <ProjectSwitcher variant="panel" onChange={() => setNavOpen(false)} />
+          </div>
+        ) : null}
         <MainNav onNavigate={() => setNavOpen(false)} />
         <div className="sidebar-lang">
           <span>{t("Language")}:</span>

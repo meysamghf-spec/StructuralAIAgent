@@ -23,6 +23,15 @@ export function setUiLang(lang: Frame3dLang): void {
 }
 
 export const UI_FA: Record<string, string> = {
+  "New project": "پروژه جدید", "Project name": "نام پروژه", "Enter a project name.": "نام پروژه را وارد کنید.",
+  "Could not create the project.": "ساخت پروژه ناموفق بود.", "e.g. Arak office building": "مثلاً ساختمان اداری اراک",
+  "A new project starts with an empty chat, model, analysis, design and reports.": "پروژه جدید با گفتگو، مدل، تحلیل، طراحی و گزارش‌های خالی شروع می‌شود.",
+  Cancel: "انصراف", "Creating…": "در حال ساخت…", "No projects yet": "هنوز پروژه‌ای نیست",
+  "New chat": "گفتگوی تازه", "Chat history of this project": "تاریخچه گفتگوهای این پروژه", "Recent conversations": "گفتگوهای اخیر",
+  "No matching conversations": "گفتگوی مطابقی نیست", "No chats in this project yet": "هنوز گفتگویی در این پروژه نیست",
+  "General (no project)": "عمومی (بدون پروژه)",
+  "This chat and its model, results and reports belong to this project.": "این گفتگو و مدل، نتایج و گزارش‌هایش متعلق به همین پروژه است.",
+  "Create a project first — chats, files and results are kept per project.": "ابتدا یک پروژه بسازید — گفتگو، فایل و نتایج برای هر پروژه جداگانه نگه‌داری می‌شود.",
   "Welcome back": "خوش آمدید",
   "Chat with your structural AI": "با هوش مصنوعی سازه‌ات گفتگو کن",
   "Analysis, design, validation, approval and memory — all in one conversation.": "تحلیل، طراحی، اعتبارسنجی، تأیید و حافظه — همه در یک گفتگو.",
