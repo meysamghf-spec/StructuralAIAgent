@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { AnalysisKpis, AnalysisSections } from "@/components/analysis/AnalysisResultsView";
 import { runFrame3d } from "@/components/frame3d/Frame3dWorkspacePanel";
@@ -30,7 +30,8 @@ import "@/components/analysis/analysis.css";
 
 type RunState = { kind: "idle" } | { kind: "running" } | { kind: "ok" } | { kind: "error"; message: string };
 
-export default function AnalysisWorkspaceClient() {
+/** `viewer` (the 3D frame section) is rendered right under the run banner / KPIs, above the long result tables. */
+export default function AnalysisWorkspaceClient({ viewer }: { viewer?: ReactNode } = {}) {
   const { lang } = useUiLang();
   const t = useMemo(() => makeAnalysisT(lang), [lang]);
   const { projects, selectedProjectId, setSelectedProjectId, selectedProject, loading, error } = useProjectScope();
@@ -192,12 +193,9 @@ export default function AnalysisWorkspaceClient() {
         </section>
       )}
 
-      {hasResults && view ? (
-        <>
-          <AnalysisKpis view={view} t={t} />
-          <AnalysisSections view={view} t={t} />
-        </>
-      ) : null}
+      {hasResults && view ? <AnalysisKpis view={view} t={t} /> : null}
+      {viewer}
+      {hasResults && view ? <AnalysisSections view={view} t={t} /> : null}
     </div>
   );
 }

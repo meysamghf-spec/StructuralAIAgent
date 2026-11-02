@@ -99,7 +99,7 @@ describe("project analysis page (results + one Analyze button)", () => {
 
   it("restores the full analysis page: results + Analyze button, the 3D frame section and the legacy tools", () => {
     const page = read("app/workspace/analysis/page.tsx");
-    expect(page).toContain("<AnalysisWorkspaceClient />");
+    expect(page).toContain("<AnalysisWorkspaceClient viewer={");
     expect(page).toContain('<Frame3dWorkspacePanel mode="analysis" />');
     expect(page).toContain("<AnalysisLegacyClient />");
   });

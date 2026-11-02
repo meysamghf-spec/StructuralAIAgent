@@ -34,7 +34,7 @@ type Display = "NONE" | DiagramKind | "DC";
 
 const BG = 0x1f2a38;
 
-export default function Frame3dViewer({ data, results, t, onClose, embedded = false, initialMode = null }: { data: ViewerData; results: Frame3dResults; t: T; onClose?: () => void; embedded?: boolean; initialMode?: number | null }) {
+export default function Frame3dViewer({ data, results, t, onClose, embedded = false, initialMode = null, initialDisplay, initialDeformed = false }: { data: ViewerData; results: Frame3dResults; t: T; onClose?: () => void; embedded?: boolean; initialMode?: number | null; initialDisplay?: "NONE" | "M3" | "V2" | "P" | "DC"; initialDeformed?: boolean }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const camRef = useRef<{ key: string; pos: number[]; target: number[]; zoom: number } | null>(null);
   const [view, setViewState] = useState<ViewPreset>("3D");
@@ -48,7 +48,7 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
   const [jointLabels, setJointLabels] = useState(false);
   const [frameLabels, setFrameLabels] = useState(false);
   const [extruded, setExtruded] = useState(false);
-  const [showDeformed, setShowDeformed] = useState(false);
+  const [showDeformed, setShowDeformed] = useState(initialDeformed && Object.keys(data.displacements ?? {}).length > 0);
   const [animate, setAnimate] = useState(false);
   const modes = data.modes ?? [];
   const [modeNo, setModeNo] = useState<number | null>(initialMode && modes.some((m) => m.mode === initialMode) ? initialMode : null);
@@ -60,7 +60,11 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
   modeCtl.current.speed = modeSpeed;
   modeCtl.current.playing = playing;
   const activeMode = modes.find((m) => m.mode === modeNo) ?? null;
-  const [display, setDisplay] = useState<Display>(data.members.some((m) => m.dc !== null) ? "DC" : "NONE");
+  const [display, setDisplay] = useState<Display>(
+    initialDisplay && (initialDisplay !== "DC" || data.members.some((m) => m.dc !== null)) && (initialDisplay === "NONE" || initialDisplay === "DC" || Object.keys(data.forces ?? {}).length > 0)
+      ? initialDisplay
+      : data.members.some((m) => m.dc !== null) ? "DC" : "NONE",
+  );
   const loads = useMemo(() => loadOptions(data), [data]);
   const [load, setLoad] = useState<string>(loads.find((l) => l.startsWith("1.2D+1.6L")) ?? loads[0] ?? "D");
   const baseScale = useMemo(() => autoDeformScale(data, load), [data, load]);

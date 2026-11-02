@@ -7,8 +7,7 @@ import AnalysisWorkspaceClient from "./AnalysisWorkspaceClient";
 export default function AnalysisWorkspacePage() {
   return (
     <>
-      <AnalysisWorkspaceClient />
-      <Frame3dWorkspacePanel mode="analysis" />
+      <AnalysisWorkspaceClient viewer={<Frame3dWorkspacePanel mode="analysis" />} />
       <LegacySection label="analysis">
         <AnalysisLegacyClient />
       </LegacySection>

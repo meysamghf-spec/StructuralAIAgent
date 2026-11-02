@@ -52,7 +52,7 @@ export const UI_FA: Record<string, string> = {
   "Seismic code": "آیین‌نامهٔ زلزله", "Seismic hazard": "خطر نسبی زلزله", "Soil type": "نوع خاک", "Importance I": "ضریب اهمیت I",
   "Lateral system": "سیستم باربر جانبی", "C (if assumed)": "C (در صورت فرض)", "Allowable bearing": "تنش مجاز خاک",
   "Import from last chat frame": "دریافت از آخرین قاب گفتگو", "Reset to defaults": "بازگشت به پیش‌فرض",
-  "Run analysis + design": "اجرای تحلیل و طراحی", "Running…": "در حال اجرا…", "Saved to this project.": "برای این پروژه ذخیره شد.",
+  "Run analysis + design": "اجرای تحلیل و طراحی", "Running…": "در حال اجرا…", "Re-run with saved model": "اجرای دوباره با مدل ذخیره‌شده", "Imported model (latest import of this project)": "مدل واردشده (آخرین ایمپورت این پروژه)", "Saved to this project.": "برای این پروژه ذخیره شد.",
   "This model is incomplete": "این مدل ناقص است",
   "Some required inputs are missing. I can complete them with typical values (4 storeys, 3×3 bays of 5 m, 3.2 m storey height, Iranian codes) and re-run; the assumptions are listed in the result.": "برخی ورودی‌های لازم کم است. می‌توانم با مقادیر معمول (۴ طبقه، ۳×۳ دهانه ۵ متری، ارتفاع طبقه ۳.۲ متر، آیین‌نامه‌های ایران) کامل کنم و دوباره اجرا کنم؛ فرض‌ها در نتیجه فهرست می‌شوند.",
   "Complete with defaults and run": "تکمیل با پیش‌فرض‌ها و اجرا",

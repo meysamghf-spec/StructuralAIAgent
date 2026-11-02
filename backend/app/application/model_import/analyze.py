@@ -12,6 +12,7 @@ from app.application.analysis.frame3d_solver import (
     SpaceElement, SpaceFrameModel, SpaceFrameSolverError, SpaceNode, SpaceNodalLoad, SpaceSupport,
     assemble_space_system, build_space_load_vector, recover_space_result,
 )
+from app.application.analysis.frame3d_solver import _fixed_end_forces, _matvec
 from app.application.model_import.common import assume, finalize, rect_props, num
 
 DEFAULT_CONCRETE = {"type": "Concrete", "E": 2.35e7, "nu": 0.2, "unit_weight": 25.0}
@@ -133,8 +134,10 @@ def analyze_imported_model(model: dict[str, Any]) -> dict[str, Any]:
         return udl, nl
 
     vectors: dict[str, list[float]] = {}
+    pattern_udl: dict[str, dict[str, list[float]]] = {}
     for pat in model["load_patterns"]:
         udl, nl = pattern_loads(pat)
+        pattern_udl[pat] = udl
         vectors[pat] = build_space_load_vector(fm, prepared, nl, {k: tuple(v) for k, v in udl.items()})
     cases: dict[str, dict[str, float]] = {f"pattern:{p}": {p: 1.0} for p in model["load_patterns"]}
     cases.update({f"combo:{c}": f for c, f in model["combos"].items()})
@@ -171,6 +174,7 @@ def analyze_imported_model(model: dict[str, Any]) -> dict[str, Any]:
                 e = env.setdefault(mid, {"N": 0.0, "V": 0.0, "M": 0.0, "T": 0.0})
                 for k in e:
                     e[k] = max(e[k], f[k])
+    viewer = _viewer(model, fm, prepared, vectors, pattern_udl)
     governing = sorted(env.items(), key=lambda kv: -kv[1]["M"])[:15]
     return {
         "engine": "SAIA frame3d direct-stiffness (linear, first order)",
@@ -179,9 +183,63 @@ def analyze_imported_model(model: dict[str, Any]) -> dict[str, Any]:
         "cases": results,
         "envelope": env,
         "governing_members": [{"member": k, **v} for k, v in governing],
+        "viewer": viewer,
         "assumptions": model["assumptions"],
         "notes": [
             "Linear static, first-order analysis; no P-Delta, no modal/response spectrum for imported models in this phase.",
             "Member results are max |N|, |V|, |M| along each member (kN, kN.m).",
         ],
     }
+
+
+def _viewer(model: dict[str, Any], fm: SpaceFrameModel, prepared: dict[str, Any],
+            vectors: dict[str, list[float]], pattern_udl: dict[str, dict[str, list[float]]]) -> dict[str, Any] | None:
+    """Per-pattern data for the shared 3D viewer (same row format as the chat frame viewer).
+
+    member row: [N, V at i-end, M at i-end, M at j-end, w (local UDL in the drawn plane)], plane = the one with the larger
+    end moments; M(x) = Mi + (Mj-Mi)x/L + w(x^2 - xL)/2. End forces include the fixed-end actions of the member UDL.
+    Displacements in mm. Combinations are rebuilt client-side from the pattern factors (linear analysis).
+    """
+    try:
+        zs = sorted({round(n.z, 3) for n in fm.nodes})
+        storey_of = {n.id: zs.index(round(n.z, 3)) for n in fm.nodes}
+        el_by_id = {e.id: e for e in fm.elements}
+        members = []
+        for mem in model["members"]:
+            sec = model["sections"].get(mem["section"]) or {}
+            members.append({"id": mem["id"], "i": mem["i"], "j": mem["j"], "type": "column" if mem["type"] == "column" else "beam",
+                            "storey": max(storey_of.get(mem["i"], 0), storey_of.get(mem["j"], 0)), "section": mem["section"],
+                            "b": sec.get("b") or 0.3, "h": sec.get("h") or 0.3})
+        forces: dict[str, dict[str, list[float]]] = {}
+        disp: dict[str, dict[str, list[float]]] = {}
+        reac: dict[str, dict[str, list[float]]] = {}
+        for pat, vec in vectors.items():
+            res = recover_space_result(fm, prepared, vec)
+            row: dict[str, list[float]] = {}
+            for mid, e in el_by_id.items():
+                local_k, _fl, dofs, length, transform = prepared["element_cache"][mid]
+                node_ids = (e.start_node_id, e.end_node_id)
+                u_g = [res.displacements[node_ids[k // 6]][k % 6] for k in range(12)]
+                wg = pattern_udl[pat].get(mid, [0.0, 0.0, 0.0])
+                tmp = SpaceElement(mid, e.start_node_id, e.end_node_id, e.elastic_modulus, e.area, e.iy, e.iz, e.j,
+                                   udl_gx=wg[0], udl_gy=wg[1], udl_gz=wg[2])
+                fef = _fixed_end_forces(tmp, length, transform)
+                f = [a + b for a, b in zip(_matvec(local_k, _matvec(transform, u_g)), fef)]
+                wl = _matvec([transform[i][:3] for i in range(3)], wg)
+                use_y = max(abs(f[4]), abs(f[10])) >= max(abs(f[5]), abs(f[11]))
+                mi, mj, v, w = (f[4], -f[10], f[2], wl[2]) if use_y else (f[5], -f[11], -f[1], -wl[1])
+                row[mid] = [round(f[0], 3), round(v, 3), round(mi, 3), round(mj, 3), round(w, 4)]
+            forces[pat] = row
+            disp[pat] = {n.id: [round(res.displacements[n.id][k] * 1000, 3) for k in range(3)] for n in fm.nodes}
+            reac[pat] = {nid: [round(x, 3) for x in r] for nid, r in res.reactions.items()}
+        return {
+            "nodes": [{"id": n.id, "x": n.x, "y": n.y, "z": n.z} for n in fm.nodes],
+            "supports": [s.node_id for s in fm.supports],
+            "members": members,
+            "cases": list(vectors),
+            "combos": {c: dict(f) for c, f in model["combos"].items()},
+            "forces": forces, "displacements_mm": disp, "reactions": reac,
+            "diaphragm_levels": list(range(1, len(zs))),
+        }
+    except Exception:  # the viewer block is optional; never fail the analysis because of it
+        return None

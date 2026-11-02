@@ -119,6 +119,32 @@ $ POINT OBJECT LOADS
     d = res["cases"]["pattern:P"]["max_displacement_m"]
     assert d == pytest.approx(10 * 4 ** 3 / (3 * 3e7 * 0.5 ** 4 / 12), rel=1e-6)
     assert res["cases"]["pattern:P"]["members"]["C1@S1"]["M"] == pytest.approx(40, rel=1e-6)
+    v = res["viewer"]
+    assert v and v["cases"] == ["P"] and v["members"][0]["type"] == "column"
+    n, vi, mi, mj, w = v["forces"]["P"]["C1@S1"]
+    assert max(abs(mi), abs(mj)) == pytest.approx(40, rel=1e-6) and abs(vi) == pytest.approx(10, rel=1e-6)
+    tip = max(abs(x) for x in v["displacements_mm"]["P"].values() for x in x)
+    assert tip == pytest.approx(d * 1000, rel=1e-3)
+
+
+def test_import_viewer_beam_rows_include_udl_fixed_end_actions():
+    m = _load("portal_kgf_cm.e2k")
+    m2 = apply_review(m, {"sections": {"IPE300": {"A": 53.8e-4, "I33": 8356e-8, "I22": 604e-8, "J": 20.1e-8}},
+                          "beam_line_loads": [{"pattern": "Live", "w": 5, "story": "Story2"}],
+                          "confirmed": ["areas:1"]})
+    v = analyze_imported_model(m2)["viewer"]
+    assert v and "Live" in v["cases"] and v["combos"] == m2["combos"]
+    beams = [mm for mm in v["members"] if mm["type"] == "beam"]
+    assert beams
+    for b in beams:
+        _n, vi, mi, mj, w = v["forces"]["Live"][b["id"]]
+        if abs(w) < 1e-9:
+            continue
+        L = _len(m2, _mem(m2, b["id"]))
+        # equilibrium of the loaded span: Vi*L = (Mj - Mi) ... sign-free check via M(x) diagram closing at both ends
+        mid = (mi + mj) / 2 + w * (-(L / 2) ** 2) / 2
+        assert abs(mid) < max(abs(mi), abs(mj)) + abs(w) * L * L / 8 + 1e-6
+        assert abs(vi) == pytest.approx(abs((mj - mi) / L + w * L / 2), rel=1e-3) or abs(vi) == pytest.approx(abs((mj - mi) / L - w * L / 2), rel=1e-3)
 
 
 @pytest.mark.parametrize("name,code", [("a.dwg", "dwg"), ("a.txt", "ext"), ("a.s2k", "phase"), ("a.dxf", "phase")])
