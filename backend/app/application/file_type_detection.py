@@ -26,6 +26,9 @@ _EXTENSION_MAP: dict[str, FileType] = {
     ".edb": FileType.UNKNOWN,
     ".sdb": FileType.UNKNOWN,
     ".f2k": FileType.UNKNOWN,
+    ".e2k": FileType.TEXT,
+    ".s2k": FileType.TEXT,
+    ".json": FileType.TEXT,
 }
 
 _MIME_MAP: dict[str, FileType] = {
