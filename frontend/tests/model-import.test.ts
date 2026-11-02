@@ -1,14 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { analyzeImport, fmt, ImportApiError, parseImport, precheckFile, sectionEditFromMm } from "@/lib/model-import";
+import { analyzeImport, fmt, ImportApiError, isCatalogName, parseImport, precheckFile, sectionEditFromMm } from "@/lib/model-import";
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("model import client", () => {
-  it("rejects dwg with Save-As-DXF advice and next-phase formats", () => {
+  it("rejects dwg with Save-As-DXF advice and accepts every CSI/DXF format", () => {
     expect(precheckFile("a.DWG")?.en).toMatch(/Save As/);
     expect(precheckFile("a.dwg")?.fa).toMatch(/DXF/);
-    expect(precheckFile("b.s2k")?.en).toMatch(/next phase/);
+    for (const n of ["b.s2k", "c.F2K", "plan.dxf"]) expect(precheckFile(n)).toBeNull();
+    expect(isCatalogName("IPE300")).toBe(true);
+    expect(isCatalogName("HE200B")).toBe(true);
+    expect(isCatalogName("C50")).toBe(false);
     expect(precheckFile("c.txt")).not.toBeNull();
     expect(precheckFile("tower.e2k")).toBeNull();
   });
