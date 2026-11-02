@@ -61,24 +61,28 @@ def test_units_story_and_issue_listing():
     assert m["supports"]["2@Base"] == [True, True, True, False, False, False]
     ld = next(x for x in m["member_loads"] if x["pattern"] == "Dead")
     assert ld["wz"] == pytest.approx(-20 * 9.80665e-3 / 1e-2)
-    live = next(x for x in m["member_loads"] if x["pattern"] == "Live")
-    assert live["wz"] == pytest.approx(-10 * 9.80665e-3 / 1e-2)
+    live = [x for x in m["member_loads"] if x["pattern"] == "Live"]
+    assert len(live) == 8  # trapezoid kept as 8 piecewise-uniform steps
+    assert sum(x["wz"] * (x["rb"] - x["ra"]) for x in live) == pytest.approx(-10 * 9.80665e-3 / 1e-2)
+    assert live[0]["wz"] > live[-1]["wz"]  # 5 -> 15 increasing (more negative)
+    b1 = next(x for x in m["members"] if x["id"] == "B1@Story1")
+    assert b1["rel_i"] == [False, False, False, False, True, True] and not any(b1["rel_j"])
+    assert m["sections"]["IPE300"]["catalog"].startswith("IPE300")
     eq = m["nodal_loads"][0]
     assert eq["node"] == "1@Story2" and eq["fx"] == pytest.approx(9.80665)
     assert m["combos"]["ENV"] == {"Dead": 1.2, "Live": 1.6}
     codes = _codes(m)
-    assert {"section_shape", "release", "areas", "area_loads", "diaphragm", "trapezoid", "combo_type", "combo_case", "auto_lateral"} <= codes
+    assert {"catalog", "combo_type", "combo_case", "auto_lateral"} <= codes
+    assert not {"release", "areas", "trapezoid", "diaphragm", "section_shape"} & codes
     s = review_summary(m)
-    assert not s["can_analyze"] and s["blocking"] == 1
-    with pytest.raises(ValueError):
-        analyze_imported_model(m)
+    assert s["can_analyze"] and s["blocking"] == 0
 
 
 def test_review_edits_unblock_and_analysis_matches_hand_calc():
     m = _load("portal_kgf_cm.e2k")
     m2 = apply_review(m, {"sections": {"IPE300": {"A": 53.8e-4, "I33": 8356e-8, "I22": 604e-8, "J": 20.1e-8}},
                           "beam_line_loads": [{"pattern": "Live", "w": 5, "story": "Story2"}],
-                          "confirmed": ["areas:1"]})
+                          "confirmed": ["catalog:IPE300"]})
     s = review_summary(m2)
     assert s["can_analyze"]
     assert any(i.get("confirmed") for i in m2["issues"])
@@ -121,7 +125,7 @@ $ POINT OBJECT LOADS
     assert res["cases"]["pattern:P"]["members"]["C1@S1"]["M"] == pytest.approx(40, rel=1e-6)
 
 
-@pytest.mark.parametrize("name,code", [("a.dwg", "dwg"), ("a.txt", "ext"), ("a.s2k", "phase"), ("a.dxf", "phase")])
+@pytest.mark.parametrize("name,code", [("a.dwg", "dwg"), ("a.txt", "ext")])
 def test_rejected_files(name, code):
     with pytest.raises(ImportError_) as e:
         parse_model_file(name, b"x")
