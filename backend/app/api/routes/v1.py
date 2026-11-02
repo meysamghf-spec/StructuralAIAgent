@@ -30,6 +30,7 @@ from app.api.routes.reports import router as reports_router
 from app.api.routes.revisions import router as revisions_router
 from app.api.routes.traceability import router as traceability_router
 from app.api.routes.frame3d import router as frame3d_router
+from app.api.routes.model_import import router as model_import_router
 from app.api.routes.platform_issues import router as platform_issues_router
 from app.api.routes.units import router as units_router
 from app.api.routes.payments import router as payments_router
@@ -49,6 +50,7 @@ v1_router.include_router(files_router)
 v1_router.include_router(project_memory_router)
 v1_router.include_router(units_router)
 v1_router.include_router(frame3d_router)
+v1_router.include_router(model_import_router)
 v1_router.include_router(platform_issues_router)
 v1_router.include_router(conversations_router)
 v1_router.include_router(chat_router)
