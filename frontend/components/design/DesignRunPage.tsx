@@ -1,5 +1,6 @@
 "use client";
 
+import { DetailingPanel } from "@/components/detailing/DetailingPanel";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -379,6 +380,7 @@ function DesignRunPageInner() {
       {phase === "error" && error ? <p className={`${s.status} ${s.statusErr}`} role="alert" data-testid="design-error">{t("Design failed")}: {error}</p> : null}
 
       {results?.design && hasDesign ? <DesignResults results={results} t={t} /> : null}
+      <DetailingPanel compact />
     </section>
   );
 }
