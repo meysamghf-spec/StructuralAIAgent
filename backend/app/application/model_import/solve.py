@@ -492,6 +492,7 @@ def analyze_imported_model(model: dict[str, Any]) -> dict[str, Any]:
         "slabs": {"count": len(slab_report), "one_way": sum(1 for r in slab_report if r["one_way"]),
                   "to_nodes": sum(1 for r in slab_report if r["to_nodes"])},
         "design": design,
+        "viewer": _viewer(model, used, xyz, eng, [p for p in pats if p in pat_st], pat_st, pat_U, pat_R, combos, lengths),
         "notes": notes + eng.notes + [
             "Member results are max |N|, resultant |V| and |M| along each member (9 stations) in kN and kN.m.",
             "Response-spectrum and '±RS' envelope cases are unsigned (absolute values).",
@@ -528,3 +529,58 @@ def _support_sum(R: np.ndarray, eng: FrameEngine) -> np.ndarray:
             if fl[k]:
                 tot[k] += R[6 * i + k]
     return tot
+
+
+def _viewer(model: dict[str, Any], used: list[str], xyz: np.ndarray, eng: FrameEngine, pats: list[str],
+            pat_st: dict[str, np.ndarray], pat_U: dict[str, np.ndarray], pat_R: dict[str, np.ndarray],
+            combos: dict[str, dict[str, float]], lengths: dict[str, float]) -> dict[str, Any] | None:
+    """Per-pattern data for the shared 3D viewer (same row format as the chat frame viewer).
+
+    member row: [N, V at i-end, M at i-end, M at j-end, w (equivalent UDL in the drawn plane)]; plane = the one with the
+    larger end moments; M(x) = Mi + (Mj-Mi)x/L + w(x^2 - xL)/2 (w recovered from the mid-span station).
+    Displacements in mm. Combinations are rebuilt client-side from the pattern factors (linear superposition).
+    """
+    try:
+        zs = sorted({round(float(z), 3) for z in xyz[:, 2]})
+        storey_of = {n: zs.index(round(float(xyz[k, 2]), 3)) for k, n in enumerate(used)}
+        members = []
+        for mem in model["members"]:
+            sec = model["sections"].get(mem["section"]) or {}
+            members.append({"id": mem["id"], "i": mem["i"], "j": mem["j"], "type": "column" if mem["type"] == "column" else "beam",
+                            "storey": max(storey_of.get(mem["i"], 0), storey_of.get(mem["j"], 0)), "section": mem["section"],
+                            "b": sec.get("b") or 0.3, "h": sec.get("h") or 0.3})
+        ids = [el.id for el in eng.elements]
+        inv = {v: k for k, v in eng.index.items()}
+        sup = [i for i, fl in eng.supports.items() if any(fl)]
+        forces: dict[str, dict[str, list[float]]] = {}
+        disp: dict[str, dict[str, list[float]]] = {}
+        reac: dict[str, dict[str, list[float]]] = {}
+        for p in pats:
+            st = pat_st[p]
+            ns = st.shape[1]
+            row: dict[str, list[float]] = {}
+            for n, mid in enumerate(ids):
+                s = st[n]
+                L = lengths.get(mid) or 1.0
+                use2 = max(abs(s[0, 4]), abs(s[-1, 4])) >= max(abs(s[0, 5]), abs(s[-1, 5]))
+                mk, vk = (4, 2) if use2 else (5, 1)
+                mi, mj = float(s[0, mk]), float(s[-1, mk])
+                mmid = float(s[ns // 2, mk]) if ns % 2 else (float(s[ns // 2 - 1, mk]) + float(s[ns // 2, mk])) / 2
+                w = 8.0 * ((mi + mj) / 2 - mmid) / (L * L)
+                row[mid] = [round(float(s[0, 0]), 3), round(float(s[0, vk]), 3), round(mi, 3), round(mj, 3), round(w, 4)]
+            forces[p] = row
+            U = pat_U[p].reshape(-1, 6)
+            disp[p] = {nid: [round(float(U[eng.index[nid], d]) * 1000, 3) for d in range(3)] for nid in used if nid in eng.index}
+            R = pat_R[p].reshape(-1, 6)
+            reac[p] = {inv[i]: [round(float(R[i, d]), 3) for d in range(6)] for i in sup}
+        return {
+            "nodes": [{"id": nid, "x": float(xyz[k, 0]), "y": float(xyz[k, 1]), "z": float(xyz[k, 2])} for k, nid in enumerate(used)],
+            "supports": [inv[i] for i in sup],
+            "members": members,
+            "cases": list(pats),
+            "combos": {c: dict(f) for c, f in combos.items()},
+            "forces": forces, "displacements_mm": disp, "reactions": reac,
+            "diaphragm_levels": list(range(1, len(zs))),
+        }
+    except Exception:  # the viewer block is optional; never fail the analysis because of it
+        return None

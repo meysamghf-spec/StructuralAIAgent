@@ -28,6 +28,9 @@ import {
 import { missingGeometry } from "@/lib/input-labels";
 import { useUiLang } from "@/hooks/useUiLang";
 import { hydrateFrame3dFromServer, incompleteFrameRun, listProjectChatRuns } from "@/lib/chat-runs";
+import { importViewerData, importViewerResults } from "@/lib/import-viewer";
+import { latestImport } from "@/lib/model-import";
+import type { ViewerData } from "@/lib/frame3d-viewer";
 
 const Frame3dViewer = dynamic(() => import("@/components/chat/Frame3dViewer"), { ssr: false });
 const FoundationView = dynamic(() => import("@/components/frame3d/FoundationView"), { ssr: false });
@@ -65,6 +68,8 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
   const [error, setError] = useState<string | null>(null);
   // Changes when saved inputs appear (e.g. restored from the latest chat run) so the re-run effect below fires.
   const [savedKey, setSavedKey] = useState("");
+  // Latest imported model (ETABS/SAP2000/SAFE/DXF) of the project, shown when the project has no chat/manual frame run.
+  const [imported, setImported] = useState<ViewerData | null>(null);
 
   useEffect(() => {
     const sync = () => {
@@ -76,6 +81,14 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
       setPayload(loadFrame3dPayload(pid));
       const saved = loadFrame3dInputs(pid);
       setSavedKey(saved ? JSON.stringify(saved) : "");
+      setImported(null);
+      if (pid && mode !== "model" && mode !== "foundation") {
+        void latestImport(pid)
+          .then((st) => {
+            if (getCurrentProjectId() === pid) setImported(importViewerData(st));
+          })
+          .catch(() => undefined);
+      }
       if (!saved) {
         void hydrateFrame3dFromServer(pid);
         // Results: a chat run that stopped for missing inputs is completed right here (one section, no second card).
@@ -120,7 +133,7 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
   }
 
   useEffect(() => {
-    if ((mode === "results" || mode === "design" || mode === "foundation") && !payload && !busy && loadFrame3dInputs(projectId)) {
+    if ((mode === "analysis" || mode === "results" || mode === "design" || mode === "foundation") && !payload && !busy && loadFrame3dInputs(projectId)) {
       void run({ ...loadFrame3dInputs(projectId)!, lang });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -182,7 +195,7 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
         <div className="frame3d-actions">
           {saved ? (
             <button className="button" type="button" disabled={busy} onClick={() => void run({ ...saved, lang })}>
-              {busy ? t("Running…") : t("Rerun with saved model")}
+              {busy ? t("Running…") : t("Re-run with saved model")}
             </button>
           ) : null}
           <Link className="button secondary" href="/workspace/model">
@@ -192,9 +205,33 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
       ) : null}
       {note ? <p className="muted">{note}</p> : null}
       {error ? <p className="alert error">{error}</p> : null}
+      {busy && !results?.viewer && mode !== "model" ? <p className="muted" role="status" data-testid="frame3d-viewer-loading">{t("Running…")}</p> : null}
       {results?.viewer && mode !== "foundation" ? (
         <SectionErrorBoundary label="3D viewer">
-          <Frame3dViewer data={results.viewer} results={results} t={makeT(results.lang)} embedded />
+          <div data-testid="frame3d-viewer-section">
+            <Frame3dViewer
+              data={results.viewer}
+              results={results}
+              t={makeT(results.lang)}
+              embedded
+              initialDisplay={mode === "analysis" || mode === "results" ? "M3" : undefined}
+              initialDeformed={mode === "analysis" || mode === "results"}
+            />
+          </div>
+        </SectionErrorBoundary>
+      ) : !results && imported && (mode === "analysis" || mode === "results" || mode === "design") ? (
+        <SectionErrorBoundary label="3D viewer (imported model)">
+          <div data-testid="frame3d-viewer-section" data-source="import">
+            <p className="muted">{t("Imported model (latest import of this project)")}</p>
+            <Frame3dViewer
+              data={imported}
+              results={importViewerResults(lang)}
+              t={makeT(lang)}
+              embedded
+              initialDisplay="M3"
+              initialDeformed
+            />
+          </div>
         </SectionErrorBoundary>
       ) : null}
       {results?.viewer?.footings?.length && (mode === "design" || mode === "results" || mode === "foundation") ? (
@@ -226,7 +263,7 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
         </>
       ) : results && mode !== "foundation" ? (
         <Frame3dResultCard results={results} downloads={false} />
-      ) : mode !== "model" && !incomplete ? (
+      ) : mode !== "model" && !incomplete && !imported ? (
         <EmptyHint projectId={projectId} />
       ) : null}
     </section>
