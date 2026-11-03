@@ -51,3 +51,30 @@ def test_detect_never_reports_no_model():
 
 def test_inputs_from_texts_none_without_frame():
     assert inputs_from_texts(["hello", "سلام"]) is None
+
+
+def test_chat_title_reported_for_chat_text_and_runs():
+    conv = FakeConv(texts=["قاب ۶ طبقه با ۲×۴ دهانه ۶ متری بساز"])
+    conv.c.title = "قاب اراک"
+    r = resolve_project_frame(conv, None, PID)
+    assert r["chat_title"] == "قاب اراک"
+    assert "bay_x_m" not in r["assumed"] and "storey_height_m" in r["assumed"]
+    run = {"kind": "frame3d_analysis", "status": "MISSING_INPUT", "created_at": "x", "conversation_title": "c1",
+           "inputs": {"storeys": 13, "bays_x": None, "bays_y": None}}
+    r2 = resolve_project_frame(FakeConv(runs=[run]), None, PID)
+    assert r2["chat_title"] == "c1" and r2["inputs"]["storeys"] == 13
+    assert resolve_project_frame(FakeConv(), None, PID)["chat_title"] is None
+
+
+def test_project_frame_route_splits_chat_and_assumed():
+    from app.api.routes.optimization_full import project_frame
+
+    class Access:
+        def require_project(self, pid, acc):
+            return None
+
+    conv = FakeConv(texts=["قاب ۶ طبقه با ۲×۴ دهانه ۶ متری بساز"])
+    out = project_frame(PID, None, conv, Access())
+    assert out["source"] == "chat_text" and "storeys" in out["from_chat"] and "storey_height_m" in out["assumed"]
+    d = project_frame(PID, None, FakeConv(), Access())
+    assert d["source"] == "default" and d["from_chat"] == [] and d["inputs"]["storeys"] == 4

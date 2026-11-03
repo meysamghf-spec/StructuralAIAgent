@@ -137,3 +137,17 @@ export function fmtNum(v: number | null | undefined, digits = 0): string {
   if (v == null || !Number.isFinite(v)) return "—";
   return v.toLocaleString("fa-IR", { maximumFractionDigits: digits });
 }
+
+export type ProjectFrame = {
+  source: "frame" | "optimization" | "chat_text" | "default";
+  label: { en: string; fa: string };
+  chat_title: string | null;
+  inputs: Record<string, unknown>;
+  from_chat: string[];
+  assumed: string[];
+};
+
+/** The project's frame from its whole chat history (same resolver as optimization); defaults filled for missing geometry. */
+export async function getProjectFrame(projectId: string): Promise<ProjectFrame> {
+  return call<ProjectFrame>(`/project-frame?project_id=${encodeURIComponent(projectId)}`, { method: "GET" });
+}
