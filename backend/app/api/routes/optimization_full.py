@@ -53,6 +53,10 @@ def _frame_model(body: OptimizationJobRequest, acc, conv, access) -> tuple[dict[
         from app.application.optimization_full.model_resolver import resolve_project_frame
 
         inputs = latest_frame_inputs(conv, acc, body.project_id) if body.project_id else None
+        if inputs:
+            from app.application.optimization_full.model_resolver import LABELS
+
+            assumed_notes = [f"منبع مدل: {LABELS['frame']['fa']}"]
         if not inputs:
             # Whole project chat history (runs + frame descriptions), else the documented defaults — never "no model".
             res = resolve_project_frame(conv, acc, body.project_id)
