@@ -5,6 +5,7 @@ import { mapViewerData, storeyShears } from "./frame3d-viewer";
 
 import { mapToolExecution } from "./agent-run-sse";
 import type {
+  ChatOptimizationFull,
   AgentExecutionStatus,
   AttachmentStatus,
   ChatAttachment,
@@ -439,6 +440,21 @@ function mapAciBeamResults(raw: unknown): AciRcBeamResults | null {
   };
 }
 
+export function mapOptimizationFull(raw: unknown): ChatOptimizationFull | null {
+  if (!raw || typeof raw !== "object") return null;
+  const er = raw as Record<string, unknown>;
+  const p = (er.kind === "optimization_full" ? er : er.optimization_full) as Record<string, unknown> | undefined;
+  if (!p || typeof p !== "object") return null;
+  const result = p.result && typeof p.result === "object" && Array.isArray((p.result as Record<string, unknown>).groups)
+    ? (p.result as ChatOptimizationFull["result"]) : null;
+  return {
+    status: p.status === "done" && result ? "done" : "error",
+    error: typeof p.error === "string" ? p.error : null,
+    sourceFa: typeof p.source_fa === "string" ? p.source_fa : null,
+    result,
+  };
+}
+
 function mapEngineeringResult(metadata: Record<string, unknown>): EngineeringResult | null {
   const er = metadata.engineering_results as Record<string, unknown> | undefined;
   const hasResults = !!er && typeof er === "object" && typeof er.kind === "string";
@@ -492,6 +508,7 @@ function mapEngineeringResult(metadata: Record<string, unknown>): EngineeringRes
     demoResults: mapDemoResults(metadata.engineering_results),
     aciBeamResults: mapAciBeamResults(metadata.engineering_results),
     frame3dResults: mapFrame3dResults(metadata.engineering_results),
+    optimizationFull: mapOptimizationFull(metadata.engineering_results),
     agentRun: mapAgentRun(metadata.agent_run),
   };
 }
