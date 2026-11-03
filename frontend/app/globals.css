@@ -3283,3 +3283,12 @@ a.agent-card-link:focus-visible { outline: 2px solid #38bdf8; outline-offset: 2p
 }
 .billing-warn.billing-note { background: rgba(59, 130, 246, 0.08); border-color: rgba(59, 130, 246, 0.4); }
 .billing-warn.billing-warn-fee { background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.55); }
+
+/* Chat: all results inline (collapsible, scrollable on phones) */
+.chat-full-section > summary { cursor: pointer; }
+.chat-full-section table { min-width: 520px; width: 100%; font-size: 13px; }
+.chat-full-section select, .chat-full-section input[type="search"] { max-width: 100%; }
+@media (max-width: 480px) {
+  .chat-full-section table { font-size: 12px; }
+  .engineering-result-card { max-width: 100%; overflow-x: hidden; }
+}

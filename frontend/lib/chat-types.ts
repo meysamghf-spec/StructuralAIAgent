@@ -197,7 +197,16 @@ export type EngineeringResult = {
   demoResults: DemoEngineeringResults | null;
   aciBeamResults: AciRcBeamResults | null;
   frame3dResults: Frame3dResults | null;
+  /** Full section optimization run from the chat («بهینه کن»), rendered inline. */
+  optimizationFull?: ChatOptimizationFull | null;
   agentRun: AgentRun | null;
+};
+
+export type ChatOptimizationFull = {
+  status: "done" | "error";
+  error: string | null;
+  sourceFa: string | null;
+  result: import("./optimization-full").OptResult | null;
 };
 
 export type Frame3dDriftRow = {

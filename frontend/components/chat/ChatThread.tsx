@@ -1,5 +1,6 @@
 "use client";
 
+import { ChatOptimizationCard } from "@/components/chat/ChatOptimizationCard";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -367,6 +368,9 @@ export function ChatThread({
                   ) : null}
                   {!message.engineeringResult.frame3dResults && !parseChatDownloads(rawMessage.metadata) && projectId && (message.engineeringResult.artifacts.length > 0 || (message.engineeringResult.agentRun?.tools ?? []).some((t) => (t.artifacts ?? []).length > 0)) ? (
                     <FrameDownloads collapsed title="Results & downloads (latest frame run)" />
+                  ) : null}
+                  {message.engineeringResult.optimizationFull ? (
+                    <ChatOptimizationCard data={message.engineeringResult.optimizationFull} />
                   ) : null}
                   {message.engineeringResult.aciBeamResults ? (
                     <AciRcBeamResultCard results={message.engineeringResult.aciBeamResults} lang={lang} />

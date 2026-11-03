@@ -1038,10 +1038,24 @@ class ConversationService:
 
                     found = resolve_project_frame(self, account, str(conversation.project_id), include_default=False)
                     prior = found["inputs"] if found else None
-                res = fopt.build_optimization_from_chat(opt_text, prior, {"time_budget_s": 35}, assume_defaults=True)
+                res = fopt.build_optimization_from_chat(opt_text, prior, {"time_budget_s": 12}, assume_defaults=True)
                 if res is not None:
                     lang = "fa" if any("\u0600" <= ch <= "\u06ff" for ch in user_content) else "en"
-                    return fopt.optimization_markdown(res, lang), {"mode": "rule_based", "intent": "frame_optimization", "engineering_results": res}
+                    text_out = fopt.optimization_markdown(res, lang)
+                    try:
+                        # full section optimizer (same engine as the Optimization page), shown inline in the chat
+                        from app.application.optimization_full.chat_run import optimization_full_markdown, run_chat_optimization
+
+                        full = run_chat_optimization(
+                            opt_text, prior, conv=self, account=account,
+                            project_id=str(conversation.project_id) if conversation.project_id else None,
+                            registry=self._file_registry, files=self._file_ingestion,
+                        )
+                        res["optimization_full"] = full
+                        text_out = f"{text_out}\n\n{optimization_full_markdown(full)}"
+                    except Exception:  # noqa: BLE001 — never lose the quick optimizer result
+                        logger.exception("chat optimization_full failed")
+                    return text_out, {"mode": "rule_based", "intent": "frame_optimization", "engineering_results": res}
                 return fopt.missing_frame_checklist(opt_text), {"mode": "rule_based", "intent": "frame_optimization", "checklist": True}
             except Exception:  # noqa: BLE001
                 logger.exception("frame optimizer failed")

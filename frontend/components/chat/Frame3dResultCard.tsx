@@ -11,6 +11,7 @@ import { DownloadsPanel } from "@/components/frame3d/DownloadsPanel";
 import { DetailingStep } from "@/components/frame3d/DetailingStep";
 import type { Frame3dExport, Frame3dResults } from "@/lib/chat-types";
 import dynamic from "next/dynamic";
+import { ApprovalSection, ChatDetailingPreview, MemberDesignSection, MemberForcesSection } from "@/components/chat/ChatFullResults";
 import { isRtl, makeT } from "@/lib/frame3d-i18n";
 import { summarizeDesign } from "@/lib/frame3d-design-summary";
 
@@ -167,7 +168,13 @@ export function Frame3dResultCard({ results, downloads = true }: Frame3dResultCa
         </div>
       ) : null}
 
+      {completed && results.viewer ? <MemberForcesSection viewer={results.viewer} lang={results.lang === "fa" ? "fa" : "en"} /> : null}
+
       {results.design ? <DesignSection design={results.design} t={t} /> : null}
+
+      {completed && results.viewer ? <MemberDesignSection viewer={results.viewer} lang={results.lang === "fa" ? "fa" : "en"} /> : null}
+
+      {completed ? <ApprovalSection results={results} lang={results.lang === "fa" ? "fa" : "en"} /> : null}
 
       {completed && results.inputs ? (
         <DetailingStep
@@ -176,6 +183,10 @@ export function Frame3dResultCard({ results, downloads = true }: Frame3dResultCa
           hasDesign={Boolean(results.design && results.design.beams.length + results.design.columns.length > 0)}
           lang={results.lang}
         />
+      ) : null}
+
+      {completed && results.inputs && results.design ? (
+        <ChatDetailingPreview inputs={results.inputs as unknown as Record<string, unknown>} projectId={cardProjectId} lang={results.lang === "fa" ? "fa" : "en"} />
       ) : null}
 
       {results.foundation ? <FoundationSection foundation={results.foundation} t={t} /> : null}
