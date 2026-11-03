@@ -38,6 +38,8 @@ PAGES: list[tuple[str, str, str, str, str]] = [
     ("/workspace/results", "Results", "نتایج", "stored analysis and design results", "نتایج ذخیره‌شده تحلیل و طراحی"),
     ("/workspace/design", "Design", "طراحی", "member design checks with the selected code configuration (default: Iranian codes)",
      "کنترل طراحی اعضا با پیکربندی آیین‌نامه انتخاب‌شده (پیش‌فرض: آیین‌نامه‌های ایران)"),
+    ("/workspace/detailing", "Detailing", "دیتیلینگ", "rebar detailing sheets (beams, columns, schedule) with DXF/PDF downloads",
+     "نقشه‌های جزئیات آرماتور (تیر، ستون، جدول) با دانلود DXF/PDF"),
     ("/workspace/foundation", "Foundation", "فونداسیون", "footing design from the frame's column reactions, with foundation and drawing downloads",
      "طراحی پی از واکنش ستون‌های قاب، همراه با دانلود فونداسیون و نقشه‌ها"),
     ("/workspace/cad", "CAD", "نقشه‌ها (CAD)", "drawings produced from results (DXF/PDF)", "نقشه‌های تولیدشده از نتایج (DXF/PDF)"),
