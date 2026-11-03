@@ -19,3 +19,14 @@ describe("full optimization helpers", () => {
     expect(isActive(null)).toBe(false);
   });
 });
+
+import { costChangeText } from "@/lib/optimization-full";
+describe("costChangeText", () => {
+  it("never shows a negative reduction", () => {
+    expect(costChangeText({ cost: 90, initial_cost: 100 })).toContain("کاهش");
+    const t = costChangeText({ cost: 162, initial_cost: 100, initial_feasible: false });
+    expect(t).toContain("افزایش هزینه");
+    expect(t).toContain("پاس نمی‌کرد");
+    expect(t).not.toContain("−");
+  });
+});

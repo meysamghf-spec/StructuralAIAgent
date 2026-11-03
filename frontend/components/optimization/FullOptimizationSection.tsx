@@ -1,8 +1,9 @@
 "use client";
 
+import { CostBreakdownTable } from "./CostBreakdownTable";
 import { getCurrentProjectId } from "@/lib/current-project";
 import {
-  barsLabel, cancelJob, candLabel, fmtNum, getJob, isActive, OptApiError, parseSections, savingsPct, startJob,
+  barsLabel, cancelJob, candLabel, fmtNum, getJob, isActive, OptApiError, parseSections, savingsPct, costChangeText, startJob,
   type OptJob, type SectionLists,
 } from "@/lib/optimization-full";
 import { useEffect, useRef, useState } from "react";
@@ -126,12 +127,13 @@ export function FullOptimizationSection() {
         <div style={{ marginTop: 12 }}>
           <p>
             <strong>{r.feasible ? "طرح قابل‌قبول (همه کنترل‌ها برقرار)" : "هنوز طرحی که همه کنترل‌ها را برقرار کند یافت نشد؛ فهرست بزرگ‌تر یا زمان بیشتر بدهید."}</strong>
-            {" "}هزینه: {fmtNum(r.cost)} {r.currency}{save != null ? ` (${fmtNum(save, 1)}٪ نسبت به شروع)` : ""} — دریفت/مجاز: {fmtNum(r.drift_ratio, 2)}
+            {" "}هزینه: {fmtNum(r.cost)} {r.currency}{save != null ? ` (${costChangeText(r)})` : ""} — دریفت/مجاز: {fmtNum(r.drift_ratio, 2)}
           </p>
           <p style={{ fontSize: 13 }}>
             بتن {fmtNum(r.quantities.concrete_m3, 1)} m³ — میلگرد {fmtNum(r.quantities.rebar_kg)} kg — قالب {fmtNum(r.quantities.formwork_m2)} m²
             {r.quantities.steel_kg ? ` — فولاد ${fmtNum(r.quantities.steel_kg)} kg` : ""} — {fmtNum(r.evaluations)} تحلیل در {fmtNum(r.elapsed_s, 1)} ثانیه
           </p>
+          <CostBreakdownTable r={r} />
           <div style={{ overflowX: "auto" }}>
             <table className="data-table" style={{ minWidth: 560, width: "100%" }}>
               <thead><tr><th>گروه</th><th>اعضا</th><th>مقطع</th><th>میلگرد</th><th>خاموت / تنگ</th><th>D/C</th></tr></thead>

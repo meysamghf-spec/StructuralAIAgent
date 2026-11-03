@@ -19,10 +19,18 @@ export type OptGroup = {
   rebar_kg?: number; steel_kg?: number; notes?: string[]; deflection_ok?: boolean;
 };
 
+export type OptQuantities = { concrete_m3: number; rebar_kg: number; formwork_m2: number; steel_kg: number };
+export type CostBreakdown = {
+  components: { concrete: number; rebar: number; formwork: number; steel: number };
+  total: number; share_pct: { concrete: number; rebar: number; formwork: number; steel: number }; steel_weight_kg: number;
+};
+
 export type OptResult = {
-  status: string; feasible: boolean; cost: number; initial_cost: number | null; currency: string;
+  status: string; feasible: boolean; cost: number; initial_cost: number | null; initial_feasible?: boolean | null; currency: string;
   evaluations: number; elapsed_s: number; drift_ratio: number;
   quantities: { concrete_m3: number; rebar_kg: number; formwork_m2: number; steel_kg: number };
+  initial_quantities?: OptQuantities | null;
+  cost_breakdown?: { initial: CostBreakdown | null; final: CostBreakdown | null };
   groups: OptGroup[]; assumptions: string[]; assumed_inputs?: string[];
   settings: Record<string, unknown> & { rebar_mm?: number[]; groups?: number };
   history: { eval: number; cost: number; feasible: boolean; best: number }[];
@@ -107,6 +115,18 @@ export function barsLabel(g: OptGroup): string {
 export function savingsPct(r: Pick<OptResult, "cost" | "initial_cost">): number | null {
   if (!r.initial_cost || !(r.initial_cost > 0)) return null;
   return Math.round(((r.initial_cost - r.cost) / r.initial_cost) * 1000) / 10;
+}
+
+/** Persian wording of the cost change vs. the starting design (never a negative "کاهش"). */
+export function costChangeText(r: Pick<OptResult, "cost" | "initial_cost"> & { initial_feasible?: boolean | null }): string {
+  const p = savingsPct(r);
+  if (p == null) return "";
+  if (p > 0) return `${fmtNum(p, 1)}٪ کاهش هزینه نسبت به طرح اولیه`;
+  if (p < 0) {
+    const why = r.initial_feasible === false ? " (طرح اولیه کنترل‌ها را پاس نمی‌کرد)" : "";
+    return `افزایش هزینه ${fmtNum(-p, 1)}٪ برای رسیدن به طرح قابل‌قبول${why}`;
+  }
+  return "بدون تغییر هزینه نسبت به طرح اولیه";
 }
 
 export function isActive(job: OptJob | null): boolean {
