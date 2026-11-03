@@ -5,6 +5,7 @@ import os
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Request
+from app.application.exceptions import ApplicationError
 from pydantic import BaseModel
 
 from app.api.deps import get_current_account
@@ -58,3 +59,38 @@ def invoice(invoice_id: str, acc: Annotated[AuthenticatedAccount, Depends(get_cu
 @router.post("/invoices/{invoice_id}/mock-confirm")
 def mock_confirm(invoice_id: str, body: MockBody, acc: Annotated[AuthenticatedAccount, Depends(get_current_account)]):
     return {"invoice": service.mock_confirm(acc.account_id, invoice_id, body.ok)}
+
+
+class ClaimBody(BaseModel):
+    tx: str
+
+
+@router.post("/invoices/{invoice_id}/claim-tx")
+def claim_tx(invoice_id: str, body: ClaimBody, acc: Annotated[AuthenticatedAccount, Depends(get_current_account)]):
+    """Paid but not detected yet (or window closed)? Submit the transaction hash; it is verified on-chain."""
+    return {"invoice": service.claim_tx(acc.account_id, invoice_id, body.tx.strip())}
+
+
+# ---------------- admin (BILLING_ADMIN_ACCOUNTS = comma list of account ids / emails) ----------------
+
+def _admin(acc: AuthenticatedAccount) -> str:
+    if not service.is_admin(acc.account_id, acc.email):
+        raise ApplicationError("FORBIDDEN", "Admin only.", status_code=403)
+    return acc.email or acc.account_id
+
+
+class AdminConfirmBody(BaseModel):
+    tx: str = ""
+    note: str = ""
+
+
+@router.get("/admin/payments")
+def admin_payments(acc: Annotated[AuthenticatedAccount, Depends(get_current_account)]):
+    from app.application.billing import watcher
+    _admin(acc)
+    return {**watcher.admin_overview(), "payments": service.payment_status()}
+
+
+@router.post("/admin/invoices/{invoice_id}/confirm")
+def admin_confirm(invoice_id: str, body: AdminConfirmBody, acc: Annotated[AuthenticatedAccount, Depends(get_current_account)]):
+    return {"invoice": service.admin_confirm(_admin(acc), invoice_id, body.tx.strip(), body.note)}

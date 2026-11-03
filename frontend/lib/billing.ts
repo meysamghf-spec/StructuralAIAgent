@@ -55,6 +55,13 @@ export type CryptoAsset = {
   live: boolean;
   contract: string;
   processor: string;
+  available?: boolean;
+  decimals?: number;
+  chain?: string;
+  chain_id?: number | null;
+  address?: string;
+  explorer?: string;
+  confirmations?: number | null;
 };
 export type Invoice = {
   id: string;
@@ -85,6 +92,21 @@ export type Invoice = {
   paid_at: string | null;
   ref_id: string;
   tx?: string;
+  contract?: string;
+  qr_address_svg?: string;
+  chain?: string;
+  chain_id?: number | null;
+  amount_crypto_base?: string;
+  decimals?: number;
+  explorer?: string;
+  confirmations_required?: number;
+  auto_detect?: boolean;
+  window_open?: boolean;
+  detected?: { tx: string; block: number; confirmations: number; required: number };
+  underpaid?: { tx: string; received: string; missing: string };
+  paid_via?: string;
+  paid_late?: boolean;
+  received?: string;
 };
 export type Subscription = { plan_id: string; plan_name: string; started_at: string; expires_at: string; last_invoice: string };
 export type BillingAccount = {
@@ -94,7 +116,7 @@ export type BillingAccount = {
   usage: { analyses_per_month: number; autocad_imports_per_month: number };
   invoices: Invoice[];
   history: { at: string; action: string; plan_id: string; invoice: string; expires_at: string }[];
-  payments: { methods: string[]; mock: boolean; live_assets: string[]; btcpay: boolean };
+  payments: { methods: string[]; mock: boolean; live_assets: string[]; btcpay: boolean; mock_allowed?: boolean };
   enforcement: boolean;
 };
 
@@ -110,6 +132,12 @@ export const mockConfirmInvoice = (id: string, ok: boolean) =>
   apiFetch<{ invoice: Invoice }>(`/api/v1/billing/invoices/${id}/mock-confirm`, {
     method: "POST",
     body: JSON.stringify({ ok }),
+  });
+
+export const claimInvoiceTx = (id: string, tx: string) =>
+  apiFetch<{ invoice: Invoice }>(`/api/v1/billing/invoices/${id}/claim-tx`, {
+    method: "POST",
+    body: JSON.stringify({ tx }),
   });
 
 export function fmtToman(n: number): string {
