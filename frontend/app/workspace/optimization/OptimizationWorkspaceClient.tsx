@@ -8,6 +8,8 @@ import { isChecklist } from "@/lib/optimization-checklist";
 import { FullOptimizationSection } from "@/components/optimization/FullOptimizationSection";
 import { FrameOptimizerPanel } from "@/components/optimization/FrameOptimizerPanel";
 import {
+  NO_MODEL_MESSAGE_FA,
+  NO_MODEL_STEPS_FA,
   formatMemberOptimizationResults,
   formatOptimizationInventory,
   formatOptimizationMode,
@@ -20,7 +22,6 @@ import {
   listOptimizationAnalysisRuns,
   listOptimizationDesignRuns,
   listOptimizationRuns,
-  runOptimization,
   type AvailableAnalysisRun,
   type AvailableDesignRun,
   type OptimizationReadinessResponse,
@@ -28,8 +29,19 @@ import {
   type OptimizationRunSummary,
 } from "@/lib/optimization";
 import { listPemVersions } from "@/lib/model";
+import {
+  barsLabel,
+  cancelJob,
+  fmtNum,
+  getJob,
+  isActive,
+  OptApiError,
+  savingsPct,
+  startJob,
+  type OptJob,
+} from "@/lib/optimization-full";
 import { formatWorkspaceDate, getValidationStatusLabel } from "@/lib/workspace";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const OPTIMIZATION_OPTIONS = [
   { value: "WEIGHT", label: "Minimize structural weight" },
@@ -75,6 +87,11 @@ export default function OptimizationWorkspaceClient() {
   );
   const [memberSelection, setMemberSelection] = useState("");
   const [busy, setBusy] = useState(false);
+  const [fullJob, setFullJob] = useState<OptJob | null>(null);
+  const [noModel, setNoModel] = useState(false);
+  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => { if (pollTimer.current) clearTimeout(pollTimer.current); }, []);
 
   const loadOptimizationContext = useCallback(async () => {
     if (!selectedProjectId) {
@@ -121,38 +138,62 @@ export default function OptimizationWorkspaceClient() {
     }
   }
 
+  function pollFullJob(id: string) {
+    pollTimer.current = setTimeout(async () => {
+      try {
+        const j = await getJob(id);
+        setFullJob(j);
+        if (isActive(j)) pollFullJob(id);
+        else void loadOptimizationContext().catch(() => undefined);
+      } catch (err) {
+        setError(err instanceof OptApiError ? err.fa : err instanceof Error ? err.message : "Optimization run failed");
+      }
+    }, 1500);
+  }
+
+  /** Runs the real full optimizer (/api/v1/optimization-full) on the project's model: imported model if present,
+   *  otherwise the latest chat / Model-page 3D frame. Results show in "Latest optimization result". */
   async function handleRun() {
     if (!selectedProjectId) return;
+    if (pollTimer.current) clearTimeout(pollTimer.current);
     setBusy(true);
     setError(null);
+    setNoModel(false);
+    setResult(null);
+    setFullJob(null);
+    const source = readiness?.detected_model?.source ?? "frame";
+    const options = {
+      time_budget_s: 120,
+      storey_band: optimizationMode === "SHARED_SECTION" ? 50 : 1,
+    };
     try {
-      const pemVersion = selectedVersion === "current" ? undefined : selectedVersion;
-      const memberIds = memberSelection
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean);
-      const runResult = await runOptimization(
-        selectedProjectId,
-        optimizationType,
-        objective,
-        {
-          pemVersion,
-          analysisRunId: selectedAnalysisRunId || undefined,
-          designRunId: selectedDesignRunId || undefined,
-          parameters: {
-            optimization_mode: optimizationMode,
-            ...(memberIds.length > 0 ? { member_ids: memberIds } : {}),
-          },
-        },
-      );
-      setResult(runResult);
-      await loadOptimizationContext();
+      let job: OptJob;
+      try {
+        job = await startJob({ source, project_id: selectedProjectId, options });
+      } catch (err) {
+        // No imported model → fall back to the chat frame (and vice versa) before reporting "no model".
+        if (err instanceof OptApiError && err.status === 409 && source === "model") {
+          job = await startJob({ source: "frame", project_id: selectedProjectId, options });
+        } else {
+          throw err;
+        }
+      }
+      setFullJob(job);
+      pollFullJob(job.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Optimization run failed");
+      if (err instanceof OptApiError && (err.status === 409 || err.status === 422) && !/blocking|مسدود/.test(err.message + err.fa)) {
+        setNoModel(true);
+      } else {
+        setError(err instanceof OptApiError ? err.fa : err instanceof Error ? err.message : "Optimization run failed");
+      }
     } finally {
       setBusy(false);
     }
   }
+
+  const fullResult = fullJob?.result ?? null;
+  const fullPct = Math.round((fullJob?.progress?.fraction ?? 0) * 100);
+  const fullSave = fullResult ? savingsPct(fullResult) : null;
 
   return (
     <section className="panel-stack">
@@ -344,16 +385,90 @@ export default function OptimizationWorkspaceClient() {
           <button
             className="button"
             type="button"
-            disabled={!selectedProjectId || busy}
+            disabled={!selectedProjectId || busy || isActive(fullJob)}
             onClick={() => void handleRun()}
           >
-            {busy ? "Running…" : "Start optimization"}
+            {busy || isActive(fullJob) ? "Running…" : "Start optimization"}
           </button>
+          {isActive(fullJob) ? (
+            <button
+              className="button secondary"
+              type="button"
+              onClick={() => fullJob && void cancelJob(fullJob.id).catch(() => undefined)}
+            >
+              توقف
+            </button>
+          ) : null}
         </div>
-        <p className="muted">{getOptimizationCapabilityLabel("REQUIRES_SOLVER", "fa")}</p>
+        <p className="muted" dir="rtl" lang="fa" style={{ textAlign: "right" }}>
+          {getOptimizationCapabilityLabel("REQUIRES_SOLVER", "fa")}
+          {readiness?.detected_model
+            ? ` مدل شناسایی‌شده: ${readiness.detected_model.label?.fa ?? ""} (${fmtNum(readiness.detected_model.member_count)} عضو).`
+            : ""}
+        </p>
+        {noModel ? (
+          <div className="alert" role="alert" dir="rtl" lang="fa" style={{ textAlign: "right" }}>
+            <p><strong>{NO_MODEL_MESSAGE_FA}</strong></p>
+            <ol>
+              {NO_MODEL_STEPS_FA.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+          </div>
+        ) : null}
       </section>
 
       {error ? <div className="alert error">{error}</div> : null}
+
+      {fullJob && !result ? (
+        <section className="card">
+          <h3>Latest optimization result</h3>
+          <div dir="rtl" lang="fa" style={{ textAlign: "right" }} aria-live="polite">
+            <progress value={fullPct} max={100} style={{ width: "100%" }} />
+            <p className="muted">
+              وضعیت:{" "}
+              {({ queued: "در صف", running: "در حال اجرا", done: "پایان یافت", cancelled: "متوقف شد", error: "خطا" } as const)[fullJob.status]}
+              {" — "}{fmtNum(fullPct)}٪ — ارزیابی‌ها: {fmtNum(fullJob.progress?.evals)}
+              {fullJob.progress?.best_cost ? <> — بهترین هزینه: {fmtNum(fullJob.progress.best_cost)} تومان</> : null}
+            </p>
+            {fullJob.error ? <p role="alert" style={{ color: "#b91c1c" }}>{fullJob.error}</p> : null}
+            {fullResult ? (
+              <>
+                <p className={`status-pill ${fullResult.feasible ? "status-pass" : "status-warning"}`}>
+                  {fullResult.feasible ? "طرح قابل‌قبول (همه کنترل‌ها برقرار)" : "طرحی که همه کنترل‌ها را برقرار کند هنوز یافت نشد"}
+                </p>
+                <p>
+                  هزینه: {fmtNum(fullResult.cost)} {fullResult.currency}
+                  {fullSave != null ? ` (${fmtNum(fullSave, 1)}٪ کاهش نسبت به شروع)` : ""} — دریفت/مجاز: {fmtNum(fullResult.drift_ratio, 2)}
+                  {" — "}{fmtNum(fullResult.evaluations)} تحلیل در {fmtNum(fullResult.elapsed_s, 1)} ثانیه
+                </p>
+                <div style={{ overflowX: "auto" }}>
+                  <table className="data-table" style={{ minWidth: 520, width: "100%" }}>
+                    <thead>
+                      <tr><th>گروه</th><th>اعضا</th><th>مقطع</th><th>میلگرد</th><th>D/C</th></tr>
+                    </thead>
+                    <tbody>
+                      {fullResult.groups.map((g) => (
+                        <tr key={g.group}>
+                          <td>{g.label}</td><td>{fmtNum(g.members)}</td><td dir="ltr">{g.section}</td>
+                          <td dir="ltr">{barsLabel(g)}</td>
+                          <td style={{ color: g.DC > 1 ? "#b91c1c" : undefined }}>{fmtNum(g.DC, 2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {[...fullResult.assumptions, ...(fullResult.assumed_inputs ?? [])].length > 0 ? (
+                  <details className="meta-summary">
+                    <summary>فرض‌ها</summary>
+                    <ul>{[...fullResult.assumptions, ...(fullResult.assumed_inputs ?? [])].map((a) => <li key={a}>{a}</li>)}</ul>
+                  </details>
+                ) : null}
+              </>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
 
       {result ? (
         <section className="card">

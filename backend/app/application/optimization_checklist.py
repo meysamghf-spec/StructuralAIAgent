@@ -62,6 +62,34 @@ def _detailing_step(href: str | None = None):
                  optional=True)
 
 
+def checklist_for_project_model(detected: dict[str, Any], project_id: str | None = None) -> dict[str, Any]:
+    """Page checklist when the project has a chat-built frame or an imported model (not in the PEM).
+
+    The full optimizer analyses and designs every candidate itself, so only the model is mandatory."""
+    n = int(detected.get("member_count") or 0)
+    lbl = detected.get("label") or {"en": "Model", "fa": "مدل"}
+    combos = int(detected.get("load_combination_count") or 0)
+    secs = int(detected.get("section_count") or 0)
+    steps = [
+        _step("model", True, "Structural model defined", "مدل سازه تعریف شده",
+              f"{lbl['en']}: {n} member(s).", f"{lbl['fa']}: {_fa(n)} عضو."),
+        _step("code", True, "Design code configuration valid", "آیین‌نامه‌ها معتبر است",
+              "Standard 2800 / Mabhas 6 / Mabhas 9 are used.", "استاندارد ۲۸۰۰، مبحث ۶ و مبحث ۹ استفاده می‌شود."),
+        _step("loads", True, "Loads and load combinations", "بارها و ترکیب بارها",
+              f"{combos} combination(s) from the model." if combos else "Mabhas 6 loads and 2800 combinations are applied automatically.",
+              f"{_fa(combos)} ترکیب بار از مدل." if combos else "بارهای مبحث ۶ و ترکیب‌های ۲۸۰۰ به‌صورت خودکار اعمال می‌شوند."),
+        _step("sections", True, "Allowed sections (candidate list)", "مقاطع مجاز (فهرست کاندیدا)",
+              f"{secs} section(s) in the model; the standard catalogue is searched." if secs else "The standard catalogue (5 cm steps) is searched.",
+              f"{_fa(secs)} مقطع در مدل؛ کاتالوگ استاندارد جست‌وجو می‌شود." if secs else "کاتالوگ استاندارد (گام ۵ سانتی‌متر) جست‌وجو می‌شود."),
+        _step("analysis", True, "Analysis", "تحلیل", "Run inside the optimization loop (full 3D re-analysis per candidate).",
+              "داخل حلقه بهینه‌سازی انجام می‌شود (تحلیل کامل سه‌بعدی برای هر کاندیدا)."),
+        _step("design", True, "Design (Mabhas 9)", "طراحی (مبحث ۹)", "Checked inside the loop for every candidate.",
+              "برای هر کاندیدا داخل حلقه کنترل می‌شود.", optional=True),
+        _detailing_step(f"/workspace/cad?project={project_id}" if project_id else None),
+    ]
+    return _finish(steps, True)
+
+
 def checklist_for_readiness(report: dict[str, Any], project_id: str | None = None) -> dict[str, Any]:
     """Page checklist from an OptimizationReadinessReport (dict)."""
     ms = report.get("model_summary") or {}

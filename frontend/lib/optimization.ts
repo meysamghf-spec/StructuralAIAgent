@@ -60,6 +60,12 @@ export type OptimizationReadinessResponse = {
   available_design_runs: number;
   usable_design_runs: number;
   checklist?: import("./optimization-checklist").OptimizationChecklist;
+  /** Chat-built frame or imported model found outside the PEM (the full optimizer runs on it). */
+  detected_model?: {
+    source: "frame" | "model";
+    member_count: number;
+    label?: { en: string; fa: string };
+  } | null;
 };
 
 export type OptimizationRunListResponse = {

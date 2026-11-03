@@ -26,7 +26,7 @@ const OPTIMIZATION_CAPABILITY_LABELS: Record<string, string> = {
 
 const OPTIMIZATION_CAPABILITY_LABELS_FA: Record<string, string> = {
   REQUIRES_SOLVER:
-    "برای انجام بهینه‌سازی واقعی، موتور محاسباتی مورد نیاز هنوز متصل نشده است.",
+    "بهینه‌سازی با موتور کامل SAIA (تحلیل سه‌بعدی، طراحی مبحث ۹ و کنترل دریفت ۲۸۰۰) روی مدل این پروژه اجرا می‌شود.",
   REQUIRES_ANALYSIS:
     "قبل از بهینه‌سازی، باید نتایج مهندسی تحلیل سازه با خروجی‌های واقعی آماده شود.",
   REQUIRES_DESIGN:
@@ -122,3 +122,13 @@ export function formatSharedSectionGroups(outputs: Record<string, unknown>): str
     })
     .filter(Boolean);
 }
+
+/** Persian message + readiness steps when the project has no model the optimizer can use. */
+export const NO_MODEL_MESSAGE_FA =
+  "این پروژه هنوز مدل سازه ندارد؛ ابتدا مدل را بسازید یا وارد کنید، سپس بهینه‌سازی را شروع کنید.";
+export const NO_MODEL_STEPS_FA = [
+  "در چت قاب را توصیف کنید (مثلاً «قاب ۴ طبقه با ۳×۳ دهانه ۵ متری، پهنه خطر زیاد، خاک نوع ۲») یا «پیش‌فرض‌ها را فرض کن» را بزنید.",
+  "یا فایل ETABS / SAP / DXF را از بخش ورود مدل وارد و بازبینی مهندس را تأیید کنید.",
+  "بارها و ترکیب‌بارهای مبحث ۶ / ۲۸۰۰ و کاتالوگ استاندارد مقاطع به‌صورت خودکار اعمال می‌شوند (فهرست مقاطع اختیاری است).",
+  "سپس دوباره «Start optimization» را بزنید؛ تحلیل و طراحی داخل حلقه بهینه‌سازی انجام می‌شود.",
+];
