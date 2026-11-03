@@ -31,7 +31,7 @@ def _steel_props(sec: dict[str, Any]) -> dict[str, float] | None:
     return {"A": A, "I33": I33, "I22": I22, "Z33": Z33, "Z22": Z22, "r": math.sqrt(min(I33, I22) / A)}
 
 
-def design_members(model: dict[str, Any], eng: Any, cases: dict[str, np.ndarray], lengths: dict[str, float]) -> dict[str, Any]:
+def design_members(model: dict[str, Any], eng: Any, cases: dict[str, np.ndarray], lengths: dict[str, float], limit: int = 300) -> dict[str, Any]:
     rows = []
     idx = {el.id: n for n, el in enumerate(eng.elements)}
     for mem in model["members"]:
@@ -105,5 +105,5 @@ def design_members(model: dict[str, Any], eng: Any, cases: dict[str, np.ndarray]
         "method": "Preliminary: steel AISC 360 H1-1 (no LTB), concrete required flexural steel / axial capacity (Mabhas 9 / ACI 318)",
         "materials": {"Fy_steel_MPa": FY_STEEL, "fc_MPa": FC, "fy_rebar_MPa": FY_REBAR},
         "count": len(rows), "failing": sum(1 for r in rows if not r["ok"]),
-        "members": rows[:300],
+        "members": rows[:limit],
     }

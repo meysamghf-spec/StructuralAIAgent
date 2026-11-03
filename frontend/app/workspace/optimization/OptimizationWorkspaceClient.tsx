@@ -5,6 +5,7 @@ import { useProjectScope } from "@/hooks/useProjectScope";
 import { FrameDownloads } from "@/components/frame3d/FrameDownloads";
 import { OptimizationChecklist } from "@/components/optimization/OptimizationChecklist";
 import { isChecklist } from "@/lib/optimization-checklist";
+import { FullOptimizationSection } from "@/components/optimization/FullOptimizationSection";
 import { FrameOptimizerPanel } from "@/components/optimization/FrameOptimizerPanel";
 import {
   formatMemberOptimizationResults,
@@ -162,6 +163,7 @@ export default function OptimizationWorkspaceClient() {
       </header>
 
       <FrameOptimizerPanel />
+      <FullOptimizationSection />
       <FrameDownloads groups={["analysis", "design", "figures"]} title="Current frame model downloads" collapsed />
 
       <ProjectScopePanel

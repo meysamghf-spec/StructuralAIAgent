@@ -51,7 +51,9 @@ def _levels(z: np.ndarray, tol: float = 0.05) -> list[float]:
     return out
 
 
-def analyze_imported_model(model: dict[str, Any]) -> dict[str, Any]:
+def analyze_imported_model(model: dict[str, Any], *, station_hook: Any = None, fast: bool = False) -> dict[str, Any]:
+    """``station_hook(model, eng, cases, lengths)`` receives the design-case station forces (used by the optimizer);
+    ``fast`` skips the 3D viewer payload."""
     from app.application.model_import.analyze import review_summary
 
     summary = review_summary(model)
@@ -472,7 +474,10 @@ def analyze_imported_model(model: dict[str, Any]) -> dict[str, Any]:
 
     # ---- preliminary design ------------------------------------------------------------------------
     from app.application.model_import.design import design_members
-    design = design_members(model, eng, {k: v for k, v in cases_st.items() if k.startswith(("combo:", "envelope:"))} or cases_st, lengths)
+    design_cases = {k: v for k, v in cases_st.items() if k.startswith(("combo:", "envelope:"))} or cases_st
+    design = design_members(model, eng, design_cases, lengths)
+    if station_hook is not None:
+        station_hook(model, eng, design_cases, lengths)
 
     governing = sorted(env.items(), key=lambda kv: -kv[1]["M"])[:15]
     return {
@@ -492,7 +497,7 @@ def analyze_imported_model(model: dict[str, Any]) -> dict[str, Any]:
         "slabs": {"count": len(slab_report), "one_way": sum(1 for r in slab_report if r["one_way"]),
                   "to_nodes": sum(1 for r in slab_report if r["to_nodes"])},
         "design": design,
-        "viewer": _viewer(model, used, xyz, eng, [p for p in pats if p in pat_st], pat_st, pat_U, pat_R, combos, lengths),
+        "viewer": None if fast else _viewer(model, used, xyz, eng, [p for p in pats if p in pat_st], pat_st, pat_U, pat_R, combos, lengths),
         "notes": notes + eng.notes + [
             "Member results are max |N|, resultant |V| and |M| along each member (9 stations) in kN and kN.m.",
             "Response-spectrum and '±RS' envelope cases are unsigned (absolute values).",
