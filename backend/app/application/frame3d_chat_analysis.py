@@ -1111,13 +1111,13 @@ def _viewer_payload(raw: dict[str, Any], inp: "Frame3dInputs", design: dict[str,
             d = m["id"][1]
             edge = (jj in (0, ny)) if d == "X" else (ii in (0, nx))
             key = ("beam", m["storey"], d, "edge" if edge else "interior")
-            section = f"B{round(inp.beam_b_m * 100)}x{round(inp.beam_h_m * 100)}"
-            b, h = inp.beam_b_m, inp.beam_h_m
+            b, h = beam_dims(inp, m["storey"])  # optimizer per-storey sections honoured
+            section = f"B{round(b * 100)}x{round(h * 100)}"
         else:
             on_x, on_y = ii in (0, nx), jj in (0, ny)
             key = ("column", m["storey"], None, "corner" if on_x and on_y else "edge" if on_x or on_y else "interior")
-            section = f"C{round(inp.column_b_m * 100)}x{round(inp.column_h_m * 100)}"
-            b, h = inp.column_b_m, inp.column_h_m
+            b, h = column_dims(inp, m["storey"])
+            section = f"C{round(b * 100)}x{round(h * 100)}"
         g = groups.get(key)
         dc = None
         if g:

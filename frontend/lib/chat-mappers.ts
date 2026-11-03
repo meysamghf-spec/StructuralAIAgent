@@ -452,6 +452,8 @@ export function mapOptimizationFull(raw: unknown): ChatOptimizationFull | null {
     error: typeof p.error === "string" ? p.error : null,
     sourceFa: typeof p.source_fa === "string" ? p.source_fa : null,
     result,
+    optimizedFrame: p.optimized_frame3d && typeof p.optimized_frame3d === "object" ? p.optimized_frame3d : null,
+    originalInputs: p.original_inputs && typeof p.original_inputs === "object" ? (p.original_inputs as Record<string, unknown>) : null,
   };
 }
 

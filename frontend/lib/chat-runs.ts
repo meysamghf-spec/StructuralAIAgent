@@ -14,6 +14,9 @@ export type ChatRun = {
   summary: Record<string, unknown>;
   job_id?: string;
   filename?: string;
+  /** Frame re-analysed with the optimizer's sections (from «بهینه کن»). */
+  optimized?: boolean;
+  original_inputs?: Record<string, unknown> | null;
 };
 
 const cache = new Map<string, Promise<ChatRun[]>>();

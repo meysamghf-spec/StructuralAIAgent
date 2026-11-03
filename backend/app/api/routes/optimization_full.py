@@ -35,7 +35,7 @@ class OptimizationJobRequest(BaseModel):
     assume_defaults: bool = True
 
 
-def _frame_model(body: OptimizationJobRequest, acc, conv, access) -> tuple[dict[str, Any], list[str]]:
+def _frame_model(body: OptimizationJobRequest, acc, conv, access, out_inputs: dict[str, Any] | None = None) -> tuple[dict[str, Any], list[str]]:
     from app.application import frame3d_chat_analysis as f3
     from app.application.optimization_full.builder import model_from_frame
 
@@ -76,6 +76,10 @@ def _frame_model(body: OptimizationJobRequest, acc, conv, access) -> tuple[dict[
         raise HTTPException(422, "missing: " + ", ".join(f3.input_labels(missing, "en")))
     if inp.storeys > f3.MAX_STOREYS or max(inp.bays_x, inp.bays_y) > f3.MAX_BAYS or min(inp.storeys, inp.bays_x, inp.bays_y) < 1:
         raise HTTPException(422, f"supports 1-{f3.MAX_STOREYS} storeys and 1-{f3.MAX_BAYS} bays per direction")
+    if out_inputs is not None:
+        from dataclasses import asdict
+
+        out_inputs.update({k: v for k, v in asdict(inp).items() if k not in f3.INTERNAL_FIELDS})
     return model_from_frame(inp), assumed_notes + [f"{k} (default)" for k in assumed]
 
 
@@ -115,6 +119,7 @@ def start_job(body: OptimizationJobRequest, acc: Annotated[AuthenticatedAccount,
     if jobs.running_for(owner) >= jobs.MAX_RUNNING_PER_USER:
         raise HTTPException(429, {"en": "Two optimizations are already running.", "fa": "دو بهینه‌سازی در حال اجراست؛ صبر کنید."})
     assumed: list[str] = []
+    frame_inputs: dict[str, Any] = {}
     if body.source == "model":
         if not body.model:
             raise HTTPException(422, "model is required for source=model")
@@ -132,7 +137,7 @@ def start_job(body: OptimizationJobRequest, acc: Annotated[AuthenticatedAccount,
         if len(model.get("members") or []) > 3000:
             raise HTTPException(422, "model too large for optimization (max 3000 members)")
     else:
-        model, assumed = _frame_model(body, acc, conv, access)
+        model, assumed = _frame_model(body, acc, conv, access, frame_inputs)
     lists = merge_lists(parse_section_lists(body.section_text) if body.section_text.strip() else None, body.lists)
     billing.consume(getattr(acc, "account_id", None), "analyses_per_month")
     opts = dict(body.options or {})
@@ -142,6 +147,13 @@ def start_job(body: OptimizationJobRequest, acc: Annotated[AuthenticatedAccount,
         res = optimize_model(model, lists, opts, progress=progress, cancelled=cancelled)
         res["assumed_inputs"] = assumed
         res["lists_used"] = {k: lists.get(k) for k in ("beams", "columns", "braces", "rebar_mm", "materials", "member_types")}
+        if frame_inputs and res.get("status") != "cancelled":
+            from app.application.optimization_full.chat_run import optimized_frame3d
+
+            opt3d = optimized_frame3d(frame_inputs, res)
+            if opt3d:  # re-analysed frame with the optimized sections → applied to the project's model by the page
+                res["optimized_frame3d"] = opt3d
+                res["original_inputs"] = frame_inputs
         return res
 
     job = jobs.start(owner, {"source": body.source, "members": len(model["members"])}, work)

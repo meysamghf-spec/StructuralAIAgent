@@ -46,6 +46,15 @@ def extract_runs(conversation, messages) -> list[dict[str, Any]]:
                          **({"optimization": {k: eng.get(k) for k in ("initial", "fsd", "optimal", "groups", "savings_pct")}}
                             if kind == "frame_optimization" else {}),
                          "summary": _summary(eng), "validation": md.get("validation_status")})
+        if isinstance(eng, dict):
+            full = eng if eng.get("kind") == "optimization_full" else eng.get("optimization_full")
+            opt3d = full.get("optimized_frame3d") if isinstance(full, dict) else None
+            if isinstance(opt3d, dict) and isinstance(opt3d.get("inputs"), dict):
+                # The optimized frame becomes the project's newest frame (Model page / 3D view / downloads).
+                runs.append({**base, "kind": "frame3d_analysis",
+                             "label": "Optimized frame (optimized sections)", "status": "completed", "optimized": True,
+                             "inputs": opt3d["inputs"], "original_inputs": full.get("original_inputs"),
+                             "summary": _summary(opt3d), "validation": md.get("validation_status")})
         ac = md.get("autocad_result")
         if isinstance(ac, dict) and ac.get("job_id"):
             runs.append({**base, "kind": "autocad", "label": ac.get("title") or "AutoCAD drawing",
