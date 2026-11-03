@@ -1637,6 +1637,23 @@ def frame3d_memory_summary(payload: dict[str, Any]) -> str:
             f"Seismic: {payload.get('seismic_code')}; design: {payload.get('design_code')}.")
 
 
+def frame_limit_message(inp: "Frame3dInputs") -> str:
+    """Name each value that exceeds which solver limit (English / Persian)."""
+    en: list[str] = []
+    fa: list[str] = []
+    for key, v, lo, hi in (("storeys", inp.storeys, 1, MAX_STOREYS), ("bays_x", inp.bays_x, 1, MAX_BAYS),
+                           ("bays_y", inp.bays_y, 1, MAX_BAYS)):
+        if v is not None and (v < lo or v > hi):
+            en.append(f"{input_labels([key], 'en')} = {v} (allowed {lo}–{hi})")
+            fa.append(f"{input_labels([key], 'fa')} = {v} (مجاز {lo} تا {hi})")
+    nodes = (inp.bays_x + 1) * (inp.bays_y + 1) * (inp.storeys + 1)
+    if not en and nodes > MAX_NODES:
+        en.append(f"nodes (bays_x+1)×(bays_y+1)×(storeys+1) = {nodes} (max {MAX_NODES})")
+        fa.append(f"تعداد گره‌ها = {nodes} (حداکثر {MAX_NODES})")
+    return ("Model size outside the solver limits: " + "; ".join(en)
+            + " / ابعاد مدل خارج از محدوده حل‌کننده است: " + "؛ ".join(fa))
+
+
 def run_frame3d_for_export(inputs: dict[str, Any]) -> tuple["Frame3dInputs", dict[str, Any], dict[str, Any] | None]:
     """Re-run the (deterministic) analysis for an export request coming from the result card."""
     inp = inputs_from_dict(inputs)
@@ -1648,7 +1665,7 @@ def run_frame3d_for_export(inputs: dict[str, Any]) -> tuple["Frame3dInputs", dic
                          + ". / اطلاعات مدل کامل نیست؛ وارد نشده: " + "، ".join(input_labels(miss, "fa")))
     if (inp.storeys > MAX_STOREYS or max(inp.bays_x, inp.bays_y) > MAX_BAYS or min(inp.storeys, inp.bays_x, inp.bays_y) < 1
             or (inp.bays_x + 1) * (inp.bays_y + 1) * (inp.storeys + 1) > MAX_NODES):
-        raise ValueError("model size outside the chat solver limits")
+        raise ValueError(frame_limit_message(inp))
     raw = run_frame3d(inp)
     design = design_mabhas9(inp, raw) if inp.design_code == "MABHAS9" else None
     return inp, raw, design

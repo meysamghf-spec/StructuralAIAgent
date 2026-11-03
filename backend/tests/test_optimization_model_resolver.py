@@ -78,3 +78,14 @@ def test_project_frame_route_splits_chat_and_assumed():
     assert out["source"] == "chat_text" and "storeys" in out["from_chat"] and "storey_height_m" in out["assumed"]
     d = project_frame(PID, None, FakeConv(), Access())
     assert d["source"] == "default" and d["from_chat"] == [] and d["inputs"]["storeys"] == 4
+
+
+def test_export_limit_message_names_value_and_limit():
+    import pytest
+
+    from app.application.frame3d_chat_analysis import MAX_BAYS, run_frame3d_for_export
+
+    with pytest.raises(ValueError) as e:
+        run_frame3d_for_export({"storeys": 3, "bays_x": 100, "bays_y": 2, "bay_x_m": 5, "bay_y_m": 5, "storey_height_m": 3.2})
+    msg = str(e.value)
+    assert "100" in msg and f"1–{MAX_BAYS}" in msg and "مجاز" in msg

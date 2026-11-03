@@ -19,3 +19,21 @@ describe("prefillGeometry", () => {
     expect(r.assumed).toHaveLength(5);
   });
 });
+
+import { FRAME_LIMITS, validateGeometry } from "@/components/frame3d/GeometryField";
+
+describe("validateGeometry limits", () => {
+  const base = { storeys: "3", bays_x: "2", bays_y: "2", bay_x_m: "5", bay_y_m: "5" };
+  const keys = ["storeys", "bays_x", "bays_y", "bay_x_m", "bay_y_m"];
+  it("states the max for bays and storeys", () => {
+    const e = validateGeometry({ ...base, bays_y: "200", bays_x: "100" }, {}, "en", keys);
+    expect(e.bays_y).toContain(`max allowed ${FRAME_LIMITS.bays}`);
+    expect(e.bays_x).toContain(`max allowed ${FRAME_LIMITS.bays}`);
+    expect(validateGeometry({ ...base, storeys: "13" }, {}, "fa", keys).storeys).toContain("حداکثر");
+  });
+  it("checks the solver node limit", () => {
+    const e = validateGeometry({ ...base, storeys: "10", bays_x: "6", bays_y: "6" }, {}, "en", keys);
+    expect(e.bays_x).toContain("max 220");
+    expect(validateGeometry(base, {}, "en", keys)).toEqual({});
+  });
+});
