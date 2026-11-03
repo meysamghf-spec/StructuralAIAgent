@@ -23,6 +23,11 @@ class ConversationPort:
             name = next((p.name for p in self._accessible() if str(p.id) == str(conversation.project_id)), "")
             self.project = {"id": str(conversation.project_id), "name": name or "selected"}
 
+    def project_memory(self) -> str:
+        """Everything said in this project's other chats (isolated per project); "" for General chats."""
+        fn = getattr(self._svc, "_project_memory_text", None)
+        return fn(self.conversation, self._account, project_name=(self.project or {}).get("name")) if fn else ""
+
     def _accessible(self) -> list[Any]:
         return list(self._svc._project_access.list_accessible_projects(self._account))
 

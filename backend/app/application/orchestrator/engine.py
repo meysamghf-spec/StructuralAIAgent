@@ -74,7 +74,16 @@ def _state_for_prompt(ctx: TurnContext) -> dict[str, Any]:
 
     return {"project": (port.project or {}).get("name") or "none (analysis still works without a project; downloads/memory need one)",
             "model_in_chat": sm.model_line(model, False) if model else "none yet",
-            "user_language": "Persian" if ctx.fa else "English", "plan_and_usage": port.usage_snapshot()}
+            "user_language": "Persian" if ctx.fa else "English", "plan_and_usage": port.usage_snapshot(),
+            "project_chat_memory": _project_memory(port)}
+
+
+def _project_memory(port) -> str:
+    fn = getattr(port, "project_memory", None)
+    try:
+        return fn() if callable(fn) else ""
+    except Exception:  # noqa: BLE001 - memory is best effort
+        return ""
 
 
 def _compose_degraded(ctx: TurnContext, results: list[tuple[str, ToolResult]], note: bool) -> str:

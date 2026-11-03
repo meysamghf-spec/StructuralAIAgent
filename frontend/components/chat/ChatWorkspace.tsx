@@ -5,6 +5,7 @@ import { ChatContextPanel } from "@/components/chat/ChatContextPanel";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { ChatCardProjectContext } from "@/lib/chat-card-project";
 import { ProjectSwitcher } from "@/components/project/ProjectSwitcher";
+import { ProjectMemoryBadge } from "@/components/chat/ProjectMemoryBadge";
 import { AssistantContextStrip } from "@/components/chat/AssistantContextStrip";
 import { ChatThread } from "@/components/chat/ChatThread";
 import { SaiaLogo } from "@/components/brand/SaiaLogo";
@@ -261,6 +262,7 @@ export default function ChatWorkspace() {
               disabled={projectsLoading || chat.busy}
               scope={{ projects, selectedProjectId, selectedProject, setSelectedProjectId }}
             />
+            <ProjectMemoryBadge projectId={selectedProjectId ?? null} refreshKey={chat.busy} />
             {showProminentPrompt ? (
               <span className="chat-project-select-hint muted" dir="auto">
                 {selectedProject

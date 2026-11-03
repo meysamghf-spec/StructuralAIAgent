@@ -62,6 +62,17 @@ def list_conversations(
     )
 
 
+@router.get("/project-memory/{project_id}")
+def get_project_chat_memory(
+    project_id: UUID,
+    service: Annotated[ConversationService, Depends(get_conversation_service)],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+) -> dict:
+    """What the assistant remembers from all of this project's chats (stats + the prompt block). Project-scoped."""
+    out = service.project_chat_memory(account, project_id)
+    return {"project_id": str(project_id), **out}
+
+
 @router.get("/{conversation_id}", response_model=ConversationResponse)
 def get_conversation(
     conversation_id: UUID,

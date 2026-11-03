@@ -701,7 +701,32 @@ class ConversationService:
                 has_model = self._latest_frame_inputs(conversation, account) is not None
         except Exception:  # noqa: BLE001 - context is best effort
             logger.debug("helper context lookup failed", exc_info=True)
-        return user_context(getattr(account, "account_id", None), project=project_name, has_model=has_model)
+        ctx = user_context(getattr(account, "account_id", None), project=project_name, has_model=has_model)
+        memory_text = self._project_memory_text(conversation, account, project_name=project_name)
+        if memory_text:
+            ctx["project_chat_memory"] = memory_text
+        return ctx
+
+    def _project_memory_text(self, conversation, account, *, project_name: str | None = None) -> str:
+        """Cross-conversation memory of the conversation's project ("" for General chats or on any error)."""
+        if conversation is None or account is None or conversation.project_id is None:
+            return ""
+        try:
+            from app.application.project_chat_memory import build_project_memory
+
+            return build_project_memory(self._repo, self._project_memory, account.account_id, conversation.project_id,
+                                        current_conversation_id=conversation.id, project_name=project_name,
+                                        current_history=8)["text"]
+        except Exception:  # noqa: BLE001 - memory is best effort, never break the chat
+            logger.warning("project chat memory failed", exc_info=True)
+            return ""
+
+    def project_chat_memory(self, account: AuthenticatedAccount, project_id: UUID) -> dict:
+        """The memory block + stats the assistant sees for a project (for the project-memory view)."""
+        self._project_access.require_project(project_id, account)
+        from app.application.project_chat_memory import build_project_memory
+
+        return build_project_memory(self._repo, self._project_memory, account.account_id, project_id)
 
     def _helper_reply(self, conversation, account: AuthenticatedAccount, user_content: str, history,
                       attachments, progress_sink) -> tuple[str, dict] | None:
@@ -991,6 +1016,9 @@ class ConversationService:
                 messages.append(AIMessage(role=AIMessageRole.USER, content=message.content))
             elif message.role == MessageRole.ASSISTANT:
                 messages.append(AIMessage(role=AIMessageRole.ASSISTANT, content=message.content))
+        memory_text = self._project_memory_text(conversation, account)
+        if memory_text:
+            messages.insert(1, AIMessage(role=AIMessageRole.SYSTEM, content=memory_text))
         messages.append(AIMessage(role=AIMessageRole.USER, content=user_content))
 
         from app.application import general_beam_engine as gbe
