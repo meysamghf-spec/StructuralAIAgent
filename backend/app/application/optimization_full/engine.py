@@ -271,7 +271,8 @@ class Evaluator:
                     rows = [idx[mid] for mid in g["members"] if mid in idx]
                     Ls = [lengths.get(mid, 0.0) for mid in g["members"]]
                     info: dict[str, Any] = {"group": g["key"], "label": g["label"], "type": g["type"], "section": name,
-                                            "members": len(g["members"]), "index": genes[k], "options": len(self.names[k])}
+                                            "members": len(g["members"]), "index": genes[k], "options": len(self.names[k]),
+                                            "storeys": list(g["storeys"])}
                     if g["steel"]:
                         dc = max((steel_rows[m]["ratio"] for m in g["members"] if m in steel_rows), default=0.0)
                         kg = sum(sec.get("A", 0.0) * L * STEEL_DENSITY for L in Ls)

@@ -1,7 +1,10 @@
 "use client";
 
 import { OptResultView } from "./OptResultView";
+import Link from "next/link";
+
 import { getCurrentProjectId } from "@/lib/current-project";
+import { applyOptimizedFrame } from "@/lib/optimized-frame";
 import {
   cancelJob, candLabel, fmtNum, getJob, isActive, OptApiError, parseSections, startJob,
   type OptJob, type SectionLists,
@@ -21,6 +24,7 @@ export function FullOptimizationSection() {
   const [job, setJob] = useState<OptJob | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [appliedFrame, setAppliedFrame] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
@@ -33,8 +37,18 @@ export function FullOptimizationSection() {
         const j = await getJob(id);
         setJob(j);
         if (isActive(j)) poll(id);
+        else applyJobFrame(j);
       } catch (e) { fail(e); }
     }, 1500);
+  }
+
+  // Finished frame optimization → the re-analysed optimized frame becomes the project's model (toggle on the Model page).
+  function applyJobFrame(j: OptJob) {
+    const res = j.result as (OptJob["result"] & { optimized_frame3d?: { inputs?: Record<string, unknown> }; original_inputs?: unknown }) | null;
+    const opt = res?.optimized_frame3d;
+    if (j.status !== "done" || !opt?.inputs) return;
+    applyOptimizedFrame(getCurrentProjectId(), { inputs: opt.inputs, payload: opt, original: res?.original_inputs, marker: `job|${j.id}` });
+    setAppliedFrame(true);
   }
 
   async function preview() {
@@ -43,7 +57,7 @@ export function FullOptimizationSection() {
   }
 
   async function run() {
-    setError(""); setBusy(true); setJob(null);
+    setError(""); setBusy(true); setJob(null); setAppliedFrame(false);
     try {
       const l = file ? await parseSections(text, file) : null;
       if (l) setLists(l);
@@ -123,6 +137,11 @@ export function FullOptimizationSection() {
       ) : null}
 
       {r ? <OptResultView r={r} /> : null}
+      {appliedFrame ? (
+        <p className="muted" data-testid="opt-frame-applied">
+          مقاطع بهینه در مدل پروژه اعمال و تحلیل مجدد شد. <Link href="/workspace/model">مشاهده در صفحه مدل</Link>
+        </p>
+      ) : null}
     </section>
   );
 }

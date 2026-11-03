@@ -15,6 +15,18 @@ logger = logging.getLogger(__name__)
 CHAT_TIME_BUDGET_S = 25.0
 
 
+def _frame_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
+    from dataclasses import asdict
+
+    from app.application import frame3d_chat_analysis as f3
+    from app.application import frame3d_followup as fu
+
+    inp = f3.inputs_from_dict({"seismic_code": "IRAN_2800", **inputs})
+    if f3.missing_inputs(inp):
+        fu.apply_defaults(inp)
+    return {k: v for k, v in asdict(inp).items() if k not in f3.INTERNAL_FIELDS}
+
+
 def _frame_model(inputs: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     from app.application import frame3d_chat_analysis as f3
     from app.application import frame3d_followup as fu
@@ -31,6 +43,49 @@ def _frame_model(inputs: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     return model_from_frame(inp), [f"{k} (پیش‌فرض)" for k in assumed]
 
 
+def frame_group_sections(groups: list[dict[str, Any]]) -> dict[str, list[float]]:
+    """Optimizer groups -> the 3D frame's per-storey sections {"C1": [b, h], "B1": [b, h], ...} (metres).
+
+    Several groups on one storey (corner / edge / interior, X / Y beams) collapse to the largest section so the
+    re-analysed frame is never weaker than the optimized design. Steel catalog sections are not mapped.
+    """
+    import re
+
+    out: dict[str, list[float]] = {}
+    for g in groups or []:
+        m = re.fullmatch(r"([CB])(\d+(?:\.\d+)?)X(\d+(?:\.\d+)?)", str(g.get("section") or "").upper())
+        if not m or g.get("type") not in ("column", "beam"):
+            continue
+        b, h = float(m.group(2)) / 100, float(m.group(3)) / 100
+        for st in g.get("storeys") or []:
+            key = f"{'C' if g['type'] == 'column' else 'B'}{int(st)}"
+            cur = out.get(key)
+            if cur is None or b * h > cur[0] * cur[1]:
+                out[key] = [b, h]
+    return out
+
+
+def optimized_frame3d(frame_inputs: dict[str, Any] | None, result: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Re-analyse the frame with the optimized sections (same solver/design as the chat). None if not mappable."""
+    from app.application.frame3d_chat_analysis import build_frame3d_payload
+
+    if not frame_inputs or not result:
+        return None
+    gs = frame_group_sections(result.get("groups") or [])
+    if not gs:
+        return None
+    try:
+        inputs = {k: v for k, v in frame_inputs.items() if not str(k).startswith("_") and k != "group_sections"}
+        payload = build_frame3d_payload("", manual_inputs={**inputs, "group_sections": gs})
+    except Exception:  # noqa: BLE001 — the optimization result itself stays valid
+        logger.exception("re-analysis with optimized sections failed")
+        return None
+    if isinstance(payload, dict):
+        payload["optimized"] = True
+        payload["label"] = "3D FRAME ANALYSIS (OPTIMIZED SECTIONS)"
+    return payload
+
+
 def resolve_chat_model(text: str, prior_inputs: dict[str, Any] | None, conv=None, account=None,
                        project_id: str | None = None, registry=None, files=None) -> dict[str, Any]:
     """{'source', 'label_fa', 'model', 'assumed'}"""
@@ -42,10 +97,12 @@ def resolve_chat_model(text: str, prior_inputs: dict[str, Any] | None, conv=None
         raw = {k: getattr(inp, k) for k in inp.parsed if getattr(inp, k, None) is not None}
         if any(raw.get(k) for k in ("storeys", "bays_x", "bays_y")):
             model, assumed = _frame_model(raw)
-            return {"source": "message", "label_fa": "قاب توصیف‌شده در همین پیام", "model": model, "assumed": assumed}
+            return {"source": "message", "label_fa": "قاب توصیف‌شده در همین پیام", "model": model, "assumed": assumed,
+                    "frame_inputs": _frame_inputs(raw)}
     if prior_inputs:
         model, assumed = _frame_model(dict(prior_inputs))
-        return {"source": "frame", "label_fa": "قاب همین گفتگو", "model": model, "assumed": assumed}
+        return {"source": "frame", "label_fa": "قاب همین گفتگو", "model": model, "assumed": assumed,
+                "frame_inputs": _frame_inputs(dict(prior_inputs))}
     if project_id and registry is not None and files is not None:
         from app.application.optimization_full.project_model import _latest_import
 
@@ -62,7 +119,7 @@ def resolve_chat_model(text: str, prior_inputs: dict[str, Any] | None, conv=None
     res = resolve_project_frame(conv, account, project_id)
     model, assumed = _frame_model(res["inputs"])
     return {"source": res["source"], "label_fa": res["label"]["fa"], "model": model,
-            "assumed": [*res["assumptions_fa"], *assumed]}
+            "assumed": [*res["assumptions_fa"], *assumed], "frame_inputs": _frame_inputs(res["inputs"])}
 
 
 def run_chat_optimization(text: str, prior_inputs: dict[str, Any] | None = None, *, conv=None, account=None,
@@ -81,8 +138,15 @@ def run_chat_optimization(text: str, prior_inputs: dict[str, Any] | None = None,
         msg = friendly_error(exc) if not isinstance(exc, ValueError) else str(exc)
         return {"kind": "optimization_full", "status": "error", "error": msg, "result": None, "source_fa": None}
     res["assumed_inputs"] = [f"منبع مدل: {found['label_fa']}", *found["assumed"]]
-    return {"kind": "optimization_full", "status": "done", "error": None, "result": res,
-            "source": found["source"], "source_fa": found["label_fa"]}
+    out = {"kind": "optimization_full", "status": "done", "error": None, "result": res,
+           "source": found["source"], "source_fa": found["label_fa"]}
+    # Apply the optimized sections to the project's frame: re-analysed 3D model / forces shown in the chat and
+    # picked up by the Model page (the original stays available as "original").
+    opt3d = optimized_frame3d(found.get("frame_inputs"), res) if res.get("status") != "cancelled" else None
+    if opt3d:
+        out["optimized_frame3d"] = opt3d
+        out["original_inputs"] = found.get("frame_inputs")
+    return out
 
 
 def optimization_full_markdown(payload: dict[str, Any]) -> str:

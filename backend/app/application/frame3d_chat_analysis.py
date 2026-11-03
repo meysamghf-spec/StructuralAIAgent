@@ -1093,6 +1093,21 @@ def _viewer_raw(nodes, beams, cols, base, cases, combos, supports) -> dict[str, 
     }
 
 
+def _sections_text(inp: "Frame3dInputs") -> str:
+    """Uniform sections, or the per-storey (optimized) ones when group_sections is set."""
+    if not inp.group_sections:
+        return f"C {inp.column_b_m*100:g}×{inp.column_h_m*100:g}, B {inp.beam_b_m*100:g}×{inp.beam_h_m*100:g}"
+    def fmt(kind: str, dims) -> str:
+        seen: list[str] = []
+        for st in range(1, inp.storeys + 1):
+            b, h = dims(inp, st)
+            t = f"{b*100:g}×{h*100:g}"
+            if t not in seen:
+                seen.append(t)
+        return f"{kind} " + " / ".join(seen)
+    return f"{fmt('C', column_dims)}, {fmt('B', beam_dims)}"
+
+
 def _viewer_payload(raw: dict[str, Any], inp: "Frame3dInputs", design: dict[str, Any] | None, fdn: dict[str, Any] | None) -> dict[str, Any] | None:
     v = raw.get("viewer")
     if not v:
@@ -1111,13 +1126,13 @@ def _viewer_payload(raw: dict[str, Any], inp: "Frame3dInputs", design: dict[str,
             d = m["id"][1]
             edge = (jj in (0, ny)) if d == "X" else (ii in (0, nx))
             key = ("beam", m["storey"], d, "edge" if edge else "interior")
-            section = f"B{round(inp.beam_b_m * 100)}x{round(inp.beam_h_m * 100)}"
-            b, h = inp.beam_b_m, inp.beam_h_m
+            b, h = beam_dims(inp, m["storey"])  # optimizer per-storey sections honoured
+            section = f"B{round(b * 100)}x{round(h * 100)}"
         else:
             on_x, on_y = ii in (0, nx), jj in (0, ny)
             key = ("column", m["storey"], None, "corner" if on_x and on_y else "edge" if on_x or on_y else "interior")
-            section = f"C{round(inp.column_b_m * 100)}x{round(inp.column_h_m * 100)}"
-            b, h = inp.column_b_m, inp.column_h_m
+            b, h = column_dims(inp, m["storey"])
+            section = f"C{round(b * 100)}x{round(h * 100)}"
         g = groups.get(key)
         dc = None
         if g:
@@ -1384,7 +1399,7 @@ def _build_frame3d_payload(user_request: str, prior_spec: dict[str, Any] | None 
     fields = [
         {"label": "Model", "value": f"{inp.storeys} storeys, {inp.bays_x}×{inp.bays_y} bays ({inp.bay_x_m:g}×{inp.bay_y_m:g} m), h={inp.storey_height_m:g} m", "unit": ""},
         {"label": "Elements", "value": f"{raw['model']['columns']} columns, {raw['model']['beams']} beams, {raw['model']['nodes']} nodes", "unit": ""},
-        {"label": "Sections", "value": f"C {inp.column_b_m*100:g}×{inp.column_h_m*100:g}, B {inp.beam_b_m*100:g}×{inp.beam_h_m*100:g}", "unit": "cm"},
+        {"label": "Sections", "value": _sections_text(inp), "unit": "cm"},
         {"label": "Seismic weight W", "value": f"{results['seismic_weight_kn']:.1f}", "unit": "kN"},
     ]
     if is2800:

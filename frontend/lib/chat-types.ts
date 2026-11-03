@@ -207,6 +207,9 @@ export type ChatOptimizationFull = {
   error: string | null;
   sourceFa: string | null;
   result: import("./optimization-full").OptResult | null;
+  /** Raw frame3d payload re-analysed with the optimized sections (null for imported models). */
+  optimizedFrame?: unknown;
+  originalInputs?: Record<string, unknown> | null;
 };
 
 export type Frame3dDriftRow = {
