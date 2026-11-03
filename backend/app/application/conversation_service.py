@@ -1032,7 +1032,13 @@ class ConversationService:
                 prior = fopt.prior_spec_from_texts(
                     [m.content for m in reversed(history) if m.role == MessageRole.USER]
                 )
-                res = fopt.build_optimization_from_chat(opt_text, prior, {"time_budget_s": 35})
+                if prior is None and conversation.project_id is not None:
+                    # the frame may live in another chat of this project; else defaults are assumed automatically
+                    from app.application.optimization_full.model_resolver import resolve_project_frame
+
+                    found = resolve_project_frame(self, account, str(conversation.project_id), include_default=False)
+                    prior = found["inputs"] if found else None
+                res = fopt.build_optimization_from_chat(opt_text, prior, {"time_budget_s": 35}, assume_defaults=True)
                 if res is not None:
                     lang = "fa" if any("\u0600" <= ch <= "\u06ff" for ch in user_content) else "en"
                     return fopt.optimization_markdown(res, lang), {"mode": "rule_based", "intent": "frame_optimization", "engineering_results": res}

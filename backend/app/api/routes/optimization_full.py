@@ -40,19 +40,24 @@ def _frame_model(body: OptimizationJobRequest, acc, conv, access) -> tuple[dict[
     from app.application.optimization_full.builder import model_from_frame
 
     inputs = body.inputs
-    if not inputs and body.project_id:
-        from uuid import UUID
-
-        try:
-            access.require_project(UUID(body.project_id), acc)
-        except ValueError as exc:
-            raise HTTPException(422, "invalid project_id") from exc
-        from app.api.routes.autocad import latest_frame_inputs
-
-        inputs = latest_frame_inputs(conv, acc, body.project_id)
+    assumed_notes: list[str] = []
     if not inputs:
-        raise HTTPException(409, {"en": "No complete 3D frame yet — complete it on the Model page or in chat first.",
-                                  "fa": "هنوز مدل کامل قابی نیست؛ ابتدا آن را در صفحه مدل یا چت کامل کنید."})
+        if body.project_id:
+            from uuid import UUID
+
+            try:
+                access.require_project(UUID(body.project_id), acc)
+            except ValueError as exc:
+                raise HTTPException(422, "invalid project_id") from exc
+        from app.api.routes.autocad import latest_frame_inputs
+        from app.application.optimization_full.model_resolver import resolve_project_frame
+
+        inputs = latest_frame_inputs(conv, acc, body.project_id) if body.project_id else None
+        if not inputs:
+            # Whole project chat history (runs + frame descriptions), else the documented defaults — never "no model".
+            res = resolve_project_frame(conv, acc, body.project_id)
+            inputs = res["inputs"]
+            assumed_notes = [f"منبع مدل: {res['label']['fa']}", *res["assumptions_fa"]]
     billing.check_frame_size(getattr(acc, "account_id", None), inputs)
     data = {"seismic_code": "IRAN_2800", **inputs}
     inp = f3.inputs_from_dict(data)
@@ -67,7 +72,7 @@ def _frame_model(body: OptimizationJobRequest, acc, conv, access) -> tuple[dict[
         raise HTTPException(422, "missing: " + ", ".join(f3.input_labels(missing, "en")))
     if inp.storeys > f3.MAX_STOREYS or max(inp.bays_x, inp.bays_y) > f3.MAX_BAYS or min(inp.storeys, inp.bays_x, inp.bays_y) < 1:
         raise HTTPException(422, f"supports 1-{f3.MAX_STOREYS} storeys and 1-{f3.MAX_BAYS} bays per direction")
-    return model_from_frame(inp), [f"{k} (default)" for k in assumed]
+    return model_from_frame(inp), assumed_notes + [f"{k} (default)" for k in assumed]
 
 
 @router.post("/parse-sections")

@@ -161,7 +161,8 @@ export default function OptimizationWorkspaceClient() {
     setNoModel(false);
     setResult(null);
     setFullJob(null);
-    const source = readiness?.detected_model?.source ?? "frame";
+    // Anything but an imported model is a frame: from a run, from the project's chat history, or the default frame.
+    const source = readiness?.detected_model?.source === "model" ? "model" : "frame";
     const options = {
       time_budget_s: 120,
       storey_band: optimizationMode === "SHARED_SECTION" ? 50 : 1,
@@ -406,6 +407,12 @@ export default function OptimizationWorkspaceClient() {
             ? ` مدل شناسایی‌شده: ${readiness.detected_model.label?.fa ?? ""} (${fmtNum(readiness.detected_model.member_count)} عضو).`
             : ""}
         </p>
+        {readiness?.detected_model?.assumptions_fa?.length ? (
+          <details className="meta-summary" dir="rtl" lang="fa" style={{ textAlign: "right" }}>
+            <summary>فرض‌های خودکار ({fmtNum(readiness.detected_model.assumptions_fa.length)})</summary>
+            <ul>{readiness.detected_model.assumptions_fa.map((a) => <li key={a}>{a}</li>)}</ul>
+          </details>
+        ) : null}
         {noModel ? (
           <div className="alert" role="alert" dir="rtl" lang="fa" style={{ textAlign: "right" }}>
             <p><strong>{NO_MODEL_MESSAGE_FA}</strong></p>
