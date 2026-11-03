@@ -58,6 +58,66 @@ def parse_bars(s: str | None) -> tuple[int, int]:
     return int(m.group(1)), int(m.group(2))
 
 
+def _readable(s: Any) -> bool:
+    return bool(re.search(r"(\d+)\s*[ΦφØø]\s*(\d+)", s or ""))
+
+
+def complete_design(inp, design: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """Fill design groups that have no bar arrangement (status FAIL: 'Required bars do not fit in one layer',
+    'Section too small', 'No bar arrangement fits') with a Mabhas 9 default so the sheets can still be drawn.
+
+    Beams: the largest one-layer arrangement that fits the web (the most the section can hold) + Mabhas 9 stirrups.
+    Columns: the lightest arrangement with rho >= 1 % (Mabhas 9 minimum) + Mabhas 9 ties.
+    Every filled group is tagged 'NG' and listed in the returned warnings (shown on the sheets and to the user)."""
+    from app.application import mabhas9_rc_design as m9
+    out = {**design, "beams": [dict(g) for g in design.get("beams") or []], "columns": [dict(g) for g in design.get("columns") or []]}
+    warnings: list[str] = []
+    b, h = inp.beam_b_m * 1000, inp.beam_h_m * 1000
+    for g in out["beams"]:
+        missing = [k for k in ("top_bars", "bottom_bars") if not _readable(g.get(k))]
+        if missing:
+            best = None
+            for db in m9.BEAM_BARS:
+                for n in range(2, 9):
+                    if (b - 2 * (m9.COVER + m9.STIRRUP_DB) - n * db) / max(n - 1, 1) < max(db, 25.0):
+                        break
+                    if best is None or n * m9.bar_area(db) > best[2]:
+                        best = (n, db, n * m9.bar_area(db))
+            n, db, _ = best or (2, 14, 0)
+            for k in missing:
+                g[k] = f"{n}Φ{db}"
+            warnings.append(f"{g.get('group', 'beam')}: {'; '.join(g.get('notes') or ['no design'])} -> drawn with {n}Φ{db} (max one layer), NG: enlarge the section")
+            g["detailing_ng"] = True
+        if not re.search(r"[ΦφØø]\s*\d+\s*@\s*\d+", g.get("stirrups") or ""):
+            d = h - 60
+            s_end = int(min(d / 4, 8 * 14, 24 * m9.STIRRUP_DB, 300) // 25 * 25)
+            s_mid = int(min(d / 2, 300) // 25 * 25)
+            g["stirrups"] = f"Φ{m9.STIRRUP_DB:g}@{s_end} (2h = {2 * h:.0f} mm), Φ{m9.STIRRUP_DB:g}@{s_mid} elsewhere"
+            if not g.get("detailing_ng"):
+                warnings.append(f"{g.get('group', 'beam')}: no stirrup design -> Mabhas 9 minimum stirrups")
+    cb, ch = inp.column_b_m * 1000, inp.column_h_m * 1000
+    clear = inp.storey_height_m * 1000 - h
+    for g in out["columns"]:
+        if not _readable(g.get("bars")):
+            opts = [o for o in m9.column_options(cb, ch) if o[2] / (cb * ch) >= 0.01] or m9.column_options(cb, ch)
+            nface, db, _ = opts[0] if opts else (3, 16, 0)
+            g["bars"] = f"{4 * nface - 4}Φ{db}"
+            g["ties"] = m9.ties(cb, ch, db, clear)["text"]
+            warnings.append(f"{g.get('group', 'column')}: {'; '.join(g.get('notes') or ['no design'])} -> drawn with Mabhas 9 minimum {g['bars']} (rho >= 1 %), NG: enlarge the section")
+            g["detailing_ng"] = True
+        elif not re.search(r"[ΦφØø]\s*\d+\s*@\s*\d+", g.get("ties") or ""):
+            g["ties"] = m9.ties(cb, ch, parse_bars(g["bars"])[1], clear)["text"]
+    out["detailing_warnings"] = warnings
+    return out, warnings
+
+
+def detailing_warning_fa(warnings: list[str]) -> str:
+    if not warnings:
+        return ""
+    return (f"هشدار: {len(warnings)} گروه عضو طراحی آرماتور نداشت (مقطع کوچک است یا آرماتور در یک لایه جا نمی‌شود). "
+            "این اعضا با آرماتور پیش‌فرض مبحث ۹ ترسیم و با NG علامت خورده‌اند؛ مقطع را بزرگ کنید و دوباره طراحی کنید.")
+
+
 def parse_spacing(s: str | None) -> tuple[int, int, int, int | None]:
     """'Φ10@95 (2h = 900 mm), Φ10@175 elsewhere' / 'Φ10@125 over l0 = 458 mm at both ends, Φ10@250 elsewhere'
     -> (d, s_end, s_mid, zone_mm)."""
@@ -300,7 +360,7 @@ def _draw_beam(sh: _Sheet, y0: float, g: dict[str, Any], inp, rows: list[BarRow]
     total = nsp * L  # centre line of end columns
     ln = L - col
     x_end0, x_end1 = -col / 2 + COVER_MM, total + col / 2 - COVER_MM  # bar ends inside end columns
-    tag = g["group"]
+    tag = g["group"] + (" (NG)" if g.get("detailing_ng") else "")
     lines = max(1, round(g["members"] / nsp))  # design "members" counts spans; one continuous beam line has nsp spans
     # concrete outline + columns
     sh.poly("CONCRETE", [(-col / 2, y0), (total + col / 2, y0), (total + col / 2, y0 + h), (-col / 2, y0 + h)], closed=True)
@@ -433,7 +493,7 @@ def _draw_column(sh: _Sheet, x0: float, g: dict[str, Any], inp, rows: list[BarRo
     dt, s0, s, l0 = parse_spacing(g["ties"])
     l0 = l0 or int(max(b, h, (H - hb) / 6, 450))
     lap = lap_length(d, fy, fc, False, A["splice_class"], A["psi_t"], A["ld_factor"])
-    tag = g["group"]
+    tag = g["group"] + (" (NG)" if g.get("detailing_ng") else "")
     clear = H - hb
     # elevation (floor at y=0 .. beam soffit at clear .. top of beam at H)
     sh.poly("CONCRETE", [(x0, 0), (x0 + b, 0), (x0 + b, H), (x0, H)], closed=True)
@@ -555,6 +615,7 @@ def _schedule(sh: _Sheet, rows: list[BarRow], top: float, max_rows: int = 10**6)
 def build_rebar_doc(inp, design: dict[str, Any], project: str = "3D frame") -> tuple[Any, list[BarRow], float]:
     if not design or not design.get("beams"):
         raise ValueError("rebar detailing needs the Mabhas 9 design (design_code MABHAS9)")
+    design, _warn = complete_design(inp, design)
     A = da.effective(getattr(inp, "assumptions", None))
     doc = dstd.new_document()  # shared office standard: linetypes, lineweights, Latin + Persian text styles
     for name, color in LAYERS.items():
@@ -609,6 +670,7 @@ def build_rebar_doc(inp, design: dict[str, Any], project: str = "3D frame") -> t
     # R-03 schedule + notes, sized to its own content
     s3 = _Sheet(msp, 2 * pitch, "R-03")
     notes = (["[code] " + s for s in DETAILING_BASIS] + ["[assumed] " + s for s in DETAILING_ASSUMPTIONS]
+             + (["NOT DESIGNED / NG (drawn with Mabhas 9 defaults - enlarge the section and redesign):"] + ["  " + w for w in _warn] + [detailing_warning_fa(_warn)] if _warn else [])
              + ["PROJECT ASSUMPTIONS (change from chat):"] + ["  " + r for r in da.describe(A, inp, "en")])
     import textwrap
     notes = [w for n_ in notes for w in (textwrap.wrap(n_, 105, subsequent_indent="    ") or [""])]

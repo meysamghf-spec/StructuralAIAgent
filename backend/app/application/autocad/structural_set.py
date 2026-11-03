@@ -119,12 +119,10 @@ def sheet_columns(inp, design, info) -> Sheet:
     rows = []
     for c in cols:
         (b, h), _ = _dims(inp, c["storey"])
-        _, s0, sm, l0 = rd.parse_spacing(c.get("ties"))
-        nd = rd.parse_bars(c["bars"])
-        dt = rd.parse_spacing(c.get("ties"))[0]
-        if not _ok(c.get("bars")):
+        if not _ok(c.get("bars")) or not c.get("ties"):
             rows.append([POS_MARK[c["position"]], f"S{c['storey']}", f"{b:.0f}x{h:.0f}", "NG - enlarge section", "", "", "", "", c["position"], ""])
             continue
+        dt, s0, sm, l0 = rd.parse_spacing(c.get("ties"))
         rows.append([POS_MARK[c["position"]], f"S{c['storey']}", f"{b:.0f}x{h:.0f}", c["bars"], f"{c.get('rho_pct', '')}",
                      f"Φ{dt}@{s0}", f"{l0 or max(b, h, 450):.0f}", f"Φ{dt}@{sm}", c["position"], f"{c.get('DC', '')}"])
     pen.table(xs[0] - 20 * s, ys[0] - 45 * s,
