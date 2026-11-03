@@ -11,6 +11,7 @@ import {
   type UserResponse,
 } from "@/lib/auth-api";
 import { clearAuthSession, getStoredAuthToken, hasRememberHint } from "@/lib/auth-session";
+import { bootstrapAuth, isSessionRejected } from "@/lib/auth-bootstrap";
 import {
   createContext,
   useCallback,
@@ -46,41 +47,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setFeatures(null);
       return;
     }
-    const [me, featureSummary] = await Promise.all([
-      fetchCurrentUser(),
-      fetchFeatureAccess(),
-    ]);
+    const me = await fetchCurrentUser();
     setUser(me);
-    setFeatures(featureSummary);
+    try {
+      setFeatures(await fetchFeatureAccess());
+    } catch (error) {
+      if (isSessionRejected(error)) throw error;
+      /* feature access is advisory; a slow/failed call must not sign the user out */
+    }
   }, []);
 
   useEffect(() => {
     let active = true;
+    let unloading = false;
+    const onPageHide = () => {
+      unloading = true;
+    };
+    window.addEventListener("pagehide", onPageHide);
+    window.addEventListener("beforeunload", onPageHide);
     async function bootstrap() {
-      try {
-        if (!getStoredAuthToken() && hasRememberHint()) {
-          await restoreSession(); // "remember me": the httpOnly cookie brings the session back
-        }
-        if (getStoredAuthToken()) {
-          await refresh();
-        }
-      } catch {
-        clearAuthSession();
-        if (active) {
-          setUser(null);
-          setFeatures(null);
-        }
-      } finally {
-        if (active) {
-          setLoading(false);
-        }
+      const result = await bootstrapAuth({
+        getToken: getStoredAuthToken,
+        hasRememberHint,
+        restoreSession,
+        fetchCurrentUser,
+        clearSession: clearAuthSession,
+        isUnloading: () => unloading || !active,
+      });
+      if (!active) return;
+      if (result.status === "authenticated") {
+        setUser(result.user);
+      } else {
+        setUser(null);
+        setFeatures(null);
+      }
+      setLoading(false);
+      if (result.status === "authenticated") {
+        fetchFeatureAccess()
+          .then((summary) => {
+            if (active) setFeatures(summary);
+          })
+          .catch(() => {
+            /* advisory only */
+          });
       }
     }
     void bootstrap();
     return () => {
       active = false;
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("beforeunload", onPageHide);
     };
-  }, [refresh]);
+  }, []);
 
   const login = useCallback(
     async (email: string, password: string, remember = false) => {
