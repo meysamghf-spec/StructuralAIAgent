@@ -54,7 +54,12 @@ def _project_runs(conv, account, project_id: str) -> list[dict[str, Any]]:
 
 def _project_user_texts(conv, account, project_id: str, limit: int = 400) -> list[str]:
     """User messages of every chat in the project, newest first."""
-    out: list[tuple[str, str]] = []
+    return [t for t, _ in _project_user_texts_titled(conv, account, project_id, limit)]
+
+
+def _project_user_texts_titled(conv, account, project_id: str, limit: int = 400) -> list[tuple[str, str]]:
+    """(text, chat title) of every user message in the project's chats, newest first."""
+    out: list[tuple[str, str, str]] = []
     try:
         convs = conv.list_conversations(account, project_id=UUID(project_id), limit=200)
     except Exception:  # noqa: BLE001
@@ -68,9 +73,9 @@ def _project_user_texts(conv, account, project_id: str, limit: int = 400) -> lis
             continue
         for m in msgs:
             if str(getattr(m.role, "value", m.role)).lower() == "user" and (m.content or "").strip():
-                out.append((str(getattr(m, "created_at", "")), m.content))
+                out.append((str(getattr(m, "created_at", "")), m.content, str(getattr(c, "title", "") or "")))
     out.sort(key=lambda t: t[0], reverse=True)
-    return [t for _, t in out[:limit]]
+    return [(t, title) for _, t, title in out[:limit]]
 
 
 def inputs_from_texts(texts: list[str]) -> dict[str, Any] | None:
@@ -109,29 +114,35 @@ def resolve_project_frame(conv, account, project_id: str | None, *, include_defa
     from app.application.chat_runs import pick_usable_frame_run
 
     found: tuple[str, dict[str, Any]] | None = None
+    chat_title: str | None = None
     if project_id and conv is not None:
         runs = _project_runs(conv, account, project_id)
         run = pick_usable_frame_run(runs)
         if run:
             found = ("frame", dict(run["inputs"]))
+            chat_title = run.get("conversation_title")
         if found is None:
             for r in sorted(runs, key=lambda r: str(r.get("created_at") or ""), reverse=True):
                 ins = r.get("inputs")
                 if r.get("kind") in ("frame_optimization", "frame3d_analysis") and isinstance(ins, dict) and \
                         any(ins.get(k) is not None for k in ("storeys", "bays_x", "bays_y")):
                     found = ("optimization" if r.get("kind") == "frame_optimization" else "frame", dict(ins))
+                    chat_title = r.get("conversation_title")
                     break
         if found is None:
-            ins = inputs_from_texts(_project_user_texts(conv, account, project_id))
+            titled = _project_user_texts_titled(conv, account, project_id)
+            ins = inputs_from_texts([t for t, _ in titled])
             if ins:
                 found = ("chat_text", ins)
+                chat_title = next((title for t, title in titled if inputs_from_texts([t])), None)
     if found is None:
         if not include_default:
             return None
         inputs, assumed = _fill({"lang": "fa", "zone": "HIGH", "soil": "II", "seismic_code": "IRAN_2800"})
         return {"source": "default", "inputs": inputs, "assumed": assumed, "assumptions_fa": default_assumptions_fa(),
-                "label": LABELS["default"]}
+                "label": LABELS["default"], "chat_title": None}
     source, raw = found
     inputs, assumed = _fill(raw)
     notes = [f"{_KEY_FA[k]}: {_fa(float(inputs[k]) if isinstance(inputs[k], float) else inputs[k])} (پیش‌فرض)" for k in assumed]
-    return {"source": source, "inputs": inputs, "assumed": assumed, "assumptions_fa": notes, "label": LABELS[source]}
+    return {"source": source, "inputs": inputs, "assumed": assumed, "assumptions_fa": notes, "label": LABELS[source],
+            "chat_title": chat_title or None}
