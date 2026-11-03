@@ -42,6 +42,10 @@ const TXT: Record<string, { en: string; fa: string }> = {
   cad: { en: "Open CAD page", fa: "باز کردن صفحهٔ CAD" },
   chat: { en: "Or type in chat:", fa: "یا در گفتگو بنویسید:" },
   openChat: { en: "Open chat", fa: "باز کردن گفتگو" },
+  auto: {
+    en: "This run has no member design yet; the Mabhas 9 design is built automatically for the detailing.",
+    fa: "این اجرا هنوز طراحی اعضا ندارد؛ طراحی مبحث نهم برای دیتیلینگ خودکار انجام می‌شود.",
+  },
   busy: { en: "Generating…", fa: "در حال ساخت…" },
   doneAt: { en: "Last generated", fa: "آخرین ساخت" },
 };
@@ -70,13 +74,15 @@ export function DetailingStep({ inputs, projectId, hasDesign, lang }: Props) {
     return () => window.removeEventListener(DETAILING_EVENT, sync);
   }, [projectId]);
 
+  // The backend builds the Mabhas 9 design itself for the detailing outputs, so a frame run without a design can still be detailed.
+  const autoDesign = !hasDesign && !!inputs;
   const status: DetailingStatus = detailingStatus({
-    hasDesign,
+    hasDesign: hasDesign || autoDesign,
     designSheets: plan?.designSheets ?? null,
     enforcement: plan?.enforcement,
     doneAt,
   });
-  const canRun = hasDesign && status !== "locked" && !!inputs;
+  const canRun = (hasDesign || autoDesign) && status !== "locked" && !!inputs;
 
   async function run(name: string, format: string) {
     setBusy(name);
@@ -99,6 +105,7 @@ export function DetailingStep({ inputs, projectId, hasDesign, lang }: Props) {
         </span>
       </div>
       <p className="detailing-step-desc">{status === "not_run" ? tx("needDesign") : status === "locked" ? tx("locked") : tx("desc")}</p>
+      {autoDesign && status !== "locked" ? <p className="muted" data-testid="detailing-auto-design">{tx("auto")}</p> : null}
       {status === "done" && doneAt ? (
         <p className="muted detailing-step-meta">
           {tx("doneAt")}: <time dateTime={doneAt}>{new Date(doneAt).toLocaleString(l === "fa" ? "fa-IR" : "en-GB")}</time>

@@ -277,9 +277,16 @@ def figure_names(raw: dict[str, Any]) -> list[str]:
 
 
 # ------------------------------------------------------------------ single item + zip
+DESIGN_REQUIRED = {"dxf_rebar", "dxf_foundation", "structural_set"}
+
+
 def item(kind: str, name: str, fmt: str, inputs: dict[str, Any], optimization: dict[str, Any] | None = None) -> tuple[str, bytes, str]:
     """Return (filename, bytes, mime)."""
     from app.application import csi_text_export as cte
+    if name in DESIGN_REQUIRED and str(inputs.get("design_code") or "NONE").upper() in ("NONE", ""):
+        # Rebar detailing / foundation sheets / the structural set are built from the Mabhas 9 design. A plain chat frame run
+        # (no "design per Mabhas 9") stores design_code NONE, which used to make these downloads fail with 422.
+        inputs = {**inputs, "design_code": "MABHAS9"}
     inp, raw, design = run(inputs)
     if kind == "table":
         ts = tables(inp, raw, design, optimization)
