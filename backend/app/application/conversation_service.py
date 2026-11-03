@@ -961,6 +961,8 @@ class ConversationService:
             progress_sink=progress_sink,
         )
         assistant_content, assistant_metadata = _format_execution_response(record)
+        assistant_content = self._attach_full_optimization(conversation, account, user_request, history,
+                                                           assistant_content, assistant_metadata)
         assistant_metadata["selected_mode"] = mode or "auto"
         if resume_context is not None:
             assistant_metadata["resumed_from_execution_id"] = resume_context["execution_id"]
@@ -972,6 +974,29 @@ class ConversationService:
         self._maybe_persist_aci_beam_memory(conversation, account, assistant_metadata)
         self._maybe_create_run_approval(conversation, account, assistant_metadata)
         return assistant_content, assistant_metadata
+
+    def _attach_full_optimization(self, conversation, account: AuthenticatedAccount, user_request: str, history,
+                                  content: str, metadata: dict) -> str:
+        """Project-chat «بهینه کن»: the orchestrator's quick optimizer result also gets the full section optimizer
+        (project model resolution: imported model > chat frames > previous runs > defaults), shown inline."""
+        res = metadata.get("engineering_results")
+        if not isinstance(res, dict) or res.get("kind") != "frame_optimization" or res.get("optimization_full"):
+            return content
+        try:
+            from app.application import frame_optimizer as fopt
+            from app.application.optimization_full.chat_run import optimization_full_markdown, run_chat_optimization
+
+            prior = fopt.prior_spec_from_texts([m.content for m in reversed(history) if m.role == MessageRole.USER])
+            full = run_chat_optimization(
+                user_request, prior, conv=self, account=account, project_id=str(conversation.project_id),
+                registry=self._file_registry, files=self._file_ingestion,
+            )
+        except Exception:  # noqa: BLE001 - never lose the orchestrator result
+            logger.exception("project optimization_full failed")
+            return content
+        res["optimization_full"] = full
+        metadata["intent"] = metadata.get("intent") or "frame_optimization"
+        return f"{content}\n\n{optimization_full_markdown(full)}"
 
     def _maybe_create_run_approval(self, conversation, account: AuthenticatedAccount, assistant_metadata: dict) -> None:
         """Every completed engineering run (any registered module kind) gets a pending approval item (revision 1)."""

@@ -161,6 +161,46 @@ def test_no_mock_in_production(chain, monkeypatch):
     assert next(a for a in crypto.asset_catalog() if a["id"] == "usdt-trc20")["available"] is False
 
 
+def _prod(monkeypatch, allow_mock=True, test_networks=None):
+    class S:
+        is_production = True
+        crypto_payment_allow_mock_in_production = allow_mock
+        crypto_test_networks_enabled = test_networks
+    monkeypatch.setattr("app.infrastructure.config.get_settings", lambda: S())
+
+
+def test_prod_with_mock_gateway_allowed_still_hides_test_networks(chain, monkeypatch):
+    """Server env: CRYPTO_PAYMENT_GATEWAY=mock + ALLOW_MOCK_IN_PRODUCTION=true must NOT expose free test payments."""
+    _prod(monkeypatch, allow_mock=True)
+    assert crypto.mock_allowed() is False
+    for aid in ("usdt-trc20", "usdt-erc20", "usdt-polygon"):
+        with pytest.raises(ApplicationError) as e:
+            service.create_checkout("u1", "pro", "1m", aid)
+        assert e.value.status_code == 503
+    cat = {a["id"]: a for a in crypto.asset_catalog()}
+    assert [i for i, a in cat.items() if a["available"]] == ["usdt-bep20"]
+    st = service.payment_status()
+    assert st["mock_allowed"] is False and st["mock"] is False and st["live_assets"] == ["usdt-bep20"]
+    assert buy()["status"] == "pending"
+
+
+def test_simulate_refused_in_production(chain, monkeypatch):
+    inv = service.create_checkout("u1", "pro", "1m", "usdt-trc20")["invoice"]  # dev: test invoice
+    _prod(monkeypatch, allow_mock=True)
+    with pytest.raises(ApplicationError) as e:
+        service.mock_confirm("u1", inv["id"], True)
+    assert e.value.status_code == 409
+    assert service.current_plan("u1")["id"] == "free"
+
+
+def test_test_networks_can_be_enabled_explicitly(chain, monkeypatch):
+    _prod(monkeypatch, allow_mock=False, test_networks=True)
+    assert crypto.mock_allowed() is True
+    inv = service.create_checkout("u1", "pro", "1m", "usdt-trc20")["invoice"]
+    service.mock_confirm("u1", inv["id"], True)
+    assert service.current_plan("u1")["id"] == "pro"
+
+
 # ------------------------------------------------------------------ detection
 def test_exact_payment_waits_for_confirmations_then_activates(chain):
     inv = buy()
