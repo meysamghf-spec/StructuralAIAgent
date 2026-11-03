@@ -75,6 +75,59 @@ class Cancelled(Exception):
     pass
 
 
+# ------------------------------------------------------------------ input checks
+OPT_TYPES = ("column", "beam", "brace")
+TYPE_ALIASES = {"girder": "beam", "joist": "beam", "lintel": "beam", "post": "column", "pier": "column",
+                "bracing": "brace", "diagonal": "brace", "strut": "brace"}
+
+
+class OptimizationInputError(ValueError):
+    """Input problem with a clear Persian message (shown to the user as-is)."""
+
+
+def prepare_model(model: dict[str, Any]) -> dict[str, Any]:
+    """Validates / normalises an (imported or chat) model for the optimizer; raises OptimizationInputError (Persian)."""
+    if not isinstance(model, dict):
+        raise OptimizationInputError("مدل سازه نامعتبر است؛ مدل را دوباره وارد کنید.")
+    model.setdefault("sections", {}); model.setdefault("materials", {})
+    nodes = model.get("nodes") or {}
+    members = model.get("members") or []
+    if not nodes or not members:
+        raise OptimizationInputError("مدل هیچ عضو یا گره‌ای ندارد؛ ابتدا مدل را در چت بسازید یا فایل ETABS/SAP را وارد کنید.")
+    bad_nodes, no_section = [], []
+    for mem in members:
+        t = str(mem.get("type") or "").strip().lower()
+        mem["type"] = TYPE_ALIASES.get(t, t)
+        if mem.get("i") not in nodes or mem.get("j") not in nodes:
+            bad_nodes.append(str(mem.get("id")))
+        elif mem["type"] in OPT_TYPES and not mem.get("section"):
+            no_section.append(str(mem.get("id")))
+    if bad_nodes:
+        raise OptimizationInputError("این اعضا به گره‌ای وصل‌اند که در مدل وجود ندارد: " + "، ".join(bad_nodes[:10])
+                                     + "؛ مدل را در مرحله بازبینی ایمپورت اصلاح کنید.")
+    if no_section:
+        raise OptimizationInputError("این اعضا مقطع ندارند: " + "، ".join(no_section[:10])
+                                     + "؛ در بازبینی مدل برایشان مقطع تعیین کنید.")
+    if not any(m["type"] in OPT_TYPES for m in members):
+        raise OptimizationInputError("مدل هیچ تیر، ستون یا مهاربندی برای بهینه‌سازی ندارد.")
+    return model
+
+
+def friendly_error(exc: BaseException) -> str:
+    """Persian message for any optimizer failure (no raw exception text)."""
+    if isinstance(exc, OptimizationInputError):
+        return str(exc)
+    msg = str(exc)
+    if "blocking review" in msg:
+        return "مدل واردشده هنوز موارد مسدودکننده در بازبینی دارد؛ ابتدا آن‌ها را در صفحه ایمپورت مدل برطرف و تأیید کنید."
+    if isinstance(exc, (KeyError, IndexError, TypeError)):
+        return ("بهینه‌سازی به‌دلیل ناقص بودن اطلاعات مدل متوقف شد (مقطع، مصالح یا گره‌ی ناقص). "
+                "مدل را در صفحه ایمپورت بازبینی کنید یا با پشتیبانی تماس بگیرید.")
+    if "singular" in msg.lower() or "unstable" in msg.lower():
+        return "سازه ناپایدار است (تکیه‌گاه یا اتصال کافی ندارد)؛ تکیه‌گاه‌ها و اتصال اعضا را در مدل کنترل کنید."
+    return "بهینه‌سازی با خطای داخلی متوقف شد؛ دوباره تلاش کنید و اگر تکرار شد، مدل را بازبینی کنید."
+
+
 # ------------------------------------------------------------------ groups
 def _is_steel(model: dict[str, Any], mem: dict[str, Any]) -> bool:
     sec = model["sections"].get(mem["section"]) or {}
@@ -97,7 +150,7 @@ def _rule_matches(rule: dict[str, Any], mem: dict[str, Any]) -> bool:
 
 
 def build_groups(model: dict[str, Any], lists: dict[str, Any], opt: Options) -> list[dict[str, Any]]:
-    top = max((m.get("storey", 1) for m in model["members"]), default=1)
+    top = max((m.get("storey", 1) for m in model["members"] if m.get("type") in OPT_TYPES), default=1)
     rules = []
     for r in lists.get("member_types") or []:
         r = dict(r)
@@ -106,6 +159,8 @@ def build_groups(model: dict[str, Any], lists: dict[str, Any], opt: Options) -> 
         rules.append(r)
     groups: dict[tuple, dict[str, Any]] = {}
     for mem in model["members"]:
+        if mem["type"] not in OPT_TYPES:
+            continue  # walls / links / unknown types stay as modelled
         steel = _is_steel(model, mem)
         rule = next((r for r in rules if _rule_matches(r, mem)), None)
         if rule is not None:
@@ -119,7 +174,7 @@ def build_groups(model: dict[str, Any], lists: dict[str, Any], opt: Options) -> 
             pos = mem.get("position", "all") if opt.group_by_position else "all"
             dirn = mem.get("direction", "") if mem["type"] == "beam" and opt.group_beams_by_direction else ""
             key = (mem["type"], s0, pos, dirn, steel)
-            fa = {"column": "ستون", "beam": "تیر", "brace": "مهاربند"}.get(mem["type"], mem["type"])
+            fa = {"column": "ستون", "beam": "تیر", "brace": "مهاربند"}.get(mem["type"], mem["type"]) + (" فولادی" if steel else "")
             pfa = {"corner": "گوشه", "edge": "کناری", "interior": "میانی", "all": ""}.get(pos, pos)
             label = " ".join(x for x in (fa, pfa, f"جهت {dirn}" if dirn else "", f"طبقه {s0}" if s0 == s1 else f"طبقات {s0}-{s1}") if x)
             cands = []
@@ -133,7 +188,7 @@ def build_groups(model: dict[str, Any], lists: dict[str, Any], opt: Options) -> 
         pool = g["cands"] or lists.get({"column": "columns", "beam": "beams", "brace": "braces"}.get(kind, "beams")) or []
         pool = [c for c in pool if isinstance(c, str) == g["steel"]]
         if not pool:
-            pool = (DEFAULT_STEEL[{"column": "columns", "beam": "beams", "brace": "braces"}.get(kind, "beams")] if g["steel"]
+            pool = (list(DEFAULT_STEEL.get(kind) or DEFAULT_STEEL["beam"]) if g["steel"]
                     else DEFAULT_RC_COLUMNS if kind == "column" else DEFAULT_RC_BEAMS)
         g["cands"] = pool
         g["storeys"] = sorted(g["storeys"])
@@ -353,7 +408,7 @@ def optimize_model(model: dict[str, Any], lists: dict[str, Any] | None = None, o
     t0 = time.time()
     opt = Options.from_dict(options)
     lists = dict(lists or {})
-    model = tag_members(model)
+    model = tag_members(prepare_model(model))
     groups = build_groups(model, lists, opt)
     ev = Evaluator(model, groups, lists, opt)
     rng = random.Random(opt.seed)

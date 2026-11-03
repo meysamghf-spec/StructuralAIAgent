@@ -181,7 +181,7 @@ export default function OptimizationWorkspaceClient() {
       setFullJob(job);
       pollFullJob(job.id);
     } catch (err) {
-      if (err instanceof OptApiError && (err.status === 409 || err.status === 422) && !/blocking|مسدود/.test(err.message + err.fa)) {
+      if (err instanceof OptApiError && (err.status === 409 || (err.status === 422 && source !== "model")) && !/blocking|مسدود/.test(err.message + err.fa)) {
         setNoModel(true);
       } else {
         setError(err instanceof OptApiError ? err.fa : err instanceof Error ? err.message : "Optimization run failed");

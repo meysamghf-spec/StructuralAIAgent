@@ -114,6 +114,12 @@ def start_job(body: OptimizationJobRequest, acc: Annotated[AuthenticatedAccount,
         if not rev["can_analyze"]:
             raise HTTPException(409, {"en": "Resolve the blocking review items of the imported model first.",
                                       "fa": "ابتدا موارد مسدودکننده‌ی بازبینی مدل وارد‌شده را برطرف کنید."})
+        from app.application.optimization_full.engine import OptimizationInputError, prepare_model
+
+        try:
+            prepare_model(model)
+        except OptimizationInputError as exc:
+            raise HTTPException(422, {"en": "The imported model cannot be optimized as is.", "fa": str(exc)}) from exc
         if len(model.get("members") or []) > 3000:
             raise HTTPException(422, "model too large for optimization (max 3000 members)")
     else:
