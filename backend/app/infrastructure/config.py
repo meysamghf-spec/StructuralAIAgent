@@ -37,6 +37,9 @@ class Settings(BaseSettings):
 
     crypto_payment_gateway: str = "mock"
     crypto_payment_allow_mock_in_production: bool = False
+    # Test/mock crypto networks and the 'simulate payment' endpoint. None = on outside production, off in production.
+    # Independent of crypto_payment_allow_mock_in_production (which only lets the app start with the mock gateway).
+    crypto_test_networks_enabled: bool | None = None
     crypto_payment_webhook_secret: SecretStr | None = None
     exchange_rate_provider: str = "stub"
     btcpay_server_url: str = ""

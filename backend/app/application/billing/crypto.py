@@ -180,7 +180,10 @@ def mock_allowed() -> bool:
     """Test ('simulate payment') invoices are for development only: in production they would grant Pro for free."""
     from app.infrastructure.config import get_settings
     st = get_settings()
-    return (not st.is_production) or bool(st.crypto_payment_allow_mock_in_production)
+    flag = getattr(st, "crypto_test_networks_enabled", None)
+    if flag is None:
+        return not st.is_production
+    return bool(flag)
 
 
 def rpc_urls(chain: str) -> list[str]:
