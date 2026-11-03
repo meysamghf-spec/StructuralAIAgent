@@ -8,7 +8,6 @@ from typing import Any
 
 SUPPORTED_EXTENSIONS = (".e2k", ".s2k", ".f2k", ".dxf")
 MAX_IMPORT_BYTES = 20 * 1024 * 1024
-MAX_NODES = 600
 
 # force unit -> kN, length unit -> m
 FORCE_TO_KN = {"N": 1e-3, "KN": 1.0, "KGF": 9.80665e-3, "KG": 9.80665e-3, "TONF": 9.80665, "TON": 9.80665,
@@ -38,6 +37,10 @@ def new_model(fmt: str, filename: str) -> dict[str, Any]:
         "member_loads": [],   # {member, pattern, w (kN/m, gravity +down)}
         "nodal_loads": [],    # {node, pattern, fx..mz}  (kN, kN.m, global)
         "combos": {},         # name -> {pattern: factor}
+        "areas": [],          # {id, nodes, kind: floor|wall, section, story, one_way}
+        "area_sections": {},  # name -> {thickness m, material, type}
+        "area_loads": [],     # {area, pattern, q kPa (gravity +down)}
+        "diaphragms": {},     # name -> [node ids]  (rigid)
         "issues": [],         # {severity: blocking|approximated|ignored, code, item, en, fa}
         "assumptions": [],    # {en, fa}
         "counts": {},
@@ -125,9 +128,25 @@ def pipe_props(od: float, t: float) -> dict[str, float]:
 
 def finalize(model: dict[str, Any]) -> dict[str, Any]:
     """Cross-checks common to all formats; fills counts."""
+    from app.application.model_import.catalog import lookup
+
     used = {m["section"] for m in model["members"]}
     for name in sorted(used):
         sec = model["sections"].get(name)
+        if (sec is None or not sec.get("A")) and not (sec or {}).get("edited"):
+            cat = lookup(name) or lookup((sec or {}).get("shape"))
+            if cat:
+                sec = model["sections"].setdefault(name, {"shape": None, "material": None, "modifiers": {}})
+                sec.update({k: v for k, v in cat.items() if k not in ("shape",)}, catalog=cat["shape"])
+                sec["shape"] = sec.get("shape") or cat["shape"]
+                model["issues"] = [i for i in model["issues"] if not (i["item"] == name and i["severity"] == "blocking")]
+                issue(model, "approximated", "catalog", name,
+                      f"Section {name!r}: properties taken from SAIA's steel catalog ({cat['shape']}); fillet-free J and tapered-flange approximations.",
+                      f"مقطع «{name}»: مشخصات از کاتالوگ فولاد SAIA ({cat['shape']}) گرفته شد؛ J و بال شیب‌دار تقریبی است.")
+                if not sec.get("material") or sec.get("material") not in model["materials"]:
+                    sec["material"] = sec.get("material") or "STEEL (catalog)"
+                    model["materials"].setdefault(sec["material"], {"type": "Steel", "E": 2.0e8, "nu": 0.3, "unit_weight": 77.0})
+
         if sec is None or not sec.get("A"):
             if any(i["item"] == name and i["severity"] == "blocking" for i in model["issues"]):
                 continue
@@ -150,11 +169,7 @@ def finalize(model: dict[str, Any]) -> dict[str, Any]:
         issue(model, "blocking", "no_frames", "model",
               "No frame members (beams/columns/braces) were found, so SAIA's frame engine cannot analyse this file.",
               "هیچ عضو قابی (تیر/ستون/مهاربند) پیدا نشد؛ موتور قاب SAIA نمی‌تواند این فایل را تحلیل کند.")
-    if len(model["nodes"]) > MAX_NODES:
-        issue(model, "blocking", "too_large", "model",
-              f"{len(model['nodes'])} nodes - above the {MAX_NODES}-node import limit of this phase.",
-              f"{len(model['nodes'])} گره؛ بیش از سقف {MAX_NODES} گره در این مرحله.")
-    if model["members"] and not model["member_loads"] and not model["nodal_loads"] and not any(
+    if model["members"] and not model["member_loads"] and not model["nodal_loads"] and not model.get("area_loads") and not any(
             p.get("self_weight") for p in model["load_patterns"].values()):
         issue(model, "approximated", "no_loads", "model",
               "No loads were read - only a Dead pattern with self-weight will be analysed unless you add loads.",
@@ -177,6 +192,9 @@ def finalize(model: dict[str, Any]) -> dict[str, Any]:
         "sections": len(used), "supports": len(model["supports"]),
         "load_patterns": len(model["load_patterns"]), "member_loads": len(model["member_loads"]),
         "nodal_loads": len(model["nodal_loads"]), "combos": len(model["combos"]),
+        "slabs": sum(1 for a in model.get("areas", []) if a.get("kind", "floor") == "floor"),
+        "area_loads": len(model.get("area_loads", [])), "diaphragms": len(model.get("diaphragms", {})),
+        "releases": sum(1 for m in model["members"] if any(m.get("rel_i") or ()) or any(m.get("rel_j") or ())),
     }
     return model
 
@@ -195,9 +213,6 @@ def parse_model_file(filename: str, data: bytes) -> dict[str, Any]:
         raise ImportError_("empty", "The file is empty.", "فایل خالی است.")
     if len(data) > MAX_IMPORT_BYTES:
         raise ImportError_("size", "File larger than 20 MB.", "حجم فایل بیش از ۲۰ مگابایت است.")
-    if ext != ".e2k":
-        raise ImportError_("phase", f"{ext} import is not available yet - this phase imports ETABS .e2k only (SAP2000 .s2k, SAFE .f2k and DXF come next).",
-                           f"ایمپورت {ext} هنوز فعال نیست؛ این مرحله فقط ETABS ‏.e2k را می‌خواند (SAP2000 ‏.s2k، SAFE ‏.f2k و DXF در مرحله‌ی بعد).")
     text = None
     for enc in ("utf-8-sig", "utf-16", "cp1256", "latin-1"):
         try:
@@ -207,5 +222,11 @@ def parse_model_file(filename: str, data: bytes) -> dict[str, Any]:
         except UnicodeDecodeError:
             continue
     text = text or data.decode("latin-1", errors="replace")
-    from app.application.model_import.e2k_import import parse_e2k
-    return finalize(parse_e2k(name, text))
+    if ext == ".e2k":
+        from app.application.model_import.e2k_import import parse_e2k
+        return finalize(parse_e2k(name, text))
+    if ext in (".s2k", ".f2k"):
+        from app.application.model_import.csi_tables import parse_csi_tables
+        return finalize(parse_csi_tables(name, text, ext[1:]))
+    from app.application.model_import.dxf_import import parse_dxf
+    return finalize(parse_dxf(name, data))

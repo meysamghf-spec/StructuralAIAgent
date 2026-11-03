@@ -20,7 +20,7 @@ from app.api.deps import (
 from app.application.billing import service as billing
 from app.application.model_import import ImportError_, analyze_imported_model, parse_model_file, review_summary
 from app.application.model_import.analyze import apply_review
-from app.application.model_import.common import MAX_IMPORT_BYTES, MAX_NODES
+from app.application.model_import.common import MAX_IMPORT_BYTES
 from app.domain.models.user import AuthenticatedAccount
 
 router = APIRouter(prefix="/model-import", tags=["model-import"])
@@ -110,8 +110,6 @@ def analyze_import(body: AnalyzeRequest, acc: Annotated[AuthenticatedAccount, De
                    files=Depends(get_file_ingestion_service), access=Depends(get_project_access_service)) -> dict[str, Any]:
     pid = _access(body.project_id, acc, access)
     model = body.model
-    if len(model.get("nodes") or {}) > MAX_NODES:
-        raise HTTPException(422, f"Model above the {MAX_NODES}-node limit of this phase.")
     review = review_summary(model)
     if not review["can_analyze"]:
         raise HTTPException(409, {"en": "Resolve the blocking review items first.", "fa": "ابتدا موارد مسدودکننده‌ی بازبینی را برطرف کنید.",

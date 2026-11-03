@@ -16,6 +16,12 @@ from app.application.model_import.common import (
 )
 
 DOF_NAMES = ("UX", "UY", "UZ", "RX", "RY", "RZ")
+REL_NAMES = ("P", "V2", "V3", "T", "M2", "M3")
+
+
+def parse_release(val: str) -> tuple[list[bool], list[bool]]:
+    toks = {t.upper() for t in val.replace(",", " ").split()}
+    return [f"{r}I" in toks for r in REL_NAMES], [f"{r}J" in toks for r in REL_NAMES]
 
 
 def _sections(text: str) -> dict[str, list[list[str]]]:
@@ -221,8 +227,10 @@ def parse_e2k(filename: str, text: str) -> dict[str, Any]:
         if "SECTION" in p:
             mem["section"] = p["SECTION"]
         if "RELEASE" in p:
-            issue(m, "approximated", "release", "members", "End releases (pins) were ignored - members are rigidly connected.",
-                  "آزادسازی انتهای اعضا (مفصل) نادیده گرفته شد؛ اتصالات صلب فرض شدند.")
+            mem["rel_i"], mem["rel_j"] = parse_release(p["RELEASE"])
+            if any(mem["rel_i"]) or any(mem["rel_j"]):
+                assume(m, "Member end releases (pins) in the file were applied by static condensation.",
+                       "آزادسازی انتهای اعضا (مفصل‌ها) طبق فایل با تراکم استاتیکی اعمال شد.")
         for k in ("PROPERTYMODIFIERS", "LENGTHOFFI", "RIGIDZONE", "INSERTIONPOINT"):
             if k in p:
                 issue(m, "ignored", "line_assign_" + k.lower(), "members", f"Line assign {k} was ignored.",
@@ -257,8 +265,8 @@ def parse_e2k(filename: str, text: str) -> dict[str, Any]:
             pat["self_weight"] = num(p.get("SELFWEIGHT"), pat["self_weight"]) or 0.0
             if str(pat["type"]).lower() in ("seismic", "wind", "quake") and not p.get("_"):
                 issue(m, "approximated", "auto_lateral", t[1],
-                      f"Pattern {t[1]} ({pat['type']}): ETABS auto-lateral loads are not generated - only loads written in the file are used.",
-                      f"الگوی {t[1]} ({pat['type']}): بار جانبی خودکار ETABS تولید نمی‌شود؛ فقط بارهای نوشته‌شده در فایل استفاده می‌شوند.")
+                      f"Pattern {t[1]} ({pat['type']}): ETABS auto-lateral parameters are not read - if the pattern has no loads in the file, SAIA generates Standard 2800 seismic / Mabhas 6 wind loads (see assumptions).",
+                      f"الگوی {t[1]} ({pat['type']}): پارامترهای بار جانبی خودکار ETABS خوانده نمی‌شود؛ اگر در فایل باری ندارد، SAIA بار زلزله‌ی استاندارد ۲۸۰۰ / باد مبحث ۶ را تولید می‌کند (فرض‌ها را ببینید).")
 
     # ---- frame loads -------------------------------------------------------------------
     for t in _find(secs, "FRAME OBJECT LOADS"):
@@ -270,24 +278,32 @@ def parse_e2k(filename: str, text: str) -> dict[str, Any]:
         if mid is None:
             continue
         typ, direction = p.get("TYPE", "").upper(), p.get("DIR", "GRAV").upper()
+        trap = None
         if typ == "UNIFF":
             w = num(p.get("FVAL"), 0.0) or 0.0
         elif typ == "TRAPF":
-            vals = [num(p.get(k), 0.0) or 0.0 for k in ("FSTART", "FEND")]
-            w = sum(vals) / 2
-            issue(m, "approximated", "trapezoid", "loads", "Trapezoidal frame loads were replaced by their average uniform value.",
-                  "بارهای ذوزنقه‌ای اعضا با مقدار یکنواخت میانگین جایگزین شدند.")
+            w0, w1 = (num(p.get("FSTART"), 0.0) or 0.0), (num(p.get("FEND"), 0.0) or 0.0)
+            r0, r1 = (num(p.get("RDSTART"), 0.0) or 0.0), (num(p.get("RDEND"), 1.0) or 1.0)
+            w = None
+            trap = (r0, r1, w0, w1)
         else:
             issue(m, "ignored", "lineload_" + (typ.lower() or "other"), "loads", f"Frame load type {typ or '?'} was ignored.",
                   f"بار عضو از نوع {typ or '?'} نادیده گرفته شد.")
             continue
-        w *= F / L
-        vec = {"GRAV": (0, 0, -w), "GRAVITY": (0, 0, -w), "Z": (0, 0, w), "X": (w, 0, 0), "Y": (0, w, 0)}.get(direction)
-        if vec is None:
+        unit = {"GRAV": (0, 0, -1), "GRAVITY": (0, 0, -1), "Z": (0, 0, 1), "X": (1, 0, 0), "Y": (0, 1, 0)}.get(direction)
+        if unit is None:
             issue(m, "ignored", "lineload_dir", direction, f"Frame load direction {direction} (local axis) was ignored.",
                   f"بار عضو در جهت {direction} (محور محلی) نادیده گرفته شد.")
             continue
-        m["member_loads"].append({"member": mid, "pattern": lc, "wx": vec[0], "wy": vec[1], "wz": vec[2]})
+        pieces = [(0.0, 1.0, w)] if trap is None else [
+            (trap[0] + (trap[1] - trap[0]) * k / 8, trap[0] + (trap[1] - trap[0]) * (k + 1) / 8,
+             trap[2] + (trap[3] - trap[2]) * (k + 0.5) / 8) for k in range(8)]
+        for ra, rb, wv in pieces:
+            wv *= F / L
+            ld = {"member": mid, "pattern": lc, "wx": unit[0] * wv, "wy": unit[1] * wv, "wz": unit[2] * wv}
+            if (ra, rb) != (0.0, 1.0):
+                ld["ra"], ld["rb"] = ra, rb
+            m["member_loads"].append(ld)
         m["load_patterns"].setdefault(lc, {"type": "Other", "self_weight": 0.0})
     for t in _find(secs, "POINT OBJECT LOADS"):
         if t[0].upper() != "POINTLOAD" or len(t) < 3:
@@ -336,20 +352,89 @@ def parse_e2k(filename: str, text: str) -> dict[str, Any]:
             flat.pop(c)
         m["combos"][name] = flat
 
-    # ---- what is not read -------------------------------------------------------------
-    n_areas = sum(1 for t in _find(secs, "AREA CONNECTIVITIES") if t[0].upper() == "AREA")
-    if n_areas:
-        issue(m, "ignored", "areas", f"{n_areas}",
-              f"{n_areas} area objects (slabs/walls/decks) were not imported - SAIA's frame engine analyses beams, columns and braces only.",
-              f"{n_areas} عضو سطحی (دال/دیوار/عرشه) وارد نشد؛ موتور قاب SAIA فقط تیر، ستون و مهاربند را تحلیل می‌کند.")
-    n_al = sum(1 for t in _find(secs, "SHELL OBJECT LOADS") + _find(secs, "AREA OBJECT LOADS") if t and t[0].upper() == "AREALOAD")
-    if n_al:
-        issue(m, "approximated", "area_loads", f"{n_al}",
-              f"{n_al} area (slab) loads were not distributed to beams - add equivalent beam line loads in the review, or the analysis misses them.",
-              f"{n_al} بار سطحی (دال) به تیرها منتقل نشد؛ در بازبینی بار خطی معادل تیرها را اضافه کنید، وگرنه در تحلیل نیست.")
-    if _find(secs, "DIAPHRAGM"):
-        issue(m, "approximated", "diaphragm", "model", "Rigid diaphragms were not applied - floors are modelled by the beams only.",
-              "دیافراگم صلب اعمال نشد؛ کف‌ها فقط با تیرها مدل شده‌اند.")
+    # ---- areas (slabs / decks / walls), area loads, diaphragms ----------------------------
+    m.setdefault("areas", []); m.setdefault("area_sections", {}); m.setdefault("area_loads", []); m.setdefault("diaphragms", {})
+    for t in _find(secs, "SLAB PROPERTIES") + _find(secs, "DECK PROPERTIES") + _find(secs, "WALL PROPERTIES") + _find(secs, "SHELL PROPERTIES"):
+        if t[0].upper() != "SHELLPROP" or len(t) < 2:
+            continue
+        p = kv(t, 2)
+        th = num(p.get("SLABTHICKNESS") or p.get("WALLTHICKNESS") or p.get("THICKNESS") or p.get("DECKSLABDEPTH"))
+        sec = m["area_sections"].setdefault(t[1], {"material": None, "thickness": None, "type": p.get("PROPTYPE", "Slab")})
+        if "MATERIAL" in p or "DECKSLABMATERIAL" in p:
+            sec["material"] = p.get("MATERIAL") or p.get("DECKSLABMATERIAL")
+        if th:
+            sec["thickness"] = th * L
+        if str(p.get("SLABTYPE", "")).lower().startswith("one") or "ONEWAY" in str(p.get("LOADDISTRIBUTION", "")).upper():
+            sec["one_way"] = True
+    area_def: dict[str, tuple[str, list[str]]] = {}
+    for t in _find(secs, "AREA CONNECTIVITIES"):
+        if t[0].upper() != "AREA" or len(t) < 4:
+            continue
+        n = int(num(t[3], 0) or 0)
+        area_def[t[1]] = (t[2].upper(), t[4:4 + n])
+    walls = 0
+    area_of: dict[tuple[str, str], str] = {}
+    for t in _find(secs, "AREA ASSIGNS"):
+        if t[0].upper() != "AREAASSIGN" or len(t) < 3 or t[1] not in area_def:
+            continue
+        kind, ptsl = area_def[t[1]]
+        p = kv(t, 3)
+        if kind != "FLOOR":
+            walls += 1
+            continue
+        ids = [node(pt, t[2]) for pt in ptsl]
+        if any(i is None for i in ids) or len(ids) < 3:
+            continue
+        aid = f"{t[1]}@{t[2]}"
+        area_of[(t[1], t[2])] = aid
+        sec = p.get("SECTION")
+        rec = {"id": aid, "nodes": ids, "kind": "floor", "section": sec, "story": t[2], "one_way": True if m["area_sections"].get(sec or "", {}).get("one_way") else None}
+        m["areas"].append(rec)
+        if "DIAPH" in p or "DIAPHRAGM" in p:
+            d = p.get("DIAPH") or p.get("DIAPHRAGM")
+            if str(d).upper() not in ("NONE", "DISCONNECT"):
+                m["diaphragms"].setdefault(f"{d}@{t[2]}", set()).update(ids)
+    for t in _find(secs, "POINT ASSIGNS"):
+        if t[0].upper() == "POINTASSIGN" and len(t) >= 3:
+            p = kv(t, 3)
+            d = p.get("DIAPH") or p.get("DIAPHRAGM")
+            if d and str(d).upper() not in ("NONE", "DISCONNECT"):
+                nid = node(t[1], t[2])
+                if nid:
+                    m["diaphragms"].setdefault(f"{d}@{t[2]}", set()).add(nid)
+    semi = {t[1] for t in _find(secs, "DIAPHRAGM NAMES") if t[0].upper() == "DIAPHRAGM" and len(t) > 1 and "SEMI" in " ".join(t).upper()}
+    if semi:
+        issue(m, "approximated", "semirigid", "model", "Semi-rigid diaphragms were treated as rigid.", "دیافراگم‌های نیمه‌صلب، صلب فرض شدند.")
+    m["diaphragms"] = {k: sorted(v) for k, v in m["diaphragms"].items() if len(v) >= 2}
+    if m["diaphragms"]:
+        assume(m, f"{len(m['diaphragms'])} rigid floor diaphragms were applied (master node at each floor's mass centre).",
+               f"{len(m['diaphragms'])} دیافراگم صلب کف اعمال شد (گره اصلی در مرکز جرم هر طبقه).")
+    bad_al = 0
+    for t in _find(secs, "SHELL OBJECT LOADS") + _find(secs, "AREA OBJECT LOADS") + _find(secs, "SHELL UNIFORM LOAD"):
+        if not t or t[0].upper() != "AREALOAD" or len(t) < 3:
+            continue
+        p = kv(t, 3)
+        aid = area_of.get((t[1], t[2]))
+        typ, direction = p.get("TYPE", "UNIFF").upper(), p.get("DIR", "GRAV").upper()
+        if aid is None or typ not in ("UNIFF", "UNIFORM") or direction not in ("GRAV", "GRAVITY", "Z"):
+            bad_al += 1
+            continue
+        q = (num(p.get("FVAL"), 0.0) or 0.0) * F / L**2
+        if direction == "Z":
+            q = -q
+        lc = p.get("LC", "")
+        m["area_loads"].append({"area": aid, "pattern": lc, "q": q})
+        m["load_patterns"].setdefault(lc, {"type": "Other", "self_weight": 0.0})
+    if m["areas"]:
+        assume(m, f"{len(m['areas'])} floor slabs imported: their loads (and self-weight) go to the supporting beams by tributary area - two-way (45 degree) panels, one-way when aspect >= 2 or set one-way. Slab bending stiffness is not modelled.",
+               f"{len(m['areas'])} دال کف وارد شد: بار و وزن آن‌ها به روش سطح بارگیر به تیرهای تکیه‌گاهی منتقل می‌شود؛ دوطرفه (۴۵ درجه)، و یک‌طرفه اگر نسبت ابعاد ≥ ۲ یا یک‌طرفه تعریف شده باشد. سختی خمشی دال مدل نمی‌شود.")
+    if walls:
+        issue(m, "ignored", "walls", f"{walls}",
+              f"{walls} wall/panel areas were not analysed as shells (frame engine) - their stiffness is missing; add their weight as beam loads if needed.",
+              f"{walls} دیوار/پانل به‌صورت پوسته تحلیل نشد (موتور قاب)؛ سختی آن‌ها لحاظ نشده است؛ در صورت نیاز وزنشان را به‌صورت بار تیر اضافه کنید.")
+    if bad_al:
+        issue(m, "ignored", "area_loads_other", f"{bad_al}", f"{bad_al} non-uniform or non-gravity area loads were ignored.",
+              f"{bad_al} بار سطحی غیریکنواخت یا غیرثقلی نادیده گرفته شد.")
     for key, en, fa in (("RESPONSE SPECTRUM", "Response spectrum functions", "توابع طیف پاسخ"),
                         ("WALL", "Wall/pier definitions", "تعاریف دیوار/پایه"),
                         ("LINK", "Link properties", "مشخصات لینک"),

@@ -1,23 +1,29 @@
 "use client";
 
-// Model section: import an ETABS .e2k, show the engineer review (everything not read / approximated),
+// Model section: import an ETABS .e2k / SAP2000 .s2k / SAFE .f2k / AutoCAD .dxf, show the engineer review (everything not read / approximated),
 // let the engineer edit or confirm, then analyse with SAIA's own frame3d engine.
 import { useEffect, useMemo, useState } from "react";
 
 import { useUiLang } from "@/hooks/useUiLang";
 import { getCurrentProjectId, PROJECT_EVENT } from "@/lib/current-project";
 import {
-  analyzeImport, fmt, ImportApiError, latestImport, parseImport, precheckFile, reviewImport,
+  analyzeImport, ImportApiError, latestImport, parseImport, precheckFile, reviewImport, SOILS, SYSTEMS, ZONES,
   type ImportIssue, type ImportState, type ReviewEdits,
 } from "@/lib/model-import";
 
-type SecEdit = { mode: "rect" | "props"; b: string; h: string; A: string; I33: string; I22: string; J: string };
-const emptySec = (): SecEdit => ({ mode: "rect", b: "", h: "", A: "", I33: "", I22: "", J: "" });
+import { ImportResults } from "./ImportResults";
+
+type SecEdit = { mode: "rect" | "props" | "catalog"; catalog: string; b: string; h: string; A: string; I33: string; I22: string; J: string };
+const emptySec = (): SecEdit => ({ mode: "rect", catalog: "", b: "", h: "", A: "", I33: "", I22: "", J: "" });
 const SECTION_CODES = new Set(["section_shape", "section_missing"]);
 
 const TXT = {
   en: {
-    title: "Import model (ETABS .e2k)", sub: "SAFE .f2k, SAP2000 .s2k and AutoCAD .dxf come in the next phase. DWG: save as DXF.",
+    title: "Import model (ETABS .e2k · SAP2000 .s2k · SAFE .f2k · AutoCAD .dxf)", sub: "Slabs, diaphragms, releases, P-Delta, modal/response spectrum and 2800 seismic/wind are analysed by the SAIA engine. DWG: save as DXF.",
+    catalog: "Steel catalog (e.g. IPE300, HE200B, BOX200x10)", settings: "Analysis settings", seismicGen: "2800 seismic (generated if the file has none)",
+    zone: "Zone", soil: "Soil type", importance: "Importance I", system: "Lateral system", wind: "Wind (Mabhas 6)", windOn: "Generate wind loads", V: "Basic wind speed (km/h)",
+    pdelta: "P-Delta", diaph: "Rigid floor diaphragms", floorLoad: "Floor (area) load on slabs (optional)", q: "q (kN/m², down)",
+    dxfTitle: "DXF plan → frame", storeys: "Storeys", height: "Storey height (m)", colSec: "Column section", slabs: "slabs",
     choose: "Choose file", parsing: "Reading…", counts: "Read from file", review: "Engineer review",
     reviewHelp: "Items SAIA could not read or had to approximate. Fix blocking items and confirm the rest before analysis.",
     blocking: "Blocking", approximated: "Approximated", ignored: "Not read", assumptions: "Assumptions (SI units: kN, m)",
@@ -29,7 +35,11 @@ const TXT = {
     nodes: "nodes", members: "members", sections: "sections", supports: "supports", load_patterns: "load patterns", combos: "combinations",
   },
   fa: {
-    title: "ورود مدل (ETABS ‎.e2k)", sub: "SAFE ‎.f2k، SAP2000 ‎.s2k و AutoCAD ‎.dxf در فاز بعد اضافه می‌شوند. DWG را به DXF ذخیره کنید.",
+    title: "ورود مدل (ETABS ‎.e2k · SAP2000 ‎.s2k · SAFE ‎.f2k · AutoCAD ‎.dxf)", sub: "دال‌ها، دیافراگم، آزادسازی انتها، P-Delta، تحلیل مودال/طیفی و زلزله و باد ۲۸۰۰ با موتور SAIA تحلیل می‌شوند. DWG را به DXF ذخیره کنید.",
+    catalog: "کاتالوگ فولادی (مثلاً IPE300، HE200B، BOX200x10)", settings: "تنظیمات تحلیل", seismicGen: "زلزله ۲۸۰۰ (اگر در فایل نباشد تولید می‌شود)",
+    zone: "پهنه", soil: "نوع خاک", importance: "ضریب اهمیت I", system: "سیستم باربر جانبی", wind: "باد (مبحث ۶)", windOn: "تولید بار باد", V: "سرعت مبنای باد (km/h)",
+    pdelta: "اثر P-Delta", diaph: "دیافراگم صلب طبقات", floorLoad: "بار سطحی روی دال‌ها (اختیاری)", q: "q (kN/m²، رو به پایین)",
+    dxfTitle: "پلان DXF ← قاب", storeys: "تعداد طبقات", height: "ارتفاع طبقه (m)", colSec: "مقطع ستون", slabs: "دال",
     choose: "انتخاب فایل", parsing: "در حال خواندن…", counts: "خوانده‌شده از فایل", review: "بازبینی مهندس",
     reviewHelp: "مواردی که SAIA نتوانست بخواند یا تقریب زد. موارد مسدودکننده را اصلاح و بقیه را پیش از تحلیل تأیید کنید.",
     blocking: "مسدودکننده", approximated: "تقریبی", ignored: "خوانده نشد", assumptions: "فرض‌ها (واحد SI: کیلونیوتن، متر)",
@@ -53,6 +63,9 @@ export function ModelImportPanel() {
   const [confirmed, setConfirmed] = useState<Set<string>>(new Set());
   const [secEdits, setSecEdits] = useState<Record<string, SecEdit>>({});
   const [load, setLoad] = useState({ pattern: "", w: "", story: "" });
+  const [area, setArea] = useState({ pattern: "", q: "", story: "" });
+  const [opts, setOpts] = useState({ zone: "HIGH", soil: "II", importance: "1", system: "RC_IMF", wind: false, V: "100", pdelta: true, diaph: true });
+  const [dxf, setDxf] = useState({ storeys: "3", height: "3.2", column: "" });
 
   useEffect(() => {
     const sync = () => setProjectId(getCurrentProjectId());
@@ -86,12 +99,15 @@ export function ModelImportPanel() {
 
   const nonBlocking = issues.filter((i) => i.severity !== "blocking");
   const unconfirmed = nonBlocking.filter((i) => !confirmed.has(i.id)).length;
+  const isDxfPlan = !!(state?.model as Record<string, unknown> | undefined)?.dxf_plan;
   const patterns = useMemo(() => Object.keys(state?.model.load_patterns ?? {}), [state]);
 
   function buildEdits(): ReviewEdits {
     const sections: NonNullable<ReviewEdits["sections"]> = {};
     for (const [name, e] of Object.entries(secEdits)) {
-      if (e.mode === "rect") {
+      if (e.mode === "catalog") {
+        if (e.catalog.trim()) sections[name] = { catalog: e.catalog.trim().toUpperCase() };
+      } else if (e.mode === "rect") {
         const b = Number(e.b), h = Number(e.h);
         if (b > 0 && h > 0) sections[name] = { b: b / 1000, h: h / 1000 };
       } else {
@@ -102,13 +118,20 @@ export function ModelImportPanel() {
     const edits: ReviewEdits = { sections, confirmed: [...confirmed] };
     const w = Number(load.w);
     if (load.pattern && w) edits.beam_line_loads = [{ pattern: load.pattern, w, ...(load.story ? { story: load.story } : {}) }];
+    const q = Number(area.q);
+    if (area.pattern && q) edits.area_loads = [{ pattern: area.pattern, q, ...(area.story ? { story: area.story } : {}) }];
+    edits.seismic = { zone: opts.zone, soil: opts.soil, importance: Number(opts.importance) || 1, system: opts.system };
+    edits.wind = { enabled: opts.wind, V_kmh: Number(opts.V) || 100 };
+    edits.pdelta = opts.pdelta;
+    edits.rigid_diaphragms = opts.diaph;
+    if (isDxfPlan) edits.dxf = { storeys: Math.max(1, Math.round(Number(dxf.storeys) || 1)), height: Number(dxf.height) || 3.2, ...(dxf.column.trim() ? { column_section: dxf.column.trim().toUpperCase() } : {}) };
     return edits;
   }
 
   async function onApply(): Promise<ImportState | null> {
     if (!state) return null;
     setBusy("review");
-    try { const s = await reviewImport(state.model, buildEdits(), projectId); adopt(s); setLoad({ pattern: "", w: "", story: "" }); return s; }
+    try { const s = await reviewImport(state.model, buildEdits(), projectId); adopt(s); setLoad({ pattern: "", w: "", story: "" }); setArea({ pattern: "", q: "", story: "" }); return s; }
     catch (e) { fail(e); return null; } finally { setBusy(""); }
   }
   async function onAnalyze() {
@@ -140,8 +163,8 @@ export function ModelImportPanel() {
           <div style={box}>
             <strong>{t.counts}: </strong><span dir="ltr">{state.model.filename}</span>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8, fontSize: 13 }}>
-              {(["nodes", "members", "sections", "supports", "load_patterns", "combos"] as const).map((k) => (
-                <span key={k} style={{ background: "rgba(127,127,127,0.18)", borderRadius: 6, padding: "2px 8px" }}>{state.review.counts[k] ?? 0} {t[k]}</span>
+              {(["nodes", "members", "slabs", "sections", "supports", "load_patterns", "combos"] as const).map((k) => (
+                <span key={k} style={{ background: "rgba(127,127,127,0.18)", borderRadius: 6, padding: "2px 8px" }}><bdi dir="ltr">{state.review.counts[k] ?? 0}</bdi> {t[k]}</span>
               ))}
             </div>
           </div>
@@ -171,6 +194,43 @@ export function ModelImportPanel() {
             {nonBlocking.length > 0 && (
               <button type="button" style={{ ...btn, background: "transparent", color: "#3b82f6", marginTop: 8 }} onClick={() => setConfirmed(new Set(nonBlocking.map((i) => i.id)))}>{t.confirmAll}</button>
             )}
+            {isDxfPlan && (
+              <div style={{ ...box, background: "transparent" }} data-testid="model-import-dxf">
+                <strong style={{ fontSize: 14 }}>{t.dxfTitle}</strong>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8, marginTop: 6 }}>
+                  <label style={{ fontSize: 12 }}>{t.storeys}<input style={input} inputMode="numeric" dir="ltr" value={dxf.storeys} onChange={(e) => setDxf({ ...dxf, storeys: e.target.value })} /></label>
+                  <label style={{ fontSize: 12 }}>{t.height}<input style={input} inputMode="decimal" dir="ltr" value={dxf.height} onChange={(e) => setDxf({ ...dxf, height: e.target.value })} /></label>
+                  <label style={{ fontSize: 12 }}>{t.colSec}<input style={input} dir="ltr" placeholder="COLUMN / HE200B" value={dxf.column} onChange={(e) => setDxf({ ...dxf, column: e.target.value })} /></label>
+                </div>
+              </div>
+            )}
+            <details style={{ marginTop: 10 }} data-testid="model-import-settings">
+              <summary style={{ fontSize: 14, cursor: "pointer" }}>{t.settings}</summary>
+              <p style={{ fontSize: 12, margin: "8px 0 4px", opacity: 0.85 }}>{t.seismicGen}</p>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8 }}>
+                <label style={{ fontSize: 12 }}>{t.zone}<select style={input} value={opts.zone} onChange={(e) => setOpts({ ...opts, zone: e.target.value })}>{ZONES.map((z) => <option key={z}>{z}</option>)}</select></label>
+                <label style={{ fontSize: 12 }}>{t.soil}<select style={input} value={opts.soil} onChange={(e) => setOpts({ ...opts, soil: e.target.value })}>{SOILS.map((z) => <option key={z}>{z}</option>)}</select></label>
+                <label style={{ fontSize: 12 }}>{t.importance}<select style={input} value={opts.importance} onChange={(e) => setOpts({ ...opts, importance: e.target.value })}>{["0.8", "1", "1.2", "1.4"].map((z) => <option key={z}>{z}</option>)}</select></label>
+                <label style={{ fontSize: 12 }}>{t.system}<select style={input} value={opts.system} onChange={(e) => setOpts({ ...opts, system: e.target.value })}>{SYSTEMS.map((z) => <option key={z}>{z}</option>)}</select></label>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginTop: 10, fontSize: 13, alignItems: "center" }}>
+                <label><input type="checkbox" checked={opts.wind} onChange={(e) => setOpts({ ...opts, wind: e.target.checked })} /> {t.windOn}</label>
+                {opts.wind && <label style={{ fontSize: 12 }}>{t.V} <input style={{ ...input, width: 80 }} inputMode="decimal" dir="ltr" value={opts.V} onChange={(e) => setOpts({ ...opts, V: e.target.value })} /></label>}
+                <label><input type="checkbox" checked={opts.pdelta} onChange={(e) => setOpts({ ...opts, pdelta: e.target.checked })} /> {t.pdelta}</label>
+                <label><input type="checkbox" checked={opts.diaph} onChange={(e) => setOpts({ ...opts, diaph: e.target.checked })} /> {t.diaph}</label>
+              </div>
+            </details>
+            <details style={{ marginTop: 10 }}>
+              <summary style={{ fontSize: 14, cursor: "pointer" }}>{t.floorLoad}</summary>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8, marginTop: 8 }}>
+                <label style={{ fontSize: 12 }}>{t.pattern}
+                  <select style={input} value={area.pattern} onChange={(e) => setArea({ ...area, pattern: e.target.value })}>
+                    <option value="">—</option>{patterns.map((p) => <option key={p} value={p}>{p}</option>)}
+                  </select></label>
+                <label style={{ fontSize: 12 }}>{t.q}<input style={input} inputMode="decimal" dir="ltr" value={area.q} onChange={(e) => setArea({ ...area, q: e.target.value })} /></label>
+                <label style={{ fontSize: 12 }}>{t.story}<input style={input} dir="ltr" value={area.story} onChange={(e) => setArea({ ...area, story: e.target.value })} /></label>
+              </div>
+            </details>
             <details style={{ marginTop: 10 }}>
               <summary style={{ fontSize: 14, cursor: "pointer" }}>{t.extraLoad}</summary>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8, marginTop: 8 }}>
@@ -195,7 +255,7 @@ export function ModelImportPanel() {
             </div>
           </div>
 
-          {state.analysis && <Results t={t} a={state.analysis} />}
+          {state.analysis && <ImportResults a={state.analysis} fa={fa} />}
         </>
       )}
     </section>
@@ -211,39 +271,11 @@ function SectionEditor({ t, value, onChange, input }: { t: (typeof TXT)["en"] | 
       <div style={{ display: "flex", gap: 12, fontSize: 13, flexWrap: "wrap" }}>
         <label><input type="radio" checked={value.mode === "rect"} onChange={() => onChange({ ...value, mode: "rect" })} /> {t.rect}</label>
         <label><input type="radio" checked={value.mode === "props"} onChange={() => onChange({ ...value, mode: "props" })} /> {t.props}</label>
+        <label><input type="radio" checked={value.mode === "catalog"} onChange={() => onChange({ ...value, mode: "catalog" })} /> {t.catalog}</label>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(90px, 1fr))", gap: 8, marginTop: 6 }}>
-        {value.mode === "rect" ? [f("b", "b"), f("h", "h")] : [f("A", "A"), f("I33", "I33"), f("I22", "I22"), f("J", "J")]}
+        {value.mode === "catalog" ? [f("catalog", "IPE / HEA / HEB / UNP / BOX / PIPE")] : value.mode === "rect" ? [f("b", "b"), f("h", "h")] : [f("A", "A"), f("I33", "I33"), f("I22", "I22"), f("J", "J")]}
       </div>
-    </div>
-  );
-}
-
-function Results({ t, a }: { t: (typeof TXT)["en"] | (typeof TXT)["fa"]; a: NonNullable<ImportState["analysis"]> }) {
-  const cell: React.CSSProperties = { padding: "4px 8px", borderTop: "1px solid rgba(127,127,127,0.25)", textAlign: "start", whiteSpace: "nowrap" };
-  return (
-    <div style={{ border: "1px solid rgba(127,127,127,0.4)", borderRadius: 10, padding: 12, marginTop: 12 }} data-testid="model-import-results">
-      <h3 style={{ margin: "0 0 4px", fontSize: 16 }}>{t.results}</h3>
-      <p style={{ fontSize: 12, color: "inherit", opacity: 0.8, margin: 0 }}>{t.engine}: <span dir="ltr">{a.engine}</span></p>
-      <div style={{ overflowX: "auto", marginTop: 8 }}>
-        <table style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
-          <thead><tr><th style={cell}></th><th style={cell}>{t.baseR}</th><th style={cell}>{t.maxD}</th></tr></thead>
-          <tbody>{Object.entries(a.cases).map(([k, c]) => (
-            <tr key={k}><td style={cell} dir="ltr">{k.replace(/^(pattern|combo):/, "")}</td><td style={cell} dir="ltr">{fmt(c.base_reaction_kN[2])}</td>
-              <td style={cell} dir="ltr">{fmt(c.max_displacement_m * 1000)} <span style={{ opacity: 0.7 }}>({c.max_displacement_node})</span></td></tr>
-          ))}</tbody>
-        </table>
-      </div>
-      <h4 style={{ margin: "12px 0 4px", fontSize: 14 }}>{t.governing}</h4>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
-          <thead><tr><th style={cell}>{t.member}</th><th style={cell}>N (kN)</th><th style={cell}>V (kN)</th><th style={cell}>M (kN·m)</th><th style={cell}>T (kN·m)</th></tr></thead>
-          <tbody>{a.governing_members.slice(0, 10).map((m) => (
-            <tr key={m.member}><td style={cell} dir="ltr">{m.member}</td>{[m.N, m.V, m.M, m.T].map((v, i) => <td key={i} style={cell} dir="ltr">{fmt(v)}</td>)}</tr>
-          ))}</tbody>
-        </table>
-      </div>
-      <ul style={{ fontSize: 12, color: "inherit", opacity: 0.8 }}>{a.notes.map((n) => <li key={n}>{n}</li>)}</ul>
     </div>
   );
 }
