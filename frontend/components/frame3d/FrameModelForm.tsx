@@ -4,7 +4,8 @@ import { useState } from "react";
 
 import { GeometryField, validateGeometry } from "@/components/frame3d/GeometryField";
 import { DEFAULT_FRAME_INPUTS, FRAME_FORM_FIELDS, formToInputs, inputsToForm } from "@/lib/frame3d-store";
-import { REQUIRED_GEOMETRY, SPAN_KEYS } from "@/lib/input-labels";
+import { prefillGeometry, type PrefillInfo } from "@/lib/frame3d-prefill";
+import { inputLabels, REQUIRED_GEOMETRY, SPAN_KEYS } from "@/lib/input-labels";
 import type { LengthUnit } from "@/lib/length-units";
 import { useUiLang } from "@/hooks/useUiLang";
 
@@ -14,12 +15,18 @@ type Props = {
   busy: boolean;
   onRun: (inputs: Record<string, unknown>) => void;
   onImport: () => void;
+  /** What was pre-filled from the project's chats and what was assumed (shown as a note above the fields). */
+  prefill?: PrefillInfo | null;
+  onPrefill?: (p: PrefillInfo) => void;
 };
 
 const isRequired = (k: string) => (REQUIRED_GEOMETRY as readonly string[]).includes(k);
 
-/** Model page form. The five geometry fields are required (placeholders only, no hidden defaults); spans take a unit (m/cm/mm/ft). */
-export function FrameModelForm({ values, setValues, busy, onRun, onImport }: Props) {
+/**
+ * Model page form. Geometry is pre-filled from the project's chat history; anything still blank is filled with defaults
+ * (never a blocking "Required") and the note lists what came from the chat and what was assumed. Spans take a unit.
+ */
+export function FrameModelForm({ values, setValues, busy, onRun, onImport, prefill, onPrefill }: Props) {
   const { lang, t } = useUiLang();
   const [units, setUnits] = useState<Partial<Record<string, LengthUnit>>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -33,18 +40,51 @@ export function FrameModelForm({ values, setValues, busy, onRun, onImport }: Pro
       data-testid="frame-model-form"
       onSubmit={(e) => {
         e.preventDefault();
-        const errs = validateGeometry(values, units, lang, REQUIRED_GEOMETRY);
+        // Blank geometry is assumed (defaults), not blocked; only invalid typed values are errors.
+        const filled = prefillGeometry(values, null);
+        if (filled.assumed.length) {
+          setValues(filled.values);
+          for (const k of filled.assumed) if (units[k] && units[k] !== "m") setUnits((u) => ({ ...u, [k]: "m" }));
+          onPrefill?.({
+            fromChat: (prefill?.fromChat ?? []).filter((k) => !filled.assumed.includes(k)),
+            assumed: Array.from(new Set([...(prefill?.assumed ?? []), ...filled.assumed])),
+            chatTitle: prefill?.chatTitle ?? null,
+            sourceLabel: prefill?.sourceLabel,
+          });
+        }
+        const assumedUnits = { ...units };
+        for (const k of filled.assumed) assumedUnits[k] = "m";
+        const errs = validateGeometry(filled.values, assumedUnits, lang, REQUIRED_GEOMETRY);
         setErrors(errs);
         if (Object.keys(errs).length) return;
-        onRun(formToInputs(values, lang, units));
+        onRun(formToInputs(filled.values, lang, assumedUnits));
       }}
     >
       <p className="muted geo-hint" data-testid="geo-required-hint">
         {tx(
-          "Required: number of storeys, bays and span lengths in X and Y — nothing is pre-filled or guessed. Spans accept m, cm, mm or ft.",
-          "لازم: تعداد طبقات، تعداد دهانه‌ها و طول دهانه در جهت x و y — هیچ مقداری از قبل پر یا حدس زده نمی‌شود. طول دهانه با واحد m، cm، mm یا ft وارد می‌شود.",
+          "Storeys, bays and spans in X and Y are taken from this project's chat; anything not found there is assumed and listed below. Spans accept m, cm, mm or ft.",
+          "تعداد طبقات، تعداد دهانه‌ها و طول دهانه در جهت x و y از چت همین پروژه خوانده می‌شود؛ هر چه آنجا نباشد فرض می‌شود و در زیر آمده است. طول دهانه با واحد m، cm، mm یا ft وارد می‌شود.",
         )}
       </p>
+      {prefill && (prefill.fromChat.length || prefill.assumed.length) ? (
+        <div className="muted geo-hint" data-testid="geo-prefill-note" role="status">
+          {prefill.fromChat.length ? (
+            <div data-testid="geo-prefill-from-chat">
+              {tx("From the chat", "از چت")}
+              {prefill.chatTitle ? ` «${prefill.chatTitle}»` : prefill.sourceLabel ? ` (${prefill.sourceLabel[lang]})` : ""}:{" "}
+              {inputLabels(prefill.fromChat, lang)}
+            </div>
+          ) : null}
+          {prefill.assumed.length ? (
+            <div data-testid="geo-prefill-assumed">
+              {tx("Assumed (not found in the chat): ", "فرض شده (در چت پیدا نشد): ")}
+              {prefill.assumed
+                .map((k) => `${inputLabels([k], lang)} = ${values[k] || ""}`)
+                .join(lang === "fa" ? "، " : ", ")}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       {groups.map((g) => (
         <fieldset key={g}>
           <legend>{t(g)}</legend>

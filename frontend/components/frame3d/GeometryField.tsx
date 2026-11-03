@@ -15,6 +15,10 @@ export function shortLabel(key: string, lang: Lang): string {
   return inputLabel(key, lang).replace(/\s*[(（][^)）]*[)）]\s*$/, "");
 }
 
+/** Same limits as the backend chat solver (frame3d_chat_analysis MAX_STOREYS / MAX_BAYS / MAX_NODES). */
+export const FRAME_LIMITS = { storeys: 10, bays: 6, nodes: 220 } as const;
+const maxFor = (k: string) => (k === "storeys" ? FRAME_LIMITS.storeys : FRAME_LIMITS.bays);
+
 const MSG = {
   required: { en: "Required — enter a value", fa: "لازم است — یک مقدار وارد کنید" },
   count: { en: "Enter a whole number ≥ 1", fa: "یک عدد صحیح ≥ ۱ وارد کنید" },
@@ -47,8 +51,22 @@ export function validateGeometry(
         const e = spanRangeError(m, lang);
         if (e) errors[k] = e;
       }
-    } else if (!Number.isInteger(n) || n < 1 || n > 100) {
-      errors[k] = MSG.count[lang];
+    } else if (!Number.isInteger(n) || n < 1 || n > maxFor(k)) {
+      const max = maxFor(k);
+      errors[k] = lang === "fa"
+        ? `یک عدد صحیح بین ۱ و ${max.toLocaleString("fa-IR")} وارد کنید (حداکثر مجاز ${max.toLocaleString("fa-IR")})`
+        : `Enter a whole number from 1 to ${max} (max allowed ${max})`;
+    }
+  }
+  // Total node count limit of the solver (only when every count is individually valid).
+  const c = (k: string) => parseNumber((values[k] ?? "").trim());
+  const [s, bx, by] = [c("storeys"), c("bays_x"), c("bays_y")];
+  if (keys.includes("bays_x") && !errors.storeys && !errors.bays_x && !errors.bays_y && s && bx && by) {
+    const nodes = (bx + 1) * (by + 1) * (s + 1);
+    if (nodes > FRAME_LIMITS.nodes) {
+      errors.bays_x = lang === "fa"
+        ? `مدل بزرگ‌تر از حد حل‌کننده است: (دهانه x+۱)×(دهانه y+۱)×(طبقات+۱) = ${nodes.toLocaleString("fa-IR")} گره، حداکثر ${FRAME_LIMITS.nodes.toLocaleString("fa-IR")}`
+        : `Model too large for the solver: (bays X+1)×(bays Y+1)×(storeys+1) = ${nodes} nodes, max ${FRAME_LIMITS.nodes}`;
     }
   }
   return errors;

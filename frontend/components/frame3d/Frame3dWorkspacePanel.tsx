@@ -13,6 +13,8 @@ import { projectChatHref } from "@/lib/current-project";
 import { ensureCurrentProject } from "@/lib/ensure-project";
 import { runFrame3d } from "@/lib/frame3d-run";
 import { FrameModelForm } from "@/components/frame3d/FrameModelForm";
+import { prefillGeometry, type PrefillInfo } from "@/lib/frame3d-prefill";
+import { getProjectFrame, type ProjectFrame } from "@/lib/optimization-full";
 import { MissingInputsForm } from "@/components/frame3d/MissingInputsForm";
 import { mapFrame3dResults } from "@/lib/chat-mappers";
 import { getCurrentProjectId, PROJECT_EVENT } from "@/lib/current-project";
@@ -70,6 +72,7 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
   const [savedKey, setSavedKey] = useState("");
   // Latest imported model (ETABS/SAP2000/SAFE/DXF) of the project, shown when the project has no chat/manual frame run.
   const [imported, setImported] = useState<ViewerData | null>(null);
+  const [prefill, setPrefill] = useState<PrefillInfo | null>(null);
 
   useEffect(() => {
     const sync = () => {
@@ -104,7 +107,22 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
         }
       }
       // A project without saved inputs shows the defaults, never the previous project's form values.
-      if (mode === "model") setValues(inputsToForm({ ...DEFAULT_FRAME_INPUTS, ...(saved ?? {}) }));
+      if (mode === "model") {
+        setValues(inputsToForm({ ...DEFAULT_FRAME_INPUTS, ...(saved ?? {}) }));
+        setPrefill(null);
+        // Blank geometry: take it from the project's whole chat history (same resolver as optimization), else defaults.
+        const apply = (chat: ProjectFrame | null) => {
+          if (getCurrentProjectId() !== pid) return;
+          setValues((prev) => {
+            const r = prefillGeometry(prev, chat);
+            if (r.fromChat.length || r.assumed.length)
+              setPrefill({ fromChat: r.fromChat, assumed: r.assumed, chatTitle: chat?.chat_title ?? null, sourceLabel: chat?.label });
+            return r.values;
+          });
+        };
+        if (pid) void getProjectFrame(pid).then(apply).catch(() => apply(null));
+        else apply(null);
+      }
     };
     sync();
     window.addEventListener(PROJECT_EVENT, sync);
@@ -185,6 +203,8 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
           setValues={setValues}
           busy={busy}
           onRun={(inputs) => void run(inputs)}
+          prefill={prefill}
+          onPrefill={setPrefill}
           onImport={() => {
             const s = loadFrame3dInputs(projectId);
             if (s) setValues(inputsToForm({ ...DEFAULT_FRAME_INPUTS, ...s }));

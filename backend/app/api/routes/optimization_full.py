@@ -79,6 +79,31 @@ def _frame_model(body: OptimizationJobRequest, acc, conv, access) -> tuple[dict[
     return model_from_frame(inp), assumed_notes + [f"{k} (default)" for k in assumed]
 
 
+@router.get("/project-frame")
+def project_frame(project_id: str, acc: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+                  conv=Depends(get_conversation_service), access=Depends(get_project_access_service)) -> dict[str, Any]:
+    """Geometry of the project's frame from its chat history (same resolver as optimization), defaults filled in.
+
+    Used to pre-fill the Model page form: `from_chat` keys came from the project's chats, `assumed` keys are defaults.
+    """
+    from uuid import UUID
+
+    from app.application.optimization_full.model_resolver import GEOMETRY, resolve_project_frame
+
+    try:
+        access.require_project(UUID(project_id), acc)
+    except ValueError as exc:
+        raise HTTPException(422, "invalid project_id") from exc
+    res = resolve_project_frame(conv, acc, project_id)
+    inputs = res["inputs"]
+    assumed = list(res["assumed"]) if res["source"] != "default" else list(GEOMETRY)
+    return {
+        "source": res["source"], "label": res["label"], "chat_title": res.get("chat_title"),
+        "inputs": {k: v for k, v in inputs.items() if isinstance(v, (int, float, str, bool)) or v is None},
+        "from_chat": [k for k in GEOMETRY if k not in assumed], "assumed": assumed,
+    }
+
+
 @router.post("/parse-sections")
 def parse_sections(body: SectionTextRequest, acc: Annotated[AuthenticatedAccount, Depends(get_current_account)]) -> dict[str, Any]:
     from app.application.optimization_full.sections import parse_section_lists
