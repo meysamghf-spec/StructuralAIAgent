@@ -11,8 +11,11 @@ from app.api.deps import (
     get_accessible_project,
     get_actor_id,
     get_analysis_engine_service,
+    get_conversation_service,
     get_current_account,
     get_design_engine_service,
+    get_file_ingestion_service,
+    get_file_registry_service,
     get_entitlement_authorization_service,
     get_optimization_engine_service,
     get_project_access_service,
@@ -194,11 +197,17 @@ def get_optimization_readiness(
     optimization_service: Annotated[
         OptimizationEngineService, Depends(get_optimization_engine_service)
     ],
+    account: Annotated[AuthenticatedAccount, Depends(get_current_account)],
+    conv=Depends(get_conversation_service),
+    registry=Depends(get_file_registry_service),
+    files=Depends(get_file_ingestion_service),
     pem_version: int | None = None,
 ) -> OptimizationReadinessResponse:
-    return OptimizationReadinessResponse.from_domain(
-        optimization_service.get_readiness(project_id, pem_version=pem_version)
-    )
+    from app.application.optimization_full.project_model import detect_project_model
+
+    report = optimization_service.get_readiness(project_id, pem_version=pem_version)
+    detected = detect_project_model(str(project_id), account, conv, registry, files)
+    return OptimizationReadinessResponse.from_domain(report, detected)
 
 
 @router.get("/optimization/{project_id}/runs", response_model=OptimizationRunListResponse)

@@ -294,11 +294,25 @@ class OptimizationReadinessResponse(BaseModel):
     available_design_runs: int = 0
     usable_design_runs: int = 0
     checklist: dict[str, Any] = Field(default_factory=dict)
+    detected_model: dict[str, Any] | None = None
 
     @classmethod
-    def from_domain(cls, report) -> OptimizationReadinessResponse:
-        from app.application.optimization_checklist import checklist_for_readiness
+    def from_domain(cls, report, detected_model: dict[str, Any] | None = None) -> OptimizationReadinessResponse:
+        from app.application.optimization_checklist import checklist_for_project_model, checklist_for_readiness
 
         data = report.model_dump(mode="json")
-        data["checklist"] = checklist_for_readiness(data, str(data.get("project_id")))
+        pid = str(data.get("project_id"))
+        ms = data.get("model_summary") or {}
+        if detected_model and int(ms.get("member_count") or 0) == 0:
+            # PEM is empty but the project has a chat-built frame or an imported model: report it honestly.
+            data["detected_model"] = detected_model
+            data["model_summary"] = {**ms, **{k: detected_model[k] for k in (
+                "member_count", "load_case_count", "load_combination_count", "section_count") if k in detected_model}}
+            data["checklist"] = checklist_for_project_model(detected_model, pid)
+            data["ready_for_optimization"] = True
+            data["readiness_status"] = "PASS"
+            data["summary"] = (f"{detected_model['label']['en']} detected ({detected_model['member_count']} members); "
+                               "the full optimizer analyses and designs it directly.")
+        else:
+            data["checklist"] = checklist_for_readiness(data, pid)
         return cls.model_validate(data)
