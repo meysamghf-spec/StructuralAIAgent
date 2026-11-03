@@ -62,8 +62,10 @@ export type OptimizationReadinessResponse = {
   checklist?: import("./optimization-checklist").OptimizationChecklist;
   /** Chat-built frame or imported model found outside the PEM (the full optimizer runs on it). */
   detected_model?: {
-    source: "frame" | "model";
+    source: "frame" | "model" | "optimization" | "chat_text" | "default";
     member_count: number;
+    /** Persian list of values assumed automatically (defaults), shown under the form. */
+    assumptions_fa?: string[];
     label?: { en: string; fa: string };
   } | null;
 };

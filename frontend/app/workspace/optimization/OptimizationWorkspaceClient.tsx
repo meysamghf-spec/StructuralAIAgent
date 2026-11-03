@@ -1,5 +1,6 @@
 "use client";
 
+import { CostBreakdownTable } from "@/components/optimization/CostBreakdownTable";
 import { ProjectScopePanel } from "@/components/workspace/ProjectScopePanel";
 import { useProjectScope } from "@/hooks/useProjectScope";
 import { FrameDownloads } from "@/components/frame3d/FrameDownloads";
@@ -37,6 +38,7 @@ import {
   isActive,
   OptApiError,
   savingsPct,
+  costChangeText,
   startJob,
   type OptJob,
 } from "@/lib/optimization-full";
@@ -161,7 +163,8 @@ export default function OptimizationWorkspaceClient() {
     setNoModel(false);
     setResult(null);
     setFullJob(null);
-    const source = readiness?.detected_model?.source ?? "frame";
+    // Anything but an imported model is a frame: from a run, from the project's chat history, or the default frame.
+    const source = readiness?.detected_model?.source === "model" ? "model" : "frame";
     const options = {
       time_budget_s: 120,
       storey_band: optimizationMode === "SHARED_SECTION" ? 50 : 1,
@@ -406,6 +409,12 @@ export default function OptimizationWorkspaceClient() {
             ? ` مدل شناسایی‌شده: ${readiness.detected_model.label?.fa ?? ""} (${fmtNum(readiness.detected_model.member_count)} عضو).`
             : ""}
         </p>
+        {readiness?.detected_model?.assumptions_fa?.length ? (
+          <details className="meta-summary" dir="rtl" lang="fa" style={{ textAlign: "right" }}>
+            <summary>فرض‌های خودکار ({fmtNum(readiness.detected_model.assumptions_fa.length)})</summary>
+            <ul>{readiness.detected_model.assumptions_fa.map((a) => <li key={a}>{a}</li>)}</ul>
+          </details>
+        ) : null}
         {noModel ? (
           <div className="alert" role="alert" dir="rtl" lang="fa" style={{ textAlign: "right" }}>
             <p><strong>{NO_MODEL_MESSAGE_FA}</strong></p>
@@ -439,10 +448,11 @@ export default function OptimizationWorkspaceClient() {
                 </p>
                 <p>
                   هزینه: {fmtNum(fullResult.cost)} {fullResult.currency}
-                  {fullSave != null ? ` (${fmtNum(fullSave, 1)}٪ کاهش نسبت به شروع)` : ""} — دریفت/مجاز: {fmtNum(fullResult.drift_ratio, 2)}
+                  {fullSave != null ? ` (${costChangeText(fullResult)})` : ""} — دریفت/مجاز: {fmtNum(fullResult.drift_ratio, 2)}
                   {" — "}{fmtNum(fullResult.evaluations)} تحلیل در {fmtNum(fullResult.elapsed_s, 1)} ثانیه
                 </p>
-                <div style={{ overflowX: "auto" }}>
+                <CostBreakdownTable r={fullResult} />
+                  <div style={{ overflowX: "auto" }}>
                   <table className="data-table" style={{ minWidth: 520, width: "100%" }}>
                     <thead>
                       <tr><th>گروه</th><th>اعضا</th><th>مقطع</th><th>میلگرد</th><th>D/C</th></tr>

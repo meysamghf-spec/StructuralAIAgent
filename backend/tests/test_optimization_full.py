@@ -147,7 +147,17 @@ def test_routes_without_db(tmp_path, monkeypatch):
     assert r.status_code == 200 and r.json()["lists"]["rebar_mm"] == [16, 18, 20]
     r = c.post("/api/v1/optimization-full/parse-sections-file", files={"file": ("l.txt", b"columns 40x40 50x50", "text/plain")})
     assert r.status_code == 200 and [0.5, 0.5] in r.json()["lists"]["columns"]
-    assert c.post("/api/v1/optimization-full/jobs", json={}).status_code == 409  # no frame yet
+    # no frame anywhere: the default frame is built and optimized automatically (assumptions listed in Persian)
+    r = c.post("/api/v1/optimization-full/jobs", json={"options": {"time_budget_s": 5, "max_evals": 4}})
+    assert r.status_code == 200, r.text
+    did = r.json()["job"]["id"]
+    for _ in range(200):
+        j = c.get(f"/api/v1/optimization-full/jobs/{did}").json()["job"]
+        if j["status"] not in ("queued", "running"):
+            break
+        time.sleep(0.2)
+    assert j["status"] == "done", j
+    assert any("پیش‌فرض" in a for a in j["result"]["assumed_inputs"])
     r = c.post("/api/v1/optimization-full/jobs", json={
         "inputs": {"storeys": 2, "bays_x": 1, "bays_y": 1, "bay_x_m": 5, "bay_y_m": 5},
         "section_text": "میلگرد 18 و 22", "options": {"time_budget_s": 10, "max_evals": 8}})

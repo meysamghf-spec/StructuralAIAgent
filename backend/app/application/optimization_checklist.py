@@ -72,7 +72,9 @@ def checklist_for_project_model(detected: dict[str, Any], project_id: str | None
     secs = int(detected.get("section_count") or 0)
     steps = [
         _step("model", True, "Structural model defined", "مدل سازه تعریف شده",
-              f"{lbl['en']}: {n} member(s).", f"{lbl['fa']}: {_fa(n)} عضو."),
+              f"{lbl['en']}: {n} member(s)." + (" Assumed: " + ", ".join(detected.get("assumed") or []) if detected.get("assumed") else ""),
+              f"{lbl['fa']}: {_fa(n)} عضو." + (" فرض‌ها: " + "؛ ".join(detected.get("assumptions_fa") or [])
+                                               if detected.get("assumptions_fa") else "")),
         _step("code", True, "Design code configuration valid", "آیین‌نامه‌ها معتبر است",
               "Standard 2800 / Mabhas 6 / Mabhas 9 are used.", "استاندارد ۲۸۰۰، مبحث ۶ و مبحث ۹ استفاده می‌شود."),
         _step("loads", True, "Loads and load combinations", "بارها و ترکیب بارها",

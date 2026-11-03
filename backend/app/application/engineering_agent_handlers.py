@@ -181,7 +181,8 @@ def _frame_optimization_result(
 
     if not fopt.is_optimize_request(user_request):
         return None
-    res = fopt.build_optimization_from_chat(user_request, prior_frame3d_spec(context), {"time_budget_s": 35})
+    res = fopt.build_optimization_from_chat(user_request, prior_frame3d_spec(context), {"time_budget_s": 35},
+                                            assume_defaults=True)
     if res is None:
         summary = fopt.missing_frame_checklist(user_request)
         return AgentResult(

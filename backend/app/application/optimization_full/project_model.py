@@ -33,7 +33,7 @@ def _latest_import(project_id: str, registry, files) -> dict[str, Any] | None:
 
 
 def detect_project_model(project_id: str | None, account, conv=None, registry=None, files=None) -> dict[str, Any] | None:
-    """{'source': 'model'|'frame', 'member_count', 'load_combination_count', 'section_count', 'label'} or None."""
+    """{'source': 'model'|'frame'|'optimization'|'chat_text'|'default', 'member_count', 'load_combination_count', 'section_count', 'label'} or None."""
     if not project_id:
         return None
     if registry is not None and files is not None:
@@ -60,4 +60,12 @@ def detect_project_model(project_id: str | None, account, conv=None, registry=No
                     "section_count": 0, "storeys": inputs.get("storeys"), "bays_x": inputs.get("bays_x"),
                     "bays_y": inputs.get("bays_y"),
                     "label": {"en": "3D frame from chat / Model page", "fa": "قاب سه‌بعدی از چت / صفحه مدل"}}
-    return None
+    # Nothing explicit: search every chat of the project (older runs, frame descriptions); else assume the defaults.
+    from app.application.optimization_full.model_resolver import resolve_project_frame
+
+    res = resolve_project_frame(conv, account, project_id)
+    ins = res["inputs"]
+    return {"source": res["source"], "member_count": frame_member_count(ins), "load_case_count": 0,
+            "load_combination_count": 0, "section_count": 0, "storeys": ins.get("storeys"), "bays_x": ins.get("bays_x"),
+            "bays_y": ins.get("bays_y"), "assumed": res["assumed"], "assumptions_fa": res["assumptions_fa"],
+            "label": res["label"]}

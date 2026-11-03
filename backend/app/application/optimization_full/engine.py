@@ -493,6 +493,9 @@ def optimize_model(model: dict[str, Any], lists: dict[str, Any] | None = None, o
     assign = ev.assignment(res["genes"]) if res else {}
     return {"status": status, "feasible": bool(res.get("feasible")), "cost": res.get("cost"), "currency": opt.prices.get("currency", "تومان"),
             "initial_cost": initial["cost"] if initial else None, "initial_feasible": initial["feasible"] if initial else None,
+            "initial_quantities": initial.get("quantities") if initial else None,
+            "cost_breakdown": {"initial": _breakdown(initial.get("quantities") if initial else None, opt.prices),
+                               "final": _breakdown(res.get("quantities"), opt.prices)},
             "evaluations": ev.evals, "elapsed_s": round(time.time() - t0, 1), "quantities": res.get("quantities"),
             "groups": res.get("groups", []), "drift_ratio": res.get("drift_ratio"), "drifts": res.get("drifts", []),
             "continuity_violations": res.get("continuity_violations"), "base_shear_kN": res.get("base_shear_kN"),
@@ -501,6 +504,20 @@ def optimize_model(model: dict[str, Any], lists: dict[str, Any] | None = None, o
                          "fc_mpa": ev.fc, "fy_mpa": ev.fy, "steel_fy_mpa": ev.fy_steel, "rebar_mm": sorted(set(ev.beam_bars) | set(ev.col_bars)),
                          "prices": opt.prices, "ductility": opt.ductility, "groups": len(groups)},
             "assumptions": _assumptions(lists, opt)}
+
+
+def _breakdown(q: dict[str, Any] | None, prices: dict[str, Any]) -> dict[str, Any] | None:
+    """Cost per component (concrete, rebar, formwork, steel sections) and share of total."""
+    if not q:
+        return None
+    parts = {"concrete": q.get("concrete_m3", 0.0) * prices.get("concrete_per_m3", 0),
+             "rebar": q.get("rebar_kg", 0.0) * prices.get("rebar_per_kg", 0),
+             "formwork": q.get("formwork_m2", 0.0) * prices.get("formwork_per_m2", 0),
+             "steel": q.get("steel_kg", 0.0) * prices.get("steel_per_kg", 0)}
+    tot = sum(parts.values())
+    return {"components": parts, "total": tot,
+            "share_pct": {k: (round(v / tot * 100, 1) if tot > 0 else 0.0) for k, v in parts.items()},
+            "steel_weight_kg": q.get("rebar_kg", 0.0) + q.get("steel_kg", 0.0)}
 
 
 def _assumptions(lists: dict[str, Any], opt: Options) -> list[str]:
