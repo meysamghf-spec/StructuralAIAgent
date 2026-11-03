@@ -1,0 +1,350 @@
+{
+ "format": "e2k",
+ "filename": "portal.e2k",
+ "units": {
+  "force": "kN",
+  "length": "m",
+  "source": "KGF, CM"
+ },
+ "nodes": {
+  "1@Base": {
+   "x": 0.0,
+   "y": 0.0,
+   "z": 0.0,
+   "point": "1",
+   "story": "Base"
+  },
+  "1@Story1": {
+   "x": 0.0,
+   "y": 0.0,
+   "z": 3.5,
+   "point": "1",
+   "story": "Story1"
+  },
+  "2@Base": {
+   "x": 5.0,
+   "y": 0.0,
+   "z": 0.0,
+   "point": "2",
+   "story": "Base"
+  },
+  "2@Story1": {
+   "x": 5.0,
+   "y": 0.0,
+   "z": 3.5,
+   "point": "2",
+   "story": "Story1"
+  },
+  "1@Story2": {
+   "x": 0.0,
+   "y": 0.0,
+   "z": 6.5,
+   "point": "1",
+   "story": "Story2"
+  },
+  "2@Story2": {
+   "x": 5.0,
+   "y": 0.0,
+   "z": 6.5,
+   "point": "2",
+   "story": "Story2"
+  }
+ },
+ "members": [
+  {
+   "id": "C1@Story1",
+   "i": "1@Base",
+   "j": "1@Story1",
+   "type": "column",
+   "section": "C40",
+   "label": "C1",
+   "story": "Story1"
+  },
+  {
+   "id": "C2@Story1",
+   "i": "2@Base",
+   "j": "2@Story1",
+   "type": "column",
+   "section": "C40",
+   "label": "C2",
+   "story": "Story1"
+  },
+  {
+   "id": "C1@Story2",
+   "i": "1@Story1",
+   "j": "1@Story2",
+   "type": "column",
+   "section": "C40",
+   "label": "C1",
+   "story": "Story2"
+  },
+  {
+   "id": "C2@Story2",
+   "i": "2@Story1",
+   "j": "2@Story2",
+   "type": "column",
+   "section": "C40",
+   "label": "C2",
+   "story": "Story2"
+  },
+  {
+   "id": "B1@Story1",
+   "i": "1@Story1",
+   "j": "2@Story1",
+   "type": "beam",
+   "section": "B35X50",
+   "label": "B1",
+   "story": "Story1"
+  },
+  {
+   "id": "B1@Story2",
+   "i": "1@Story2",
+   "j": "2@Story2",
+   "type": "beam",
+   "section": "IPE300",
+   "label": "B1",
+   "story": "Story2"
+  },
+  {
+   "id": "D1@Story1",
+   "i": "1@Base",
+   "j": "2@Story1",
+   "type": "brace",
+   "section": "BR",
+   "label": "D1",
+   "story": "Story1"
+  }
+ ],
+ "sections": {
+  "C40": {
+   "shape": "Concrete Rectangular",
+   "material": "C25",
+   "modifiers": {},
+   "b": 0.4,
+   "h": 0.4,
+   "A": 0.16000000000000003,
+   "I33": 0.002133333333333334,
+   "I22": 0.002133333333333334,
+   "J": 0.0036053333333333345
+  },
+  "B35X50": {
+   "shape": "Concrete Rectangular",
+   "material": "C25",
+   "modifiers": {},
+   "b": 0.35000000000000003,
+   "h": 0.5,
+   "A": 0.17500000000000002,
+   "I33": 0.003645833333333334,
+   "I22": 0.0017864583333333337,
+   "J": 0.004057573344270833
+  },
+  "IPE300": {
+   "shape": "IPE300",
+   "material": "ST37",
+   "modifiers": {},
+   "A": 0.00538,
+   "I33": 8.356e-05,
+   "I22": 6.04e-06,
+   "J": 2.01e-07,
+   "edited": true
+  },
+  "BR": {
+   "shape": "Steel Pipe",
+   "material": "ST37",
+   "modifiers": {},
+   "A": 0.0014922565104551523,
+   "I33": 1.6881151774523898e-06,
+   "I22": 1.6881151774523898e-06,
+   "J": 3.3762303549047796e-06
+  }
+ },
+ "materials": {
+  "C25": {
+   "type": "Concrete",
+   "E": 24516624.999999996,
+   "nu": 0.2,
+   "unit_weight": 24.516624999999998
+  },
+  "ST37": {
+   "type": "Steel",
+   "E": 200055659.99999997,
+   "nu": 0.3,
+   "unit_weight": 76.98220249999999
+  }
+ },
+ "supports": {
+  "1@Base": [
+   true,
+   true,
+   true,
+   true,
+   true,
+   true
+  ],
+  "2@Base": [
+   true,
+   true,
+   true,
+   false,
+   false,
+   false
+  ]
+ },
+ "load_patterns": {
+  "Dead": {
+   "type": "Dead",
+   "self_weight": 1.0
+  },
+  "Live": {
+   "type": "Live",
+   "self_weight": 0.0
+  },
+  "EQX": {
+   "type": "Seismic",
+   "self_weight": 0.0
+  }
+ },
+ "member_loads": [
+  {
+   "member": "B1@Story1",
+   "pattern": "Dead",
+   "wx": 0,
+   "wy": 0,
+   "wz": -19.6133
+  },
+  {
+   "member": "B1@Story1",
+   "pattern": "Live",
+   "wx": 0,
+   "wy": 0,
+   "wz": -9.80665
+  }
+ ],
+ "nodal_loads": [
+  {
+   "node": "1@Story2",
+   "pattern": "EQX",
+   "fx": 9.80665,
+   "fy": 0.0,
+   "fz": 0.0,
+   "mx": 0.0,
+   "my": 0.0,
+   "mz": 0.0
+  }
+ ],
+ "combos": {
+  "ULS1": {
+   "Dead": 1.2,
+   "Live": 1.6
+  },
+  "ENV": {
+   "Dead": 1.2,
+   "Live": 1.6
+  }
+ },
+ "issues": [
+  {
+   "id": "release:members",
+   "severity": "approximated",
+   "code": "release",
+   "item": "members",
+   "en": "End releases (pins) were ignored - members are rigidly connected.",
+   "fa": "آزادسازی انتهای اعضا (مفصل) نادیده گرفته شد؛ اتصالات صلب فرض شدند.",
+   "count": 1,
+   "confirmed": true
+  },
+  {
+   "id": "auto_lateral:EQX",
+   "severity": "approximated",
+   "code": "auto_lateral",
+   "item": "EQX",
+   "en": "Pattern EQX (Seismic): ETABS auto-lateral loads are not generated - only loads written in the file are used.",
+   "fa": "الگوی EQX (Seismic): بار جانبی خودکار ETABS تولید نمی‌شود؛ فقط بارهای نوشته‌شده در فایل استفاده می‌شوند.",
+   "count": 1,
+   "confirmed": true
+  },
+  {
+   "id": "trapezoid:loads",
+   "severity": "approximated",
+   "code": "trapezoid",
+   "item": "loads",
+   "en": "Trapezoidal frame loads were replaced by their average uniform value.",
+   "fa": "بارهای ذوزنقه‌ای اعضا با مقدار یکنواخت میانگین جایگزین شدند.",
+   "count": 1,
+   "confirmed": true
+  },
+  {
+   "id": "combo_type:ENV",
+   "severity": "approximated",
+   "code": "combo_type",
+   "item": "ENV",
+   "en": "Combination ENV (Envelope) was treated as linear add.",
+   "fa": "ترکیب ENV (Envelope) به‌صورت جمع خطی در نظر گرفته شد.",
+   "count": 1,
+   "confirmed": true
+  },
+  {
+   "id": "combo_case:ENV:Modal",
+   "severity": "approximated",
+   "code": "combo_case",
+   "item": "ENV:Modal",
+   "en": "Combination ENV: case Modal (modal/response spectrum/non-static) is not analysed and was dropped.",
+   "fa": "ترکیب ENV: حالت بار Modal (مودال/طیفی/غیراستاتیکی) تحلیل نمی‌شود و حذف شد.",
+   "count": 1,
+   "confirmed": true
+  },
+  {
+   "id": "areas:1",
+   "severity": "ignored",
+   "code": "areas",
+   "item": "1",
+   "en": "1 area objects (slabs/walls/decks) were not imported - SAIA's frame engine analyses beams, columns and braces only.",
+   "fa": "1 عضو سطحی (دال/دیوار/عرشه) وارد نشد؛ موتور قاب SAIA فقط تیر، ستون و مهاربند را تحلیل می‌کند.",
+   "count": 1,
+   "confirmed": true
+  },
+  {
+   "id": "area_loads:1",
+   "severity": "approximated",
+   "code": "area_loads",
+   "item": "1",
+   "en": "1 area (slab) loads were not distributed to beams - add equivalent beam line loads in the review, or the analysis misses them.",
+   "fa": "1 بار سطحی (دال) به تیرها منتقل نشد؛ در بازبینی بار خطی معادل تیرها را اضافه کنید، وگرنه در تحلیل نیست.",
+   "count": 1,
+   "confirmed": true
+  },
+  {
+   "id": "diaphragm:model",
+   "severity": "approximated",
+   "code": "diaphragm",
+   "item": "model",
+   "en": "Rigid diaphragms were not applied - floors are modelled by the beams only.",
+   "fa": "دیافراگم صلب اعمال نشد؛ کف‌ها فقط با تیرها مدل شده‌اند.",
+   "count": 1,
+   "confirmed": true
+  }
+ ],
+ "assumptions": [
+  {
+   "en": "File units KGF, CM were converted to kN, m.",
+   "fa": "واحدهای فایل (KGF، CM) به کیلونیوتن و متر تبدیل شدند."
+  }
+ ],
+ "counts": {
+  "nodes": 6,
+  "members": 7,
+  "beams": 2,
+  "columns": 4,
+  "braces": 1,
+  "sections": 4,
+  "supports": 2,
+  "load_patterns": 3,
+  "member_loads": 2,
+  "nodal_loads": 1,
+  "combos": 2,
+  "slabs": 0,
+  "area_loads": 0,
+  "diaphragms": 0,
+  "releases": 0
+ }
+}

@@ -84,7 +84,10 @@ def start(owner: str, meta: dict[str, Any], work: Callable[[Callable[[dict], Non
             res = work(progress, lambda: is_cancelled(job_id))
             state.update(status=res.get("status", "done"), result=res, progress={**state["progress"], "fraction": 1.0})
         except Exception as exc:  # noqa: BLE001
-            state.update(status="error", error=str(exc)[:500], trace=traceback.format_exc()[-2000:])
+            from .engine import friendly_error
+
+            state.update(status="error", error=friendly_error(exc), error_detail=f"{type(exc).__name__}: {exc}"[:300],
+                         trace=traceback.format_exc()[-2000:])
         state["updated"] = time.time()
         _write(job_id, state)
 
