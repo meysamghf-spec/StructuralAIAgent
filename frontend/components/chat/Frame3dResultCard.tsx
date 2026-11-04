@@ -1,5 +1,7 @@
 "use client";
 
+import { DesignLegend } from "@/components/design/DesignLegend";
+import { dcDisplay, rebarBasisTag } from "@/lib/design-dc";
 import { useEffect, useState } from "react";
 import { SectionErrorBoundary } from "@/components/common/SectionErrorBoundary";
 import { ChatCardProjectContext, useChatCardProjectId } from "@/lib/chat-card-project";
@@ -320,24 +322,28 @@ export function Frame3dDesignCard({ results }: { results: Frame3dResults }) {
 
 const BEAM_COLUMNS: Array<[string, string]> = [
   ["group", "Group"],
-  ["Mu_neg_kn_m", "Mu⁻"],
-  ["Mu_pos_kn_m", "Mu⁺"],
-  ["Vu_kn", "Vu"],
+  ["Mu_neg_kn_m", "Mu⁻ (kN·m)"],
+  ["Mu_pos_kn_m", "Mu⁺ (kN·m)"],
+  ["Vu_kn", "Vu (kN)"],
   ["top_bars", "Top"],
   ["bottom_bars", "Bottom"],
   ["stirrups", "Stirrups"],
   ["DC_flexure", "D/C M"],
   ["DC_shear", "D/C V"],
+  ["status", "Status"],
+  ["suggested_section", "Suggested section"],
 ];
 const COLUMN_COLUMNS: Array<[string, string]> = [
   ["group", "Group"],
-  ["Pu_kn", "Pu"],
-  ["Mu_y_kn_m", "Mu,y"],
-  ["Mu_z_kn_m", "Mu,z"],
+  ["Pu_kn", "Pu (kN)"],
+  ["Mu_y_kn_m", "Mu,y (kN·m)"],
+  ["Mu_z_kn_m", "Mu,z (kN·m)"],
   ["bars", "Bars"],
   ["rho_pct", "ρ %"],
   ["ties", "Ties"],
   ["DC", "D/C"],
+  ["status", "Status"],
+  ["suggested_section", "Suggested section"],
 ];
 
 export function designCsv(rows: Array<Record<string, string | number | null>>): string {
@@ -362,8 +368,33 @@ function downloadCsv(name: string, rows: Array<Record<string, string | number | 
   URL.revokeObjectURL(url);
 }
 
+const DC_KEYS = new Set(["DC", "DC_flexure", "DC_shear", "bearing_dc", "DC_oneway", "DC_punching"]);
+const BAR_KEYS = new Set(["top_bars", "bottom_bars", "bars"]);
+
+function DesignCell({ row, k, t }: { row: Record<string, string | number | null>; k: string; t: T }) {
+  const v = row[k];
+  if (DC_KEYS.has(k)) {
+    const d = dcDisplay(v);
+    return <td className={d.ng ? "dc-ng" : d.over ? "dc-over" : undefined} title={d.title}>{d.text}</td>;
+  }
+  if (BAR_KEYS.has(k)) {
+    const tag = rebarBasisTag(row.rebar_basis);
+    return (
+      <td>
+        {v ?? "—"}
+        {tag ? <span className="rebar-ng-tag" title={tag.title}>{tag.short}</span> : null}
+      </td>
+    );
+  }
+  if (k === "status" && typeof v === "string") {
+    return <td>{t(v)}</td>;
+  }
+  return <td>{v ?? "—"}</td>;
+}
+
 function DesignTable({ rows, columns, t }: { rows: Array<Record<string, string | number | null>>; columns: Array<[string, string]>; t: T }) {
   return (
+    <div className="design-table-scroll" tabIndex={0} data-testid="design-table-scroll">
     <table className="engineering-result-table">
       <thead>
         <tr>
@@ -376,12 +407,13 @@ function DesignTable({ rows, columns, t }: { rows: Array<Record<string, string |
         {rows.map((row) => (
           <tr key={String(row.group)}>
             {columns.map(([key]) => (
-              <td key={key}>{row[key] ?? "—"}</td>
+              <DesignCell key={key} row={row} k={key} t={t} />
             ))}
           </tr>
         ))}
       </tbody>
     </table>
+    </div>
   );
 }
 
@@ -395,6 +427,7 @@ function DesignSection({ design, t }: { design: NonNullable<Frame3dResults["desi
       {design.message ? <p>{design.message}</p> : null}
       {design.beams.length > 0 ? <DesignTable rows={design.beams} columns={BEAM_COLUMNS} t={t} /> : null}
       {design.columns.length > 0 ? <DesignTable rows={design.columns} columns={COLUMN_COLUMNS} t={t} /> : null}
+      {design.beams.length > 0 || design.columns.length > 0 ? <DesignLegend /> : null}
       {design.scwb.length > 0 ? (
         <ul>
           {design.scwb.map((j) => (

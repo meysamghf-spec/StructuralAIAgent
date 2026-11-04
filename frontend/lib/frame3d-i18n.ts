@@ -88,6 +88,8 @@ const FA: Record<string, string> = {
   "D/C 1-way": "D/C برش یک‌طرفه",
   "D/C punching": "D/C پانچ",
   "D/C flexure": "D/C خمش",
+  "Suggested section": "مقطع پیشنهادی",
+  "Mu⁻ (kN·m)": "Mu⁻ (kN·m)",
   "Export model (ETABS / SAFE / AutoCAD)": "خروجی مدل (ایتبس / سیف / اتوکد)",
   "re-analysed from the last frame in this project": "از آخرین قاب این پروژه دوباره تحلیل شد",
   "Preparing…": "در حال آماده‌سازی…",

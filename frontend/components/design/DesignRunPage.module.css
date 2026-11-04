@@ -62,3 +62,6 @@
   .designButton { width: 100%; }
   .actionEmpty .designButtonBig { width: 100%; min-width: 0; }
 }
+
+/* sticky first column on horizontal scroll (#pt616u) */
+.table th:first-child, .table td:first-child { position: sticky; inset-inline-start: 0; z-index: 1; background: #0f172a; }

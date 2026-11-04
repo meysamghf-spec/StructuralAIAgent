@@ -88,6 +88,10 @@ def complete_design(inp, design: dict[str, Any]) -> tuple[dict[str, Any], list[s
                 g[k] = f"{n}Φ{db}"
             warnings.append(f"{g.get('group', 'beam')}: {'; '.join(g.get('notes') or ['no design'])} -> drawn with {n}Φ{db} (max one layer), NG: enlarge the section")
             g["detailing_ng"] = True
+        elif g.get("rebar_basis") in ("MAX_FEASIBLE", "MINIMUM"):
+            # design already provided the NG fill (same rule as above): keep it, tag and warn
+            g["detailing_ng"] = True
+            warnings.append(f"{g.get('group', 'beam')}: NG -> drawn with {g.get('top_bars')} / {g.get('bottom_bars')} (max one layer), enlarge the section")
         if not re.search(r"[ΦφØø]\s*\d+\s*@\s*\d+", g.get("stirrups") or ""):
             d = h - 60
             s_end = int(min(d / 4, 8 * 14, 24 * m9.STIRRUP_DB, 300) // 25 * 25)
@@ -105,7 +109,12 @@ def complete_design(inp, design: dict[str, Any]) -> tuple[dict[str, Any], list[s
             g["ties"] = m9.ties(cb, ch, db, clear)["text"]
             warnings.append(f"{g.get('group', 'column')}: {'; '.join(g.get('notes') or ['no design'])} -> drawn with Mabhas 9 minimum {g['bars']} (rho >= 1 %), NG: enlarge the section")
             g["detailing_ng"] = True
-        elif not re.search(r"[ΦφØø]\s*\d+\s*@\s*\d+", g.get("ties") or ""):
+        else:
+            if g.get("rebar_basis") in ("MAX_FEASIBLE", "MINIMUM"):
+                g["detailing_ng"] = True
+                warnings.append(f"{g.get('group', 'column')}: NG -> drawn with {g['bars']}, enlarge the section")
+            if re.search(r"[ΦφØø]\s*\d+\s*@\s*\d+", g.get("ties") or ""):
+                continue
             g["ties"] = m9.ties(cb, ch, parse_bars(g["bars"])[1], clear)["text"]
     out["detailing_warnings"] = warnings
     return out, warnings

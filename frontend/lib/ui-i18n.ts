@@ -160,6 +160,8 @@ export const UI_FA: Record<string, string> = {
   "D/C": "D/C",
   "D/C bearing": "D/C باربری",
   "D/C flexure": "D/C خمش",
+  "Suggested section": "مقطع پیشنهادی",
+  "Mu⁻ (kN·m)": "Mu⁻ (kN·m)",
   "D/C one-way shear": "D/C برش یک‌طرفه",
   "D/C punching": "D/C پانچ",
   "D/C shear": "D/C برش",
