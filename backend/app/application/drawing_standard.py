@@ -460,6 +460,11 @@ def add_sheet_tiles(doc, name: str, extents, info: TitleInfo, title_fa: str, tit
     for j in range(ny):
         for i in range(nx):
             n = name if i == j == 0 else f"{name}.{j * nx + i + 1}"
+            if n in doc.layouts.names():  # a wide multi-page set (R-01, R-01.2 page) may already use this tile name
+                k = 2
+                while f"{n}-{k}" in doc.layouts.names():
+                    k += 1
+                n = f"{n}-{k}"
             tile = (x0 + i * aw, y1 - (j + 1) * ah, min(x1, x0 + (i + 1) * aw), y1 - j * ah)
             add_sheet(doc, n, tile, info, n, title_fa, title_en, paper=paper, scale=scale)
             names.append(n)
