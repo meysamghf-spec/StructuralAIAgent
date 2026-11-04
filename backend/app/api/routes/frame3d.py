@@ -205,6 +205,25 @@ def _saver(files, project_id, acc):
     return save
 
 
+# Heavy exports (3D solve + design + DXF/PDF/ZIP) are CPU- and memory-bound and run in the threadpool of a
+# single uvicorn worker on a 2-CPU / 4 GB VPS. Unbounded, several at once starve /health and push the box into
+# swap (2026-11-04 hang). Allow only a few at a time; others get a quick 503 instead of piling up.
+import threading as _threading
+from contextlib import contextmanager as _contextmanager
+
+_HEAVY_SLOTS = _threading.BoundedSemaphore(2)
+
+
+@_contextmanager
+def _heavy_slot(wait_s: float = 45.0):
+    if not _HEAVY_SLOTS.acquire(timeout=wait_s):
+        raise HTTPException(503, "Server is busy building other exports — try again in a minute.")
+    try:
+        yield
+    finally:
+        _HEAVY_SLOTS.release()
+
+
 @router.get("/limits")
 def frame_limits() -> dict[str, Any]:
     """Model-size limits shared by the chat, the Quick-3D form and the downloads (single source: frame3d_limits)."""
@@ -226,7 +245,8 @@ def download_item(body: Frame3dDownloadRequest, acc: Annotated[AuthenticatedAcco
     if body.kind in ("model", "drawing"):
         billing.require_feature(getattr(acc, "account_id", None), "exports", "dxf" if body.name.startswith(("dxf", "structural")) else body.name)
     try:
-        name, data, mime = rp.item(body.kind, body.name, body.format, inputs, body.optimization)
+        with _heavy_slot():
+            name, data, mime = rp.item(body.kind, body.name, body.format, inputs, body.optimization)
     except KeyError as exc:
         raise HTTPException(404, f"unknown or empty item {body.kind}/{body.name}") from exc
     except (TypeError, ValueError, SpaceFrameSolverError) as exc:
@@ -251,7 +271,8 @@ def download_package(body: Frame3dPackageRequest, acc: Annotated[AuthenticatedAc
         save = _saver(files, body.project_id, acc)
         on_file = lambda n, d: saved.append(save(n, d, rp.XLSX if n.endswith(".xlsx") else "application/zip"))  # noqa: E731
     try:
-        data, names = rp.build_zip(inputs, body.optimization, on_file=on_file)
+        with _heavy_slot():
+            data, names = rp.build_zip(inputs, body.optimization, on_file=on_file)
     except (TypeError, ValueError, SpaceFrameSolverError) as exc:
         raise HTTPException(422, f"Cannot build the package: {exc}") from exc
     return Response(content=data, media_type="application/zip",

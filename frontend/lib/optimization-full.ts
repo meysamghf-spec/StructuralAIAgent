@@ -148,6 +148,16 @@ export type ProjectFrame = {
 };
 
 /** The project's frame from its whole chat history (same resolver as optimization); defaults filled for missing geometry. */
+// Several panels ask for the same project's frame at once (and again on every project switch): share one request
+// per project for a short while so the server resolves the chat history once, not N times.
+const frameCache = new Map<string, { at: number; p: Promise<ProjectFrame> }>();
+const FRAME_TTL_MS = 30_000;
+
 export async function getProjectFrame(projectId: string): Promise<ProjectFrame> {
-  return call<ProjectFrame>(`/project-frame?project_id=${encodeURIComponent(projectId)}`, { method: "GET" });
+  const hit = frameCache.get(projectId);
+  if (hit && Date.now() - hit.at < FRAME_TTL_MS) return hit.p;
+  const p = call<ProjectFrame>(`/project-frame?project_id=${encodeURIComponent(projectId)}`, { method: "GET" });
+  frameCache.set(projectId, { at: Date.now(), p });
+  p.catch(() => frameCache.delete(projectId));
+  return p;
 }
