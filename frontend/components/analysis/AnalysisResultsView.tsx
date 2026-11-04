@@ -2,20 +2,24 @@
 
 import { StoreyBarChart } from "@/components/analysis/StoreyBarChart";
 import { formatNum, type AnalysisView } from "@/lib/analysis-results";
+import { TablePager, usePaged } from "@/components/common/TablePager";
 import "./analysis.css";
 
 type T = (key: string) => string;
 
 function Table({ head, rows, bad }: { head: string[]; rows: Array<Array<string | number>>; bad?: boolean[] }) {
+  const pg = usePaged(rows);
+  const off = pg.page * pg.size;
   return (
     <div className="an-scroll">
+      <TablePager {...pg} />
       <table className="an-table">
         <thead>
           <tr>{head.map((h) => <th key={h}>{h}</th>)}</tr>
         </thead>
         <tbody>
-          {rows.map((r, i) => (
-            <tr key={i} className={bad?.[i] ? "bad" : undefined}>
+          {pg.rows.map((r, i) => (
+            <tr key={off + i} className={bad?.[off + i] ? "bad" : undefined}>
               {r.map((c, j) => <td key={j}>{c}</td>)}
             </tr>
           ))}

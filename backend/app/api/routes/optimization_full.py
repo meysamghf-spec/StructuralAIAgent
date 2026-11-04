@@ -12,6 +12,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
+from app.application import frame3d_limits as fl
 from app.api.deps import get_conversation_service, get_current_account, get_project_access_service
 from app.application.billing import service as billing
 from app.domain.models.user import AuthenticatedAccount
@@ -74,8 +75,8 @@ def _frame_model(body: OptimizationJobRequest, acc, conv, access, out_inputs: di
         missing = f3.missing_inputs(inp)
     if missing:
         raise HTTPException(422, "missing: " + ", ".join(f3.input_labels(missing, "en")))
-    if inp.storeys > f3.MAX_STOREYS or max(inp.bays_x, inp.bays_y) > f3.MAX_BAYS or min(inp.storeys, inp.bays_x, inp.bays_y) < 1:
-        raise HTTPException(422, f"supports 1-{f3.MAX_STOREYS} storeys and 1-{f3.MAX_BAYS} bays per direction")
+    if not fl.within_limits(inp.storeys, inp.bays_x, inp.bays_y, optimisation=True):
+        raise HTTPException(422, "optimisation " + fl.limit_text(optimisation=True))
     if out_inputs is not None:
         from dataclasses import asdict
 

@@ -22,6 +22,7 @@ import re
 from typing import Any
 
 from app.application import chat_actions as ca
+from app.application import frame3d_limits as fl
 from app.application.billing import crypto, plans as billing_plans
 
 # (href, English name, Persian name, English description, Persian description) - mirrors frontend/lib/nav.ts NAV_ITEMS.
@@ -305,14 +306,14 @@ def section_plans(fa: bool) -> str:
         if fa:
             lines.append(
                 f"- {name} [{p['id']}] {price}: پروژه {_lim(L['projects'], fa)}، تحلیل در ماه {_lim(L['analyses_per_month'], fa)}، "
-                f"قاب تا {_lim(L['frame_max_storeys'], fa)} طبقه و {_lim(L['frame_max_bays'], fa)} دهانه، "
+                f"قاب تا {_lim(L['frame_max_storeys'] or fl.MAX_STOREYS, fa)} طبقه و {_lim(L['frame_max_bays'] or fl.MAX_BAYS, fa)} دهانه، "
                 f"خروجی نرم‌افزار/DXF: {'، '.join(ex) if ex else 'ندارد'}، بهینه‌سازی: {_lim(L['optimization'], fa)}، "
                 f"ورود نقشه AutoCAD در ماه {_lim(L['autocad_imports_per_month'], fa)}، کاربر {_lim(L['seats'], fa)}، "
                 f"فضا {_lim(L['storage_mb'], fa)} مگابایت")
         else:
             lines.append(
                 f"- {name} [{p['id']}] {price}: projects {_lim(L['projects'], fa)}, analyses/month {_lim(L['analyses_per_month'], fa)}, "
-                f"frame up to {_lim(L['frame_max_storeys'], fa)} storeys x {_lim(L['frame_max_bays'], fa)} bays, "
+                f"frame up to {_lim(L['frame_max_storeys'] or fl.MAX_STOREYS, fa)} storeys x {_lim(L['frame_max_bays'] or fl.MAX_BAYS, fa)} bays, "
                 f"software/DXF exports: {', '.join(ex) if ex else 'none'}, optimization: {_lim(L['optimization'], fa)}, "
                 f"AutoCAD imports/month {_lim(L['autocad_imports_per_month'], fa)}, seats {_lim(L['seats'], fa)}, "
                 f"storage {_lim(L['storage_mb'], fa)} MB")
@@ -601,8 +602,8 @@ def user_context(account_id: str | None, *, project: str | None = None, has_mode
             ctx["plan"] = f"{plan['name']} ({plan['name_fa']})"
             ctx["plan_limits"] = (
                 f"projects {_lim(L['projects'], False)}, analyses/month {_lim(L['analyses_per_month'], False)} "
-                f"(used {used.get('analyses', 0)}), frame max {_lim(L['frame_max_storeys'], False)} storeys x "
-                f"{_lim(L['frame_max_bays'], False)} bays, exports {', '.join(ex) if ex else 'none'}, "
+                f"(used {used.get('analyses', 0)}), frame max {_lim(L['frame_max_storeys'] or fl.MAX_STOREYS, False)} storeys x "
+                f"{_lim(L['frame_max_bays'] or fl.MAX_BAYS, False)} bays, exports {', '.join(ex) if ex else 'none'}, "
                 f"optimization {_lim(L['optimization'], False)}")
             ctx["limits_enforced"] = "yes" if bs.enforcement_enabled() else "no (all features open)"
     except Exception:  # noqa: BLE001 - context is best effort

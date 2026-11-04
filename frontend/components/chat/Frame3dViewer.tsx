@@ -2,6 +2,7 @@
 
 import { OrientationBadge } from "@/components/frame3d/OrientationBadge";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { LARGE_VIEW_MEMBERS } from "@/lib/frame3d-limits";
 
 import type { Frame3dResults } from "@/lib/chat-types";
 import {
@@ -205,9 +206,32 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
       const memberColor = (m: ViewerMember) =>
         display === "DC" ? new THREE.Color(dcColor(m.dc)) : new THREE.Color(m.type === "column" ? 0xe0e6ef : 0x7fc4ff);
 
-      // members (line or extruded)
+      // big models (ETABS-scale): one merged LineSegments per layer instead of thousands of objects/draw calls;
+      // extrusion and DOM labels are skipped in the 3D view (they stay available in plan / elevation views)
+      const large = visible.length > LARGE_VIEW_MEMBERS;
+      const lightLabels = !large || view !== "3D";
       const objs: Array<{ m: ViewerMember; obj: import("three").Object3D }> = [];
-      for (const m of visible) {
+      const opacity = activeMode ? 0.18 : showDeformed ? 0.35 : 1;
+      if (large) {
+        const pos: number[] = [], col: number[] = [], ids: string[] = [];
+        for (const m of visible) {
+          const a = nodeById.get(m.i), b = nodeById.get(m.j);
+          if (!a || !b) continue;
+          const c = m.id === selected ? new THREE.Color(0xff00ff) : memberColor(m);
+          pos.push(a.x, a.y, a.z, b.x, b.y, b.z);
+          col.push(c.r, c.g, c.b, c.r, c.g, c.b);
+          ids.push(m.id);
+        }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+        g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+        const merged = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true, transparent: opacity < 1, opacity }));
+        merged.userData = { ids };
+        scene.add(merged);
+        pickables.push(merged);
+      }
+      // members (line or extruded)
+      for (const m of large ? [] : visible) {
         const a = nodeById.get(m.i), b = nodeById.get(m.j);
         if (!a || !b) continue;
         const A = new THREE.Vector3(a.x, a.y, a.z), B = new THREE.Vector3(b.x, b.y, b.z);
@@ -229,12 +253,12 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
         scene.add(obj);
         pickables.push(obj);
         objs.push({ m, obj });
-        if (frameLabels) {
+        if (frameLabels && lightLabels) {
           const mid = A.clone().add(B).multiplyScalar(0.5);
           label(`${m.id} · ${m.section}`, "v3d-frame-label", [mid.x, mid.y, mid.z]);
         }
       }
-      if (jointLabels) {
+      if (jointLabels && lightLabels) {
         for (const n of data.nodes) {
           if (view === "PLAN" && Math.abs(n.z - (zs[planStorey(data, storey)] ?? 0)) > 1e-6) continue;
           label(n.id, "v3d-joint-label", [n.x, n.y, n.z]);
@@ -250,6 +274,7 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
           return v;
         });
         const k = gmax > 0 ? (0.12 * size) / gmax : 0;
+        const bigPos: number[] = [], bigCol: number[] = [], bigLine: number[] = [];
         visible.forEach((m, idx) => {
           const a = nodeById.get(m.i), b = nodeById.get(m.j);
           if (!a || !b) return;
@@ -269,6 +294,12 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
               for (const P of [p0, p, q, p0, q, q0]) { pos.push(P.x, P.y, P.z); col.push(c.r, c.g, c.b); }
             }
           }
+          if (large) {
+            for (const x of pos) bigPos.push(x);
+            for (const x of col) bigCol.push(x);
+            for (let s = 1; s < pts.length; s++) bigLine.push(pts[s - 1].x, pts[s - 1].y, pts[s - 1].z, pts[s].x, pts[s].y, pts[s].z);
+            return;
+          }
           const g = new THREE.BufferGeometry();
           g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
           g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
@@ -278,11 +309,28 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
           pickables.push(fill);
           scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0xffffff })));
         });
+        if (large && bigPos.length) {
+          const g = new THREE.BufferGeometry();
+          g.setAttribute("position", new THREE.Float32BufferAttribute(bigPos, 3));
+          g.setAttribute("color", new THREE.Float32BufferAttribute(bigCol, 3));
+          scene.add(new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false })));
+          const gl = new THREE.BufferGeometry();
+          gl.setAttribute("position", new THREE.Float32BufferAttribute(bigLine, 3));
+          scene.add(new THREE.LineSegments(gl, new THREE.LineBasicMaterial({ color: 0xffffff })));
+        }
       }
 
       // deformed shape (lines), animated when requested
       const deformed: Array<{ line: import("three").Line; m: ViewerMember }> = [];
-      if (showDeformed) {
+      const mergedLines = (color: number) => {
+        const g = new THREE.BufferGeometry();
+        g.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(visible.length * 6), 3));
+        const ls = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color }));
+        scene.add(ls);
+        return ls;
+      };
+      const deformedBig = large && showDeformed ? mergedLines(0xffd54f) : null;
+      if (showDeformed && !large) {
         for (const m of visible) {
           const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineBasicMaterial({ color: 0xffd54f }));
           scene.add(line);
@@ -290,6 +338,20 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
         }
       }
       const placeDeformed = (f: number) => {
+        if (deformedBig) {
+          const arr = deformedBig.geometry.attributes.position.array as Float32Array;
+          const s = (baseScale * scaleMul * f) / 1000;
+          visible.forEach((m, idx) => {
+            [m.i, m.j].forEach((nid, e) => {
+              const n = nodeById.get(nid);
+              if (!n) return;
+              const u = nodeDisplacement(data, load, nid);
+              arr.set([n.x + u[0] * s, n.y + u[1] * s, n.z + u[2] * s], idx * 6 + e * 3);
+            });
+          });
+          deformedBig.geometry.attributes.position.needsUpdate = true;
+          deformedBig.geometry.computeBoundingSphere();
+        }
         for (const { line, m } of deformed) {
           const arr: number[] = [];
           for (const nid of [m.i, m.j]) {
@@ -306,7 +368,8 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
 
       // mode shape animation (generic: nodal φ vectors; members drawn as straight lines between displaced nodes)
       const modeLines: Array<{ line: import("three").Line; m: ViewerMember }> = [];
-      if (activeMode) {
+      const modeBig = large && activeMode ? mergedLines(0x4fc3f7) : null;
+      if (activeMode && !large) {
         for (const m of visible) {
           const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineBasicMaterial({ color: 0x4fc3f7 }));
           scene.add(line);
@@ -317,6 +380,19 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
       const placeMode = (tS: number) => {
         if (!activeMode) return;
         const amp = 0.06 * span * modeCtl.current.scale;
+        if (modeBig) {
+          const arr = modeBig.geometry.attributes.position.array as Float32Array;
+          visible.forEach((m, idx) => {
+            [m.i, m.j].forEach((nid, e) => {
+              const n = nodeById.get(nid);
+              if (!n) return;
+              const u = modeOffset(activeMode, nid, amp, tS, modeCtl.current.speed);
+              arr.set([n.x + u[0], n.y + u[1], n.z + u[2]], idx * 6 + e * 3);
+            });
+          });
+          modeBig.geometry.attributes.position.needsUpdate = true;
+          modeBig.geometry.computeBoundingSphere();
+        }
         for (const { line, m } of modeLines) {
           const arr: number[] = [];
           for (const nid of [m.i, m.j]) {
@@ -349,12 +425,18 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
         const hit = ray.intersectObjects(pickables, false)[0];
         return { hit, r };
       };
+      // merged (big-model) LineSegments: segment k ↔ member ids[k]
+      const memberById = new Map(data.members.map((x) => [x.id, x] as const));
+      const hitId = (hit: { object: import("three").Object3D; index?: number | null }) => {
+        const ids = hit.object.userData.ids as string[] | undefined;
+        return ids ? String(ids[Math.floor((hit.index ?? 0) / 2)] ?? "") : String(hit.object.userData.id);
+      };
       const onMove = (ev: PointerEvent) => {
         const { hit, r } = pick(ev);
         if (!hit) return setHover(null);
-        const id = String(hit.object.userData.id);
+        const id = hitId(hit);
         let text = id;
-        const m = data.members.find((x) => x.id === id);
+        const m = memberById.get(id);
         if (m && display !== "NONE" && display !== "DC") {
           const v = diagramValues(memberForces(data, load, id), memberLength(data, m), display);
           const unit = display === "M3" ? "kN·m" : "kN";
@@ -366,7 +448,7 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
       };
       const onClick = (ev: PointerEvent) => {
         const { hit } = pick(ev);
-        if (hit) setSelected(String(hit.object.userData.id));
+        if (hit) setSelected(hitId(hit));
       };
       renderer.domElement.addEventListener("pointermove", onMove);
       renderer.domElement.addEventListener("click", onClick as EventListener);
@@ -469,6 +551,9 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
         <label><input type="checkbox" checked={jointLabels} onChange={(e) => setJointLabels(e.target.checked)} /> {t("Joint labels")}</label>
         <label><input type="checkbox" checked={frameLabels} onChange={(e) => setFrameLabels(e.target.checked)} /> {t("Frame labels")}</label>
         <label><input type="checkbox" checked={extruded} onChange={(e) => setExtruded(e.target.checked)} /> {t("Extruded")}</label>
+        {view === "3D" && data.members.length > LARGE_VIEW_MEMBERS ? (
+          <small className="muted" data-testid="v3d-large-note">{t("Large model — light 3D view (lines only; labels and extrusion in plan/elevation views)")}</small>
+        ) : null}
         <span className="v3d-sep" />
         <label>
           {t("Load")}{" "}

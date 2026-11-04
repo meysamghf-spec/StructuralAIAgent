@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
+from app.application import frame3d_limits as fl
 from app.api.deps import get_current_account
 from app.application.billing import service as billing
 from app.application import csi_text_export as cte
@@ -135,8 +136,8 @@ def optimize_frame3d(
             missing = f3.missing_inputs(inp)
         if missing:
             raise ValueError("missing: " + ", ".join(f3.input_labels(missing, "en")) + " (send assume_defaults=true to use typical defaults)")
-        if inp.storeys > f3.MAX_STOREYS or max(inp.bays_x, inp.bays_y) > f3.MAX_BAYS or min(inp.storeys, inp.bays_x, inp.bays_y) < 1:
-            raise ValueError(f"supports 1-{f3.MAX_STOREYS} storeys and 1-{f3.MAX_BAYS} bays per direction")
+        if not fl.within_limits(inp.storeys, inp.bays_x, inp.bays_y, optimisation=True):
+            raise ValueError("optimisation " + fl.limit_text(optimisation=True))
         opts = {**body.options}
         opts["time_budget_s"] = min(float(opts.get("time_budget_s", 45)), 90.0)
         opts["max_evaluations"] = min(int(opts.get("max_evaluations", 300)), 600)
@@ -202,6 +203,12 @@ def _saver(files, project_id, acc):
         except Exception:  # noqa: BLE001 — saving to Files is best effort; the download itself still succeeds
             return ""
     return save
+
+
+@router.get("/limits")
+def frame_limits() -> dict[str, Any]:
+    """Model-size limits shared by the chat, the Quick-3D form and the downloads (single source: frame3d_limits)."""
+    return fl.limits_payload()
 
 
 @router.get("/downloads/catalog")

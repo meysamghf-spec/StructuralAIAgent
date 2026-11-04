@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import math
+import threading
 import re
 from dataclasses import asdict, dataclass, field
 from dataclasses import fields as dc_fields
@@ -47,11 +48,14 @@ from app.application.analysis.frame3d_solver import (
     SpaceNode,
     SpaceSupport,
     assemble_space_system,
+    element_end_forces,
     prepare_second_order,
+    reload_space_loads,
     recover_space_result,
     solve_space_many,
     torsion_constant_rectangle,
 )
+from app.application.analysis.frame3d_solver import SOLVE_CHUNK
 
 P_DELTA_IGNORE = 0.1  # Standard 2800 (4th ed.) §3-6: θ < 0.1 → P-Δ may be ignored
 P_DELTA_RULE = ("auto: P-Δ is included for IRAN_2800 projects when the storey stability index θ = Pu·Δe/(V·h) exceeds 0.1 "
@@ -77,11 +81,24 @@ def _code_label(inp: "Frame3dInputs") -> str:
     return f"Analysis with {seismic}; {design}"
 
 
-MAX_STOREYS = 10
-MAX_BAYS = 6
-MIN_SPAN_M = 1.5
-MAX_SPAN_M = 15.0
-MAX_NODES = 220  # keeps the dense pure-Python solve within a few seconds
+# model size limits live in frame3d_limits (shared by chat, form, optimisation and downloads)
+from app.application.frame3d_limits import BACKGROUND_NODES, node_count  # noqa: E402
+from app.application.frame3d_limits import MAX_BAYS, MAX_NODES, MAX_RS_MODES, MAX_SPAN_M, MAX_STOREYS, MIN_SPAN_M  # noqa: E402
+RS_ELEMENT_CHUNK = 4000  # elements per vectorised response-spectrum force recovery block
+
+
+def rs_mode_count(mode_table: list[dict[str, Any]]) -> int:
+    """Modes used in the response-spectrum combination: all of them for models with ≤ MAX_RS_MODES diaphragm
+    modes (unchanged behaviour), otherwise the leading modes until ≥ 90 % mass in X and Y (Standard 2800 §3-4-2-2),
+    but never fewer than MAX_RS_MODES."""
+    n = len(mode_table)
+    if n <= MAX_RS_MODES:
+        return n
+    need = MAX_RS_MODES
+    for key in ("cum_x_pct", "cum_y_pct"):
+        hit = next((m["mode"] for m in mode_table if m[key] >= 90.0), n)
+        need = max(need, hit)
+    return min(n, need)
 
 _PERSIAN_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩٫", "01234567890123456789.")
 _NUM = r"(\d+(?:\.\d+)?)"
@@ -394,7 +411,17 @@ def beam_dims(inp: Frame3dInputs, storey: int) -> tuple[float, float]:
     return (float(s[0]), float(s[1])) if s else (inp.beam_b_m, inp.beam_h_m)
 
 
+_HEAVY_RUNS = threading.BoundedSemaphore(1)  # large models need ~0.2-1.3 GB: run them one at a time per worker
+
+
 def run_frame3d(inp: Frame3dInputs, *, with_modal: bool = True, with_foundation: bool = True) -> dict[str, Any]:
+    if node_count(inp.storeys, inp.bays_x, inp.bays_y) > BACKGROUND_NODES:
+        with _HEAVY_RUNS:
+            return _run_frame3d(inp, with_modal=with_modal, with_foundation=with_foundation)
+    return _run_frame3d(inp, with_modal=with_modal, with_foundation=with_foundation)
+
+
+def _run_frame3d(inp: Frame3dInputs, *, with_modal: bool = True, with_foundation: bool = True) -> dict[str, Any]:
     nx, ny, ns = inp.bays_x, inp.bays_y, inp.storeys
     XS = [i * inp.bay_x_m for i in range(nx + 1)]
     YS = [j * inp.bay_y_m for j in range(ny + 1)]
@@ -500,17 +527,13 @@ def run_frame3d(inp: Frame3dInputs, *, with_modal: bool = True, with_foundation:
             for o, v in enumerate((ld.fx, ld.fy, ld.fz, ld.mx, ld.my, ld.mz)):
                 lv[b0 + o] += v
         r = recover_space_result(m, prep, lv)
-        ends, wloc = {}, {}
-        for e in m.elements:
-            lk, fl, dofs, _L, T = prep["element_cache"][e.id]
-            u_el = []
-            for d in dofs:
-                nd = nodes[d // DOF_PER_NODE].id
-                u_el.append(r.displacements[nd][d % DOF_PER_NODE])
-            ul = _matvec(T, u_el)
-            ends[e.id] = [a + b for a, b in zip(_matvec(lk, ul), fl)]  # elastic end forces (internal actions)
-            T3 = [row[:3] for row in T[:3]]
-            wloc[e.id] = _matvec(T3, [e.udl_gx, e.udl_gy, e.udl_gz])
+        # elastic end forces (internal actions) of all elements at once: K_local·T·u_e + fixed-end forces
+        ends_arr = element_end_forces(prep, r.u_full).tolist()
+        tr3 = prep["element_arrays"]["tr"][:, :3, :3]
+        udl = np.array([(e.udl_gx, e.udl_gy, e.udl_gz) for e in m.elements], dtype=float)
+        w_arr = np.einsum("eij,ej->ei", tr3, udl).tolist()
+        ids = [e.id for e in m.elements]
+        ends, wloc = dict(zip(ids, ends_arr)), dict(zip(ids, w_arr))
         applied = [sum(getattr(l, c) for l in m.nodal_loads) for c in ("fx", "fy", "fz")]
         for e in m.elements:
             L = math.dist(P[e.start_node_id], P[e.end_node_id])
@@ -521,16 +544,20 @@ def run_frame3d(inp: Frame3dInputs, *, with_modal: bool = True, with_foundation:
                       "supp": {s.node_id: [float(x) for x in r.reactions[s.node_id]] for s in supports}}
 
     lateral_models: dict[str, SpaceFrameModel] = {}
+    shared_prep: dict[str, Any] | None = None  # every case has the same stiffness: assemble/factor once
     for case in cases:
         m = model(case)
-        if case in ("Ex", "Ey"):  # same stiffness, no member loads: assemble/factor once
-            if "prep" not in lateral_prep:
-                lateral_prep["prep"] = assemble_space_system(m); lateral_prep["model"] = m
-            prep = lateral_prep["prep"]
-            lateral_models[case] = m
+        if shared_prep is None:
+            shared_prep = assemble_space_system(m)
+            prep = shared_prep
         else:
-            prep = assemble_space_system(m)
+            prep = reload_space_loads(shared_prep, m)
+        if case in ("Ex", "Ey"):
+            if "prep" not in lateral_prep:
+                lateral_prep["prep"] = prep; lateral_prep["model"] = m
+            lateral_models[case] = m
         solve_case(case, m, prep)
+    del shared_prep, prep
 
     # ---- P-Δ (second-order) -------------------------------------------------------------
     def story_drifts(case: str) -> list[float]:
@@ -896,8 +923,8 @@ def _modal_response_spectrum(inp, lateral_prep, nodes, XS, YS, Z, W, centre, V_s
     nx, ny = len(XS) - 1, len(YS) - 1
     n = 3 * ns
 
-    def load_vec(forces: list[float]) -> list[float]:
-        lv = [0.0] * n_full
+    def load_vec(forces: list[float]) -> np.ndarray:
+        lv = np.zeros(n_full)
         for k in range(1, ns + 1):
             fx, fy, mz = forces[3 * (k - 1): 3 * k]
             b0 = idx[_nid(ci, cj, k)] * DOF_PER_NODE
@@ -912,17 +939,14 @@ def _modal_response_spectrum(inp, lateral_prep, nodes, XS, YS, Z, W, centre, V_s
             out += [ux + rz * dyc, uy - rz * dxc, rz]
         return out
 
-    units = [[1.0 if q == col else 0.0 for q in range(n)] for col in range(n)]
-    ufl = solve_space_many(prep, [load_vec(u) for u in units])
-    flex = [[0.0] * n for _ in range(n)]
-    for col in range(n):
-        d = centre_disp(ufl[:, col])
-        for row in range(n):
-            flex[row][col] = d[row]
-    flex = [[0.5 * (flex[i][j] + flex[j][i]) for j in range(n)] for i in range(n)]
-    lu = factor_linear_system(flex)
-    cols_k = [lu.solve([1.0 if i == j else 0.0 for i in range(n)]) for j in range(n)]
-    stiff = [[cols_k[j][i] for j in range(n)] for i in range(n)]
+    flex_cols = []
+    for c0 in range(0, n, SOLVE_CHUNK):  # unit loads at each diaphragm DOF, solved in chunks (bounded memory)
+        cols_c = range(c0, min(n, c0 + SOLVE_CHUNK))
+        ufl = solve_space_many(prep, [load_vec([1.0 if q == col else 0.0 for q in range(n)]) for col in cols_c])
+        flex_cols += [centre_disp(ufl[:, c]) for c in range(len(cols_c))]
+    flex = np.array(flex_cols).T
+    flex = 0.5 * (flex + flex.T)
+    stiff = np.linalg.inv(flex).tolist()
     lx, ly = XS[-1], YS[-1]
     mass = []
     for k in range(1, ns + 1):
@@ -948,21 +972,19 @@ def _modal_response_spectrum(inp, lateral_prep, nodes, XS, YS, Z, W, centre, V_s
         mode_table.append({"mode": i + 1, "T_s": r["T"], "mass_x_pct": 100 * r["part"]["X"], "mass_y_pct": 100 * r["part"]["Y"],
                            "mass_rz_pct": 100 * r["part"]["RZ"], "cum_x_pct": 100 * cum["X"], "cum_y_pct": 100 * cum["Y"]})
     a, I, R = info["A"], info["I"], info["R"]
-    m_modes = len(rows)
+    m_modes = rs_mode_count(mode_table)  # all modes for small models; large ones keep the leading modes (≥ 90 % mass)
+    rs_omegas = omegas[:m_modes]
     rho = np.array([[1.0 if i == j else cqc_coefficient(omegas[i], omegas[j]) for j in range(m_modes)] for i in range(m_modes)])
     plan = [(ii, jj) for ii in range(nx + 1) for jj in range(ny + 1)]
     top_idx = np.array([[idx[_nid(ii, jj, k)] * DOF_PER_NODE for ii, jj in plan] for k in range(1, ns + 1)])
     bot_idx = np.array([[idx[_nid(ii, jj, k - 1)] * DOF_PER_NODE for ii, jj in plan] for k in range(1, ns + 1)])
-    elem_ops = {}
-    for e in model.elements:  # ends_local = (K_local · T) · u_global(element dofs)  (no member loads in RS cases)
-        lk, _fl, dofs, _L, T = rprep["element_cache"][e.id]
-        elem_ops[e.id] = (np.asarray(dofs), np.asarray(lk) @ np.asarray(T))
+    elem_ids = [e.id for e in model.elements]
     rs, members, h = {}, {}, Z[1] - Z[0]
     ecc_by_dir = {"X": inp.accidental_ecc * YS[-1], "Y": inp.accidental_ecc * XS[-1]}
     for dname, off in (("X", 0), ("Y", 1)):
         ecc = ecc_by_dir[dname]
         shears, base_forces = [], []
-        for r in rows:
+        for r in rows[:m_modes]:
             phi = r["phi"]
             gamma = sum(mass[i] * phi[i] for i in range(off, n, 3))  # φᵀMφ = 1
             sa = a * iran2800.spectral_b(r["T"], inp.soil, inp.zone) * I / R * G
@@ -978,18 +1000,20 @@ def _modal_response_spectrum(inp, lateral_prep, nodes, XS, YS, Z, W, centre, V_s
                     f2[3 * k + 2] += sg * ecc * forces[3 * k + off]  # accidental torsion ±ecc·F_k
                 loads.append(load_vec(f2))
         u_all = solve_space_many(rprep, loads)  # n_full × (len(signs)·m)
-        v_dyn = combine_cqc(shears, omegas)
+        v_dyn = combine_cqc(shears, rs_omegas)
         scale = max(1.0, info["dynamic_scale_min"] * V_static / v_dyn) if v_dyn > 0 else 1.0
         worst_drift = np.zeros(ns)
-        member_cqc = {eid: np.zeros(12) for eid in elem_ops}
+        member_cqc = np.zeros((len(elem_ids), 12))
         for si_, sg in enumerate(signs):
             u_s = u_all[:, si_ * m_modes:(si_ + 1) * m_modes]  # n_full × m
             dm = u_s[top_idx + off, :] - u_s[bot_idx + off, :]  # ns × nodes × m
             cq = np.sqrt(np.maximum(np.einsum("kpm,mn,kpn->kp", dm, rho, dm), 0.0))
             worst_drift = np.maximum(worst_drift, cq.max(axis=1))
-            for eid, (dofs_e, op) in elem_ops.items():
-                ends = op @ u_s[dofs_e, :]  # 12 × m
-                member_cqc[eid] = np.maximum(member_cqc[eid], np.sqrt(np.maximum(np.einsum("cm,mn,cn->c", ends, rho, ends), 0.0)))
+            for e0 in range(0, len(elem_ids), RS_ELEMENT_CHUNK):  # ends_local = (K_local·T)·u_e (no member loads)
+                sub = {"element_arrays": {k: v[e0:e0 + RS_ELEMENT_CHUNK] for k, v in rprep["element_arrays"].items()}}
+                ends = element_end_forces(sub, u_s)  # E × 12 × m
+                member_cqc[e0:e0 + RS_ELEMENT_CHUNK] = np.maximum(
+                    member_cqc[e0:e0 + RS_ELEMENT_CHUNK], np.sqrt(np.maximum(np.einsum("ecm,mn,ecn->ec", ends, rho, ends), 0.0)))
         drift_rows = []
         for k in range(ns):
             de = float(worst_drift[k]) * scale
@@ -998,7 +1022,7 @@ def _modal_response_spectrum(inp, lateral_prep, nodes, XS, YS, Z, W, centre, V_s
         rs[dname] = {"V_dynamic_kn": v_dyn, "V_static_kn": V_static, "ratio": v_dyn / V_static,
                      "scale_factor": scale, "V_dynamic_scaled_kn": v_dyn * scale, "drift": drift_rows,
                      "accidental_torsion": ecc > 0, "scaled_to_minimum": scale > 1.0 + 1e-9, "V_scaled_over_static": v_dyn * scale / V_static}
-        members[dname] = {eid: (scale * v).tolist() for eid, v in member_cqc.items()}
+        members[dname] = dict(zip(elem_ids, (scale * member_cqc).tolist()))
     modes_90 = {key: next((m["mode"] for m in mode_table if m[f"cum_{key.lower()}_pct"] >= 90.0), None) for key in ("X", "Y")}
     # nodal mode shapes for the viewer animation: static response to the modal inertia forces ω²·M·φ, normalised to 1
     n_shapes = min(MAX_MODE_SHAPES, m_modes)

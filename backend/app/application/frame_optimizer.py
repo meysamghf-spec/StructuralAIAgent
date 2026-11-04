@@ -19,6 +19,7 @@ import time
 from dataclasses import asdict, replace
 from typing import Any
 
+from app.application import frame3d_limits as fl
 from app.application import frame3d_chat_analysis as f3
 
 DEFAULT_PRICES_TOMAN = {"concrete_m3": 4_500_000, "rebar_kg": 45_000, "formwork_m2": 900_000}
@@ -389,7 +390,7 @@ def build_optimization_from_chat(text: str, prior_spec: dict[str, Any] | None, o
         assumed = fu.apply_defaults(inp)
         if f3.missing_inputs(inp):
             return None
-    if inp.storeys > f3.MAX_STOREYS or max(inp.bays_x, inp.bays_y) > f3.MAX_BAYS:
+    if not fl.within_limits(inp.storeys, inp.bays_x, inp.bays_y, optimisation=True):
         return None
     inp.lang = text_lang(text)
     res = optimize_frame(inp, {**options_from_text(text), **(options or {})})

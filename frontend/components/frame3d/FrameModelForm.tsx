@@ -1,5 +1,6 @@
 "use client";
 
+import { largeModelNotice } from "@/lib/frame3d-limits";
 import { useState } from "react";
 
 import { GeometryField, validateGeometry } from "@/components/frame3d/GeometryField";
@@ -123,6 +124,10 @@ export function FrameModelForm({ values, setValues, busy, onRun, onImport, prefi
           )}
         </fieldset>
       ))}
+      {(() => {
+        const note = largeModelNotice(Number(values.storeys), Number(values.bays_x), Number(values.bays_y), lang === "fa" ? "fa" : "en");
+        return note ? <p className="muted" role="status" data-testid="large-model-notice">⏳ {note}</p> : null;
+      })()}
       <div className="frame3d-actions">
         <button className="button" type="submit" disabled={busy}>
           {busy ? t("Running…") : t("Run analysis + design")}

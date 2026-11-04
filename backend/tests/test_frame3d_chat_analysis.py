@@ -91,8 +91,20 @@ def test_persian_request_is_parsed() -> None:
 
 
 def test_size_limit() -> None:
-    payload = build_frame3d_payload("Analyze a 30-storey frame with 6x6 bays of 5 m, C=0.1")
+    # ETABS-scale caps (frame3d_limits): 100 storeys, 30 bays, 8000 nodes.
+    payload = build_frame3d_payload("Analyze a 50-storey frame with 20x20 bays of 5 m, C=0.1")
     assert payload["status"] == "UNSUPPORTED_SIZE"
+    payload = build_frame3d_payload("Analyze a 120-storey frame with 2x2 bays of 5 m, C=0.1")
+    assert payload["status"] == "UNSUPPORTED_SIZE"
+
+
+def test_limits_shared() -> None:
+    from app.application import frame3d_limits as fl
+
+    assert fl.within_limits(30, 15, 15)
+    assert not fl.within_limits(50, 20, 20)
+    assert not fl.within_limits(30, 15, 15, optimisation=True)
+    assert fl.limits_payload()["max_nodes"] == fl.MAX_NODES
 
 
 def test_detection_and_routing() -> None:

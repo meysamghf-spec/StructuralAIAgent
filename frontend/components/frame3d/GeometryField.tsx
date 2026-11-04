@@ -1,6 +1,7 @@
 "use client";
 
 import { inputLabel, SPAN_KEYS } from "@/lib/input-labels";
+import { FRAME_LIMITS } from "@/lib/frame3d-limits";
 import { LENGTH_UNITS, parseNumber, spanRangeError, typedToMetres, type LengthUnit } from "@/lib/length-units";
 
 type Lang = "en" | "fa";
@@ -15,8 +16,8 @@ export function shortLabel(key: string, lang: Lang): string {
   return inputLabel(key, lang).replace(/\s*[(（][^)）]*[)）]\s*$/, "");
 }
 
-/** Same limits as the backend chat solver (frame3d_chat_analysis MAX_STOREYS / MAX_BAYS / MAX_NODES). */
-export const FRAME_LIMITS = { storeys: 10, bays: 6, nodes: 220 } as const;
+/** Same limits as the backend solver (single source: backend frame3d_limits.py, mirrored in lib/frame3d-limits). */
+export { FRAME_LIMITS };
 const maxFor = (k: string) => (k === "storeys" ? FRAME_LIMITS.storeys : FRAME_LIMITS.bays);
 
 const MSG = {

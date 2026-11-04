@@ -29,11 +29,14 @@ describe("validateGeometry limits", () => {
     const e = validateGeometry({ ...base, bays_y: "200", bays_x: "100" }, {}, "en", keys);
     expect(e.bays_y).toContain(`max allowed ${FRAME_LIMITS.bays}`);
     expect(e.bays_x).toContain(`max allowed ${FRAME_LIMITS.bays}`);
-    expect(validateGeometry({ ...base, storeys: "13" }, {}, "fa", keys).storeys).toContain("حداکثر");
+    expect(validateGeometry({ ...base, storeys: "130" }, {}, "fa", keys).storeys).toContain("حداکثر");
+    expect(validateGeometry({ ...base, storeys: "13" }, {}, "fa", keys).storeys).toBeUndefined();
   });
   it("checks the solver node limit", () => {
-    const e = validateGeometry({ ...base, storeys: "10", bays_x: "6", bays_y: "6" }, {}, "en", keys);
-    expect(e.bays_x).toContain("max 220");
+    const e = validateGeometry({ ...base, storeys: "50", bays_x: "20", bays_y: "20" }, {}, "en", keys);
+    expect(e.bays_x).toContain(`max ${FRAME_LIMITS.nodes}`);
+    // ETABS-scale models within the cap are accepted (e.g. 30 storeys, 15×15 bays = 7 936 nodes)
+    expect(validateGeometry({ ...base, storeys: "30", bays_x: "15", bays_y: "15" }, {}, "en", keys)).toEqual({});
     expect(validateGeometry(base, {}, "en", keys)).toEqual({});
   });
 });
