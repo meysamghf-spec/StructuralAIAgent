@@ -3297,3 +3297,28 @@ a.agent-card-link:focus-visible { outline: 2px solid #38bdf8; outline-offset: 2p
 .workspace-primary-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: #0284c7; color: #f8fafc; border: none; border-radius: 8px; padding: 0.65rem 1.1rem; min-height: 40px; font-weight: 600; cursor: pointer; text-decoration: none; }
 .workspace-primary-button:hover:not(:disabled) { background: #0369a1; }
 .workspace-primary-button:disabled { opacity: 0.55; cursor: not-allowed; }
+/* ===== Mobile top bar: always fixed at the top (never scrolls, hides or jumps) =====
+   html/body both set overflow, so body became its own (non-scrolling) scroll container and
+   position:sticky never engaged; the bar scrolled away with the page. Use position:fixed with a
+   fixed height + safe-area inset, and reserve the same space at the top of the shell. */
+@media (max-width: 960px) {
+  .shell {
+    --mobile-topbar-h: calc(3.5625rem + env(safe-area-inset-top, 0px));
+    padding-top: var(--mobile-topbar-h);
+  }
+  .shell > .mobile-topbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 30;
+    box-sizing: border-box;
+    height: var(--mobile-topbar-h);
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-left: max(0.85rem, env(safe-area-inset-left, 0px));
+    padding-right: max(0.85rem, env(safe-area-inset-right, 0px));
+    transform: translateZ(0);
+    will-change: transform;
+    overflow: hidden;
+  }
+}
