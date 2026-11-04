@@ -3297,3 +3297,18 @@ a.agent-card-link:focus-visible { outline: 2px solid #38bdf8; outline-offset: 2p
 .workspace-primary-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: #0284c7; color: #f8fafc; border: none; border-radius: 8px; padding: 0.65rem 1.1rem; min-height: 40px; font-weight: 600; cursor: pointer; text-decoration: none; }
 .workspace-primary-button:hover:not(:disabled) { background: #0369a1; }
 .workspace-primary-button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* Active-project bar at the top of each workspace section */
+.workspace-project-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border, rgba(148, 163, 184, 0.35));
+  border-radius: 0.75rem;
+  min-width: 0;
+}
+.workspace-project-bar-label { font-size: 0.85rem; }
+.workspace-project-bar .project-switcher { min-width: 0; max-width: 100%; }

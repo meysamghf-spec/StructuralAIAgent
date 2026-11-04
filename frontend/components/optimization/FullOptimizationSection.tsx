@@ -3,18 +3,22 @@
 import { OptResultView } from "./OptResultView";
 import Link from "next/link";
 
-import { getCurrentProjectId } from "@/lib/current-project";
+import { useActiveProjectId } from "@/hooks/useActiveProjectId";
 import { applyOptimizedFrame } from "@/lib/optimized-frame";
 import {
   cancelJob, candLabel, fmtNum, getJob, isActive, OptApiError, parseSections, startJob,
-  type OptJob, type SectionLists,
+  getProjectFrame, type OptJob, type ProjectFrame, type SectionLists,
 } from "@/lib/optimization-full";
 import { useEffect, useRef, useState } from "react";
 
 const PLACEHOLDER = "مثال: ستون‌ها 40x40، 40x60، 50x50؛ تیرها 30x40، 35x50\nمیلگرد 16 و 18 و 20 AIII، بتن C30\nستون‌های گوشه طبقات 1 تا 3: 50x50، 50x60\nتیرها IPE200 تا IPE360 (فولادی)";
 
 /** Extra section on the Optimization page: full optimizer (rectangular / steel sections, member types, Mabhas 9 rebar, async job). */
-export function FullOptimizationSection() {
+export function FullOptimizationSection({ projectId: projectIdProp }: { projectId?: string | null } = {}) {
+  const activeId = useActiveProjectId();
+  const projectId = projectIdProp !== undefined ? projectIdProp : activeId;
+  const jobProject = useRef<string | null>(null);
+  const [frame, setFrame] = useState<ProjectFrame | null>(null);
   const [source, setSource] = useState<"frame" | "model">("frame");
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -28,6 +32,15 @@ export function FullOptimizationSection() {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+
+  // Project switched: stop following the previous project's job and show this project's frame inputs.
+  useEffect(() => {
+    let live = true;
+    if (timer.current) clearTimeout(timer.current);
+    setJob(null); setAppliedFrame(false); setError(""); setFrame(null);
+    if (projectId) getProjectFrame(projectId).then((f) => { if (live) setFrame(f); }).catch(() => undefined);
+    return () => { live = false; };
+  }, [projectId]);
 
   const fail = (e: unknown) => setError(e instanceof OptApiError ? e.fa : e instanceof Error ? e.message : "خطا");
 
@@ -47,7 +60,7 @@ export function FullOptimizationSection() {
     const res = j.result as (OptJob["result"] & { optimized_frame3d?: { inputs?: Record<string, unknown> }; original_inputs?: unknown }) | null;
     const opt = res?.optimized_frame3d;
     if (j.status !== "done" || !opt?.inputs) return;
-    applyOptimizedFrame(getCurrentProjectId(), { inputs: opt.inputs, payload: opt, original: res?.original_inputs, marker: `job|${j.id}` });
+    applyOptimizedFrame(jobProject.current, { inputs: opt.inputs, payload: opt, original: res?.original_inputs, marker: `job|${j.id}` });
     setAppliedFrame(true);
   }
 
@@ -61,7 +74,8 @@ export function FullOptimizationSection() {
     try {
       const l = file ? await parseSections(text, file) : null;
       if (l) setLists(l);
-      const j = await startJob({ source, project_id: getCurrentProjectId(), section_text: l ? "" : text, lists: l,
+      jobProject.current = projectId;
+      const j = await startJob({ source, project_id: projectId, section_text: l ? "" : text, lists: l,
         options: { time_budget_s: Number(budget) || 120, storey_band: Number(band) || 2 } });
       setJob(j); poll(j.id);
     } catch (e) { fail(e); } finally { setBusy(false); }
@@ -77,6 +91,15 @@ export function FullOptimizationSection() {
         ستون مستطیلی، گروه‌بندی عضو به عضو و تیپ‌های تعریف‌شده، طراحی واقعی میلگرد مبحث ۹، مقاطع فولادی از کاتالوگ؛ اجرا در پس‌زمینه با نمایش پیشرفت.
         هر مقداری که ندهید فرض می‌شود و در نتیجه اعلام می‌شود.
       </p>
+      {projectId ? (
+        <p className="muted" data-testid="full-opt-project-frame" role="status">
+          {frame
+            ? `ورودی پروژه فعال (${frame.chat_title ? `گفتگوی «${frame.chat_title}»` : frame.label?.fa ?? frame.source}): ${frame.inputs.storeys ?? "?"} طبقه، ${frame.inputs.bays_x ?? "?"}×${frame.inputs.bays_y ?? "?"} دهانه، ${frame.inputs.bay_x_m ?? "?"}×${frame.inputs.bay_y_m ?? "?"} متر`
+            : "در حال خواندن قاب پروژه فعال…"}
+        </p>
+      ) : (
+        <p className="field-hint">پروژه‌ای انتخاب نشده است.</p>
+      )}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "end" }}>
         <label>منبع مدل{" "}

@@ -206,8 +206,8 @@ export default function OptimizationWorkspaceClient() {
         <p className="subtitle">Set optimization goals from your model and recorded runs.</p>
       </header>
 
-      <FrameOptimizerPanel />
-      <FullOptimizationSection />
+      <FrameOptimizerPanel projectId={selectedProjectId || null} />
+      <FullOptimizationSection projectId={selectedProjectId || null} />
       <FrameDownloads groups={["analysis", "design", "figures"]} title="Current frame model downloads" collapsed />
 
       <ProjectScopePanel
