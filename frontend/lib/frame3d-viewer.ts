@@ -32,6 +32,9 @@ export type ViewerData = {
   zs: number[];
   /** Mode shapes (any model): nodal displacement vectors normalised to max |u| = 1. */
   modes: ViewerMode[];
+  /** Member inspector: per case, [N, V2, V3, T, M2, M3] at i then j (optional; older payloads lack it). */
+  forces6?: Record<string, Record<string, number[]>>;
+  material?: { type: string; fc_mpa?: number; fy_mpa?: number };
 };
 export type ViewerMode = {
   mode: number;
@@ -130,6 +133,8 @@ export function mapViewerData(raw: unknown): ViewerData | null {
     ys: uniqSorted(nodes.map((n) => n.y)),
     zs: uniqSorted(nodes.map((n) => n.z)),
     modes: parseModes(d.modes),
+    forces6: obj<Record<string, Record<string, number[]>>>(d.forces6),
+    material: d.material && typeof d.material === "object" ? (d.material as ViewerData["material"]) : undefined,
   };
 }
 
@@ -143,7 +148,7 @@ export function factorsFor(v: ViewerData, name: string): Record<string, number> 
   return v.cases.includes(name) ? { [name]: 1 } : {};
 }
 
-function combine(table: Record<string, Record<string, number[]>>, factors: Record<string, number>, key: string): number[] | null {
+export function combine(table: Record<string, Record<string, number[]>>, factors: Record<string, number>, key: string): number[] | null {
   let out: number[] | null = null;
   for (const [c, f] of Object.entries(factors)) {
     const vec = table[c]?.[key];

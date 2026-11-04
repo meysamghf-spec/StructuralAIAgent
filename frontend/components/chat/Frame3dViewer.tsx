@@ -4,6 +4,7 @@ import { OrientationBadge } from "@/components/frame3d/OrientationBadge";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LARGE_VIEW_MEMBERS } from "@/lib/frame3d-limits";
 import DriftChart from "@/components/frame3d/DriftChart";
+import MemberInspector from "@/components/frame3d/MemberInspector";
 
 import type { Frame3dResults } from "@/lib/chat-types";
 import {
@@ -418,6 +419,11 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
       // picking
       const ray = new THREE.Raycaster();
       ray.params.Line = { threshold: 0.12 };
+      // larger hit tolerance for touch (fingers); scale with ortho zoom so zoomed-in picking stays precise
+      const setTol = (ev: PointerEvent) => {
+        const base = ev.pointerType === "touch" || ev.pointerType === "pen" ? 0.45 : 0.12;
+        ray.params.Line = { threshold: base / Math.max(1, (camera as { zoom?: number }).zoom ?? 1) };
+      };
       const ndc = new THREE.Vector2();
       const pick = (ev: PointerEvent) => {
         const r = renderer.domElement.getBoundingClientRect();
@@ -448,7 +454,9 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
         setHover({ x: ev.clientX - r.left + 12, y: ev.clientY - r.top + 12, text });
       };
       const onClick = (ev: PointerEvent) => {
+        setTol(ev);
         const { hit } = pick(ev);
+        ray.params.Line = { threshold: 0.12 };
         if (hit) setSelected(hitId(hit));
       };
       renderer.domElement.addEventListener("pointermove", onMove);
@@ -513,6 +521,7 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
   const drift = results.drift;
 
   return (
+    <>
     <div className={embedded ? "v3d-overlay v3d-embedded" : "v3d-overlay"} dir={rtl ? "rtl" : "ltr"} lang={results.lang} role="dialog" aria-label={t("3D model view")}>
       <div className="v3d-toolbar">
         <strong>{t("3D model view")}</strong>
@@ -715,6 +724,17 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
           ) : null}
         </aside>
       </div>
+      {sel && !embedded ? (
+        <div className="v3d-inspector-wrap" style={{ padding: "0 8px 8px", maxHeight: "45vh", overflowY: "auto", flexShrink: 0 }}>
+          <MemberInspector key={sel.id} data={data} member={sel} load={load} fa={rtl} />
+        </div>
+      ) : null}
     </div>
+    {sel && embedded ? (
+      <div className="v3d-inspector-wrap" style={{ background: "#1f2a38", color: "#dbe3ee", borderRadius: 6, padding: "4px 10px 10px", margin: "0 0 0.75rem", fontSize: 13 }}>
+        <MemberInspector key={sel.id} data={data} member={sel} load={load} fa={rtl} />
+      </div>
+    ) : null}
+    </>
   );
 }
