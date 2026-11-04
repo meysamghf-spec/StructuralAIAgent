@@ -118,6 +118,8 @@ export type BillingAccount = {
   history: { at: string; action: string; plan_id: string; invoice: string; expires_at: string }[];
   payments: { methods: string[]; mock: boolean; live_assets: string[]; btcpay: boolean; mock_allowed?: boolean };
   enforcement: boolean;
+  /** TEST PLAN (temporary): hidden 1 USDT plan, present only for allowlisted accounts. */
+  test_plan?: (Plan & { test?: boolean; grants_plan_id?: string }) | null;
 };
 
 export const getBillingPlans = () => apiFetch<Catalog>("/api/v1/billing/plans");
