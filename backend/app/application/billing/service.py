@@ -10,6 +10,7 @@ from app.application.exceptions import ApplicationError
 
 from . import crypto, store, watcher
 from .plans import get_plan, load_config, quote
+from . import test_plan  # TEST PLAN (temporary)
 
 METRIC_LABELS = {
     "projects": "projects", "analyses_per_month": "analyses this month",
@@ -146,6 +147,7 @@ def account_summary(account_id: str) -> dict[str, Any]:
         "invoices": list(reversed(data.get("invoices", [])))[:50],
         "history": list(reversed(data.get("history", [])))[:50],
         "payments": payment_status(), "enforcement": enforcement_enabled(),
+        "test_plan": test_plan.plan() if test_plan.is_allowed(account_id) else None,  # TEST PLAN
     }
 
 
@@ -163,13 +165,16 @@ MOCK_ADDR = {"tron": "TMockStructuralAiTestAddrDoNotPay01", "bsc": "0x0000000000
 
 
 def create_checkout(account_id: str, plan_id: str, duration_id: str, asset_id: str, *, frontend_base: str = "") -> dict:
-    plan = get_plan(plan_id)
+    is_test = plan_id == test_plan.TEST_PLAN_ID  # TEST PLAN
+    if is_test and not test_plan.is_allowed(account_id):
+        raise ApplicationError("PLAN_NOT_PURCHASABLE", "This plan cannot be purchased.", status_code=422)
+    plan = test_plan.plan() if is_test else get_plan(plan_id)
     if not plan.get("purchasable"):
         raise ApplicationError("PLAN_NOT_PURCHASABLE", "This plan cannot be purchased.", status_code=422)
     a = crypto.BY_ID.get(asset_id)
     if not a:
         raise ApplicationError("BAD_ASSET", "Pick a supported coin and network.", status_code=422)
-    q = quote(plan_id, duration_id)
+    q = test_plan.quote() if is_test else quote(plan_id, duration_id)
     if not crypto.is_live(a) and not crypto.mock_allowed():
         raise ApplicationError("PAYMENT_UNAVAILABLE", "This payment method is not available yet. Choose another coin or network.", status_code=503)
     inv_id = uuid.uuid4().hex
@@ -199,6 +204,8 @@ def create_checkout(account_id: str, plan_id: str, duration_id: str, asset_id: s
                "status": "pending", "created_at": _now().isoformat(), "created_ts": ts,
                "expires_at": datetime.fromtimestamp(ts + crypto.EXPIRY_MIN * 60, UTC).isoformat(),
                "paid_at": None, "ref_id": ""}
+    if is_test:  # TEST PLAN
+        invoice.update(test_plan=True, test_days=q["days"], grants_plan_id=test_plan.GRANTS_PLAN_ID)
     with store.edit(account_id) as data:
         data.setdefault("invoices", []).append(invoice)
     store.index_invoice(inv_id, account_id)
@@ -310,6 +317,21 @@ def settle_paid(account_id: str, invoice_id: str, *, tx: str = "", via: str = "a
         if admin:
             inv["confirmed_by"] = admin
         sub = active_subscription(data)
+        if inv.get("test_plan"):  # TEST PLAN: Pro-equivalent for N days; never shortens an existing subscription
+            add = timedelta(days=int(inv.get("test_days") or 1))
+            if sub:
+                expires = datetime.fromisoformat(sub["expires_at"]) + add
+                data["subscription"] = {**sub, "expires_at": expires.isoformat()}
+                action = "test_extended"
+            else:
+                expires = _now() + add
+                data["subscription"] = {"plan_id": inv.get("grants_plan_id") or "pro", "plan_name": inv["plan_name"],
+                                        "started_at": _now().isoformat(), "expires_at": expires.isoformat(),
+                                        "last_invoice": inv["number"], "auto_renew": False, "test": True}
+                action = "test_activated"
+            data.setdefault("history", []).append({"at": _now().isoformat(), "action": action, "plan_id": inv["plan_id"],
+                                                   "invoice": inv["number"], "expires_at": expires.isoformat(), "via": via})
+            return inv, True
         if sub and sub["plan_id"] == inv["plan_id"]:
             start = datetime.fromisoformat(sub["expires_at"]); action = "renewed"
         else:

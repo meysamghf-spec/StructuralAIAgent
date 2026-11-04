@@ -4,11 +4,13 @@ import { useUiLang } from "@/hooks/useUiLang";
 import {
   claimInvoiceTx,
   fmtToman,
+  getBillingAccount,
   getBillingPlans,
   getInvoice,
   mockConfirmInvoice,
   startCheckout,
   type Catalog,
+  type Plan,
   type CryptoAsset,
   type Invoice,
 } from "@/lib/billing";
@@ -50,6 +52,7 @@ function PayInner() {
   const planId = params.get("plan") ?? "pro";
   const durationId = params.get("duration") ?? "1m";
   const [catalog, setCatalog] = useState<Catalog | null>(null);
+  const [testPlan, setTestPlan] = useState<Plan | null>(null); // TEST PLAN (temporary)
   const [coin, setCoin] = useState("");
   const [assetId, setAssetId] = useState("");
   const [inv, setInv] = useState<Invoice | null>(null);
@@ -72,6 +75,9 @@ function PayInner() {
         }
       })
       .catch((e) => setError(String(e?.message ?? e)));
+    getBillingAccount()
+      .then((a) => setTestPlan(a.test_plan ?? null))
+      .catch(() => undefined);
     const existing = params.get("invoice");
     if (existing) getInvoice(existing).then((r) => setInv(r.invoice)).catch(() => undefined);
   }, [params]);
@@ -87,7 +93,7 @@ function PayInner() {
     return () => clearInterval(t);
   }, [invId, invPending, merge]);
 
-  const plan = catalog?.plans.find((p) => p.id === planId);
+  const plan = catalog?.plans.find((p) => p.id === planId) ?? (testPlan?.id === planId ? testPlan : undefined);
   const q = plan?.quotes?.[durationId];
   const assets = useMemo(() => selectableAssets(catalog?.assets ?? []), [catalog]);
   const coins = useMemo(() => Array.from(new Set(assets.map((a) => a.coin))), [assets]);
