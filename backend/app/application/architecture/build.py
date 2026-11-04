@@ -73,6 +73,8 @@ def _replay(doc):
     from ezdxf.addons.drawing.pymupdf import PyMuPdfBackend
     be = PyMuPdfBackend()
     cfg = Configuration(background_policy=BackgroundPolicy.WHITE, color_policy=ColorPolicy.BLACK, lineweight_scaling=1.0)
+    from app.application.autocad.pdf_fonts import require_fonts
+    require_fonts()
     Frontend(RenderContext(doc), be, config=cfg).draw_layout(doc.modelspace(), finalize=True, filter_func=lambda e: e.dxf.layer != "S-SHEET")
     return be
 
