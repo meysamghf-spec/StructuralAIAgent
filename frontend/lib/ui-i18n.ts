@@ -43,7 +43,7 @@ export const UI_FA: Record<string, string> = {
   Results: "نتایج", Design: "طراحی", Optimization: "بهینه‌سازی", Integrations: "اتصال نرم‌افزارها", CAD: "نقشه (CAD)",
   Validation: "اعتبارسنجی", Reports: "گزارش‌ها", Traceability: "ردیابی", Upgrades: "ارتقا", "AI Assistant": "دستیار هوشمند", "Platform Issues": "مشکلات پلتفرم", Foundation: "فونداسیون", Detailing: "دیتیلینگ",
   "Signed in": "وارد شده", "Sign out": "خروج", "Sign in": "ورود", "Project chat": "گفتگوی پروژه", "Open chat": "باز کردن گفتگو",
-  "Close chat": "بستن گفتگو", "No project selected": "پروژه‌ای انتخاب نشده", Project: "پروژه",
+  "Close chat": "بستن گفتگو", "No project selected": "پروژه‌ای انتخاب نشده", Project: "پروژه", "Inputs and results on this page are for project": "ورودی‌ها و نتایج این صفحه مربوط به پروژه",
   "Quick 3D frame model": "مدل سریع قاب سه‌بعدی", Geometry: "هندسه", Sections: "مقاطع", Materials: "مصالح", Loads: "بارها",
   "Seismic (2800)": "زلزله (۲۸۰۰)", "Design & foundation": "طراحی و فونداسیون", Stories: "تعداد طبقات", "Bays in X": "تعداد دهانه X",
   "Bays in Y": "تعداد دهانه Y", "Span X": "طول دهانه X", "Span Y": "طول دهانه Y", "Story height": "ارتفاع طبقه",

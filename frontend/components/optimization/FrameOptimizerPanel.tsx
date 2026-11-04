@@ -1,7 +1,6 @@
 "use client";
 
 import { DownloadsPanel } from "@/components/frame3d/DownloadsPanel";
-import { getCurrentProjectId } from "@/lib/current-project";
 
 import {
   convergenceSeries,
@@ -9,7 +8,10 @@ import {
   runFrameOptimization,
   type FrameOptimizationResult,
 } from "@/lib/frame-optimizer";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useActiveProjectId } from "@/hooks/useActiveProjectId";
+import { loadFrame3dInputs } from "@/lib/frame3d-store";
+import { getProjectFrame } from "@/lib/optimization-full";
 
 const num = (v: string, d: number) => (Number.isFinite(Number(v)) && v.trim() !== "" ? Number(v) : d);
 
@@ -42,15 +44,59 @@ function ConvergenceChart({ res }: { res: FrameOptimizationResult }) {
   );
 }
 
-export function FrameOptimizerPanel() {
-  const [f, setF] = useState({
-    storeys: "3", bays_x: "2", bays_y: "2", bay_x_m: "5", bay_y_m: "5", storey_height_m: "3.2",
-    zone: "HIGH", soil: "II", objective: "cost", concrete: "4500000", rebar: "45000", formwork: "900000",
-    budget: "40", seed: "2026",
-  });
+const FRAME_DEFAULTS = {
+  storeys: "3", bays_x: "2", bays_y: "2", bay_x_m: "5", bay_y_m: "5", storey_height_m: "3.2",
+  zone: "HIGH", soil: "II", objective: "cost", concrete: "4500000", rebar: "45000", formwork: "900000",
+  budget: "40", seed: "2026",
+};
+const PROJECT_KEYS = ["storeys", "bays_x", "bays_y", "bay_x_m", "bay_y_m", "storey_height_m", "zone", "soil"] as const;
+
+/** Geometry/seismic fields of a project frame as form strings (only keys with a usable value). */
+function frameFields(inputs: Record<string, unknown> | null | undefined): Partial<typeof FRAME_DEFAULTS> {
+  const out: Partial<typeof FRAME_DEFAULTS> = {};
+  for (const k of PROJECT_KEYS) {
+    const v = inputs?.[k];
+    if (v !== null && v !== undefined && String(v).trim() !== "") out[k] = String(v);
+  }
+  return out;
+}
+
+export function FrameOptimizerPanel({ projectId: projectIdProp }: { projectId?: string | null } = {}) {
+  const activeId = useActiveProjectId();
+  const projectId = projectIdProp !== undefined ? projectIdProp : activeId;
+  const [f, setF] = useState(FRAME_DEFAULTS);
+  const [source, setSource] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [res, setRes] = useState<FrameOptimizationResult | null>(null);
+
+  // Project switched: drop the previous project's result and load this project's frame
+  // (saved Model-page inputs first, otherwise the frame resolved from the project's chats).
+  useEffect(() => {
+    let live = true;
+    setRes(null);
+    setError("");
+    if (!projectId) {
+      setF(FRAME_DEFAULTS);
+      setSource("");
+      return;
+    }
+    const saved = frameFields(loadFrame3dInputs(projectId));
+    setF({ ...FRAME_DEFAULTS, ...saved });
+    setSource(Object.keys(saved).length ? "Model page (saved frame)" : "");
+    getProjectFrame(projectId)
+      .then((pf) => {
+        if (!live) return;
+        if (Object.keys(saved).length >= 5) return; // saved Model-page frame wins
+        // Same frame the full optimizer will use (backend defaults when the project has no frame yet).
+        setF({ ...FRAME_DEFAULTS, ...frameFields(pf.inputs), ...saved });
+        if (Object.keys(saved).length) return;
+        setSource(pf.source === "default" ? "defaults (no frame found in this project's chats)"
+          : pf.chat_title ? `project chat «${pf.chat_title}»` : pf.label?.en || "project chats");
+      })
+      .catch(() => undefined);
+    return () => { live = false; };
+  }, [projectId]);
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
 
   async function run() {
@@ -99,6 +145,9 @@ export function FrameOptimizerPanel() {
         Fully-stressed design loop (resize → full 3D re-analysis → Mabhas 9 design) followed by a discrete
         genetic algorithm. Constraints: Mabhas 9 strength, Standard 2800 drift, deflection, column above ≤ below,
         beam width ≤ column width.
+      </p>
+      <p className="muted" data-testid="frame-optimizer-source" role="status">
+        {projectId ? (source ? `Inputs for the active project from ${source}.` : "Loading the active project's frame…") : "No active project: default inputs."}
       </p>
       <div style={grid}>
         {field("Storeys", "storeys", "numeric")}
@@ -176,7 +225,7 @@ export function FrameOptimizerPanel() {
           </details>
           <DownloadsPanel
             inputs={(res as unknown as { frame?: Record<string, unknown> }).frame ?? null}
-            projectId={getCurrentProjectId()}
+            projectId={projectId}
             optimization={res}
             groups={["optimization", "analysis", "design", "figures"]}
             title="Optimization downloads"
