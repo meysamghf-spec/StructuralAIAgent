@@ -30,6 +30,8 @@ import {
 } from "@/lib/design-run";
 import { summarizeDesign } from "@/lib/frame3d-design-summary";
 import { FRAME3D_EVENT, loadFrame3dInputs, loadFrame3dPayload, saveFrame3dInputs, saveFrame3dPayload } from "@/lib/frame3d-store";
+import { dcDisplay, rebarBasisTag } from "@/lib/design-dc";
+import { DesignLegend } from "./DesignLegend";
 import s from "./DesignRunPage.module.css";
 
 type Phase = "idle" | "running" | "success" | "error";
@@ -52,7 +54,21 @@ function dc(v: unknown): string {
 function DcCell({ value }: { value: unknown }) {
   const n = typeof value === "number" ? value : typeof value === "string" ? Number.parseFloat(value) : null;
   const chip = n !== null && Number.isFinite(n) ? dcChip(n) : null;
+  const d = dcDisplay(value);
+  if (d.ng) {
+    return <td className={`${s.num} ${s.dcFail} dc-ng`} title={d.title} data-dc-ng="1">{d.text}</td>;
+  }
   return <td className={`${s.num} ${chip === "fail" ? s.dcFail : ""}`}>{dc(value)}</td>;
+}
+
+function BarsCell({ value, basis }: { value: unknown; basis: unknown }) {
+  const tag = rebarBasisTag(basis);
+  return (
+    <td dir="ltr">
+      {cell(value)}
+      {tag ? <span className="rebar-ng-tag" title={tag.title} data-rebar-basis={String(basis)}>{tag.short}</span> : null}
+    </td>
+  );
 }
 
 function cell(v: unknown): string {
@@ -136,7 +152,7 @@ function DesignResults({ results, t }: { results: Frame3dResults; t: (k: string)
           <h3>{t("Beams")}</h3>
           <Table
             testId="design-beams-table"
-            head={[t("Group"), `${t("Section b×h")} (mm)`, "Mu⁻ (kN·m)", "Mu⁺ (kN·m)", "Vu (kN)", t("Top bars"), t("Bottom bars"), t("Stirrups"), t("D/C flexure"), t("D/C shear"), t("Status")]}
+            head={[t("Group"), `${t("Section b×h")} (mm)`, "Mu⁻ (kN·m)", "Mu⁺ (kN·m)", "Vu (kN)", t("Top bars"), t("Bottom bars"), t("Stirrups"), t("D/C flexure"), t("D/C shear"), t("Status"), `${t("Suggested section")} (mm)`]}
           >
             {design.beams.map((r: Row) => (
               <tr key={String(r.group)}>
@@ -145,12 +161,13 @@ function DesignResults({ results, t }: { results: Frame3dResults; t: (k: string)
                 <td className={s.num}>{cell(r.Mu_neg_kn_m)}</td>
                 <td className={s.num}>{cell(r.Mu_pos_kn_m)}</td>
                 <td className={s.num}>{cell(r.Vu_kn)}</td>
-                <td dir="ltr">{cell(r.top_bars)}</td>
-                <td dir="ltr">{cell(r.bottom_bars)}</td>
+                <BarsCell value={r.top_bars} basis={r.rebar_basis} />
+                <BarsCell value={r.bottom_bars} basis={r.rebar_basis} />
                 <td dir="ltr">{cell(r.stirrups)}</td>
                 <DcCell value={r.DC_flexure} />
                 <DcCell value={r.DC_shear} />
                 <td><Chip chip={chipOf(String(r.status ?? ""))} t={t} /></td>
+                <td dir="ltr" data-testid="suggested-section">{cell(r.suggested_section)}</td>
               </tr>
             ))}
           </Table>
@@ -162,7 +179,7 @@ function DesignResults({ results, t }: { results: Frame3dResults; t: (k: string)
           <h3>{t("Columns")}</h3>
           <Table
             testId="design-columns-table"
-            head={[t("Group"), `${t("Section b×h")} (mm)`, "Pu (kN)", "Mu,y (kN·m)", "Mu,z (kN·m)", t("Bars"), "ρ (%)", t("Ties"), t("D/C"), t("Status")]}
+            head={[t("Group"), `${t("Section b×h")} (mm)`, "Pu (kN)", "Mu,y (kN·m)", "Mu,z (kN·m)", t("Bars"), "ρ (%)", t("Ties"), t("D/C"), t("Status"), `${t("Suggested section")} (mm)`]}
           >
             {design.columns.map((r: Row) => (
               <tr key={String(r.group)}>
@@ -171,16 +188,19 @@ function DesignResults({ results, t }: { results: Frame3dResults; t: (k: string)
                 <td className={s.num}>{cell(r.Pu_kn)}</td>
                 <td className={s.num}>{cell(r.Mu_y_kn_m)}</td>
                 <td className={s.num}>{cell(r.Mu_z_kn_m)}</td>
-                <td dir="ltr">{cell(r.bars)}</td>
+                <BarsCell value={r.bars} basis={r.rebar_basis} />
                 <td className={s.num}>{cell(r.rho_pct)}</td>
                 <td dir="ltr">{cell(r.ties)}</td>
                 <DcCell value={r.DC} />
                 <td><Chip chip={chipOf(String(r.status ?? ""))} t={t} /></td>
+                <td dir="ltr" data-testid="suggested-section">{cell(r.suggested_section)}</td>
               </tr>
             ))}
           </Table>
         </section>
       ) : null}
+
+      {design.beams.length > 0 || design.columns.length > 0 ? <DesignLegend /> : null}
 
       {design.scwb.length > 0 ? (
         <section className={s.section} data-testid="design-scwb">

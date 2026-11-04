@@ -823,10 +823,11 @@ def _design_mabhas9(inp: "Frame3dInputs", raw: dict[str, Any], ductility: str) -
                            vu=env["V_kn"], b=bb, h=bh, fc=fc, fy=fy, ductility=ductility)
         row = {"group": f"B-{dirn}-S{k}-{pos}", "storey": k, "direction": dirn, "position": pos, "members": len(members),
                "Mu_neg_kn_m": round(env["M_neg_end_kn_m"], 1), "Mu_pos_kn_m": round(max(env["M_pos_end_kn_m"], env["M_pos_mid_kn_m"]), 1),
-               "Vu_kn": round(env["V_kn"], 1), "As_top_req_mm2": round(d.get("As_top_req_mm2", 0)), "As_bot_req_mm2": round(d.get("As_bot_req_mm2", 0)),
+               "Vu_kn": round(env["V_kn"], 1), "As_top_req_mm2": round(d.get("As_top_req_mm2") or 0), "As_bot_req_mm2": round(d.get("As_bot_req_mm2") or 0),
                "top_bars": d.get("top_bars"), "bottom_bars": d.get("bottom_bars"),
                "stirrups": (d.get("shear") or {}).get("stirrups"), "DC_flexure": round(d["DC_flexure"], 3) if d.get("DC_flexure") is not None else None,
-               "DC_shear": round(d["DC_shear"], 3) if d.get("DC_shear") is not None else None, "status": d["status"], "notes": d.get("notes", [])}
+               "DC_shear": round(d["DC_shear"], 3) if d.get("DC_shear") is not None else None, "status": d["status"], "notes": d.get("notes", []),
+               "rebar_basis": d.get("rebar_basis", "DESIGN"), "suggested_section": (d.get("suggested_section") or {}).get("text")}
         beam_rows.append(row)
         for m in members:
             beam_by_id[m["id"]] = d
@@ -843,7 +844,8 @@ def _design_mabhas9(inp: "Frame3dInputs", raw: dict[str, Any], ductility: str) -
                          "Pu_kn": round(gov.get("Pu_kn", 0), 1), "Mu_y_kn_m": round(gov.get("Mu_y_kn_m", 0), 1),
                          "Mu_z_kn_m": round(gov.get("Mu_z_kn_m", 0), 1), "governing_combo": gov.get("combo"),
                          "bars": d.get("bars"), "rho_pct": round(d.get("rho", 0) * 100, 2), "ties": (d.get("ties") or {}).get("text"),
-                         "DC": round(d["DC"], 3), "status": d["status"], "notes": d.get("notes", [])})
+                         "DC": round(d["DC"], 3), "status": d["status"], "notes": d.get("notes", []),
+                         "rebar_basis": d.get("rebar_basis", "DESIGN"), "suggested_section": (d.get("suggested_section") or {}).get("text")})
         for m in members:
             col_by_id[m["id"]] = (d, m)
     # strong column / weak beam at every joint below the roof

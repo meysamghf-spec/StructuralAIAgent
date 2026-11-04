@@ -9,7 +9,9 @@ FRAME = {"soil": "II", "zone": "HIGH", "bays_x": 3, "bays_y": 3, "fc_mpa": 30.0,
 
 def test_project_frame_has_groups_without_bars_and_rebar_dxf_builds():
     inp, raw, design = rp.run({**FRAME, "design_code": "MABHAS9"})
-    assert any(g.get("top_bars") is None for g in design["beams"])  # the condition that crashed
+    # pt616u: NG groups (formerly top_bars None, the condition that crashed) now carry the max one-layer fill from design
+    ng = [g for g in design["beams"] if g.get("rebar_basis") == "MAX_FEASIBLE"]
+    assert ng and all(g.get("top_bars") and g.get("stirrups") for g in ng)
     name, data, _ = rp.item("drawing", "dxf_rebar", "dxf", FRAME)
     assert data and name.endswith(".dxf")
     assert b"NG" in data

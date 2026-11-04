@@ -105,6 +105,34 @@ def choose_beam_bars(As_req: float, b: float) -> tuple[int, int, float] | None:
     return best
 
 
+def beam_max_one_layer(b: float) -> tuple[int, int, float]:
+    """Largest one-layer arrangement that fits the web (the most the section can hold); ≥ 2 bars."""
+    best = None
+    for db in BEAM_BARS:
+        for n in range(2, 9):
+            if (b - 2 * (COVER + STIRRUP_DB) - n * db) / max(n - 1, 1) < max(db, 25.0):
+                break
+            if best is None or n * bar_area(db) > best[2]:
+                best = (n, int(db), n * bar_area(db))
+    return best or (2, int(BEAM_BARS[0]), 2 * bar_area(BEAM_BARS[0]))
+
+
+def suggest_beam_section(*, m_neg_end: float, m_pos_end: float, m_pos_mid: float, vu: float, b: float, h: float,
+                         fc: float, fy: float, ductility: str = "intermediate", h_max: float = 1200.0) -> dict[str, Any] | None:
+    """Smallest deeper/wider beam (50 mm steps) that passes this member's design forces (member level;
+    the self-weight/stiffness change is not re-analysed: re-run the analysis to confirm)."""
+    hh = h
+    while hh < h_max - 1e-9:
+        hh += 50.0
+        for bw in sorted({b, max(b, math.ceil(hh / 2 / 50) * 50)}):
+            d = design_beam(m_neg_end=m_neg_end, m_pos_end=m_pos_end, m_pos_mid=m_pos_mid, vu=vu, b=bw, h=hh,
+                            fc=fc, fy=fy, ductility=ductility, _suggest=False)
+            if d["status"] == "PASS":
+                return {"b_mm": int(bw), "h_mm": int(hh), "text": f"{int(bw)}×{int(hh)}",
+                        "top_bars": d["top_bars"], "bottom_bars": d["bottom_bars"]}
+    return None
+
+
 def beam_shear_design(vu_kn: float, b: float, d: float, h: float, fc: float, fy: float, db_long: float, ductility: str) -> dict[str, Any]:
     vc = 0.2 * PHI_C * math.sqrt(fc) * b * d / 1000.0
     av = 2 * bar_area(STIRRUP_DB)
@@ -125,7 +153,7 @@ def beam_shear_design(vu_kn: float, b: float, d: float, h: float, fc: float, fy:
 
 
 def design_beam(*, m_neg_end: float, m_pos_end: float, m_pos_mid: float, vu: float, b: float, h: float, fc: float, fy: float,
-                ductility: str = "intermediate") -> dict[str, Any]:
+                ductility: str = "intermediate", _suggest: bool = True) -> dict[str, Any]:
     d = h - (COVER + STIRRUP_DB + 10.0)  # ≈ h − 60 for Φ20
     as_min = beam_min_steel(b, d, fc, fy)
     rho_max = 0.025
@@ -133,16 +161,27 @@ def design_beam(*, m_neg_end: float, m_pos_end: float, m_pos_mid: float, vu: flo
     req_top = beam_required_as(m_neg_end, b, d, fc, fy)
     req_bot_end = beam_required_as(m_pos_end, b, d, fc, fy)
     req_bot_mid = beam_required_as(m_pos_mid, b, d, fc, fy)
-    if None in (req_top, req_bot_end, req_bot_mid):
-        return {"status": "FAIL", "notes": ["Section too small: compression block cannot develop Mu"], "d_mm": d,
-                "DC_flexure": float("inf"), "DC_shear": None}
-    as_top = max(req_top, as_min)
     ratio = 0.5 if ductility == "special" else 1.0 / 3.0 if ductility == "intermediate" else 0.0
-    as_bot = max(req_bot_end, req_bot_mid, as_min, ratio * as_top)
+    basis = "DESIGN"
+    if None in (req_top, req_bot_end, req_bot_mid):
+        # NG: the section cannot develop Mu at all -> still provide reinforcement (never leave a member bare):
+        # the largest one-layer arrangement that fits (same rule as the detailing fill, #79) + Mabhas 9 stirrups.
+        notes.append("Section too small: compression block cannot develop Mu")
+        as_top = req_top if req_top is not None else float("inf")
+        as_bot = max(x for x in (req_bot_end, req_bot_mid, 0.0) if x is not None) if None not in (req_bot_end, req_bot_mid) else float("inf")
+        as_top = max(as_top, as_min)
+        as_bot = max(as_bot, as_min, ratio * (as_top if math.isfinite(as_top) else beam_max_one_layer(b)[2]))
+        basis = "MAX_FEASIBLE"
+    else:
+        as_top = max(req_top, as_min)
+        as_bot = max(req_bot_end, req_bot_mid, as_min, ratio * as_top)
     top = choose_beam_bars(as_top, b); bot = choose_beam_bars(as_bot, b)
     if top is None or bot is None:
-        return {"status": "FAIL", "notes": ["Required bars do not fit in one layer"], "d_mm": d,
-                "As_top_req_mm2": as_top, "As_bot_req_mm2": as_bot, "DC_flexure": float("inf"), "DC_shear": None}
+        if basis == "DESIGN":
+            notes.append("Required bars do not fit in one layer")
+        basis = "MAX_FEASIBLE"
+        mx = beam_max_one_layer(b)
+        top = top or mx; bot = bot or mx
     mr_top = beam_moment_resistance(top[2], b, d, fc, fy)
     mr_bot = beam_moment_resistance(bot[2], b, d, fc, fy)
     dc = max(m_neg_end / mr_top, max(m_pos_end, m_pos_mid) / mr_bot)
@@ -156,13 +195,17 @@ def design_beam(*, m_neg_end: float, m_pos_end: float, m_pos_mid: float, vu: flo
     if not shear["section_ok"]:
         notes.append("Shear exceeds the section limit Vs ≤ 4Vc: enlarge the section")
     status = "PASS" if dc <= 1.0 + 1e-9 and shear["DC"] <= 1.0 + 1e-9 and not notes else "FAIL"
-    return {"status": status, "d_mm": d, "As_min_mm2": as_min,
-            "As_top_req_mm2": as_top, "As_bot_req_mm2": as_bot,
+    if basis != "DESIGN":
+        notes.append("NG: provided = the most one layer can hold (" + f"{top[0]}Φ{top[1]} / {bot[0]}Φ{bot[1]}" + "); enlarge the section")
+    return {"status": status, "d_mm": d, "As_min_mm2": as_min, "rebar_basis": basis,
+            "As_top_req_mm2": as_top if math.isfinite(as_top) else None, "As_bot_req_mm2": as_bot if math.isfinite(as_bot) else None,
             "top_bars": f"{top[0]}Φ{top[1]}", "bottom_bars": f"{bot[0]}Φ{bot[1]}",
             "As_top_mm2": top[2], "As_bot_mm2": bot[2], "Mr_top_kn_m": mr_top, "Mr_bot_kn_m": mr_bot,
             "Mn_top_kn_m": beam_moment_resistance(top[2], b, d, fc, fy, nominal=True),
             "Mn_bot_kn_m": beam_moment_resistance(bot[2], b, d, fc, fy, nominal=True),
-            "rho_top": rho, "DC_flexure": dc, "shear": shear, "DC_shear": shear["DC"], "notes": notes}
+            "rho_top": rho, "DC_flexure": dc, "shear": shear, "DC_shear": shear["DC"], "notes": notes,
+            "suggested_section": (suggest_beam_section(m_neg_end=m_neg_end, m_pos_end=m_pos_end, m_pos_mid=m_pos_mid, vu=vu, b=b, h=h,
+                                                       fc=fc, fy=fy, ductility=ductility) if status != "PASS" and _suggest else None)}
 
 
 # ------------------------------------------------------------------ columns
@@ -252,7 +295,8 @@ def ties(b: float, h: float, db: float, clear_height: float) -> dict[str, Any]:
     return {"s0_mm": s0p, "l0_mm": l0, "s_mm": sp, "text": f"Φ{STIRRUP_DB:g}@{s0p} over l0 = {l0:.0f} mm at both ends, Φ{STIRRUP_DB:g}@{sp} elsewhere"}
 
 
-def design_column_group(records_by_member: dict[str, list[dict]], b: float, h: float, fc: float, fy: float, clear_height: float) -> dict[str, Any]:
+def design_column_group(records_by_member: dict[str, list[dict]], b: float, h: float, fc: float, fy: float, clear_height: float,
+                        _suggest: bool = True) -> dict[str, Any]:
     ag = b * h
     chosen = None
     last = None
@@ -271,12 +315,33 @@ def design_column_group(records_by_member: dict[str, list[dict]], b: float, h: f
         if worst[0] <= 1.0:
             chosen = last
             break
-    status = "PASS"
+    status = "PASS"; basis = "DESIGN"
+    notes: list[str] = []
+    if chosen is None and last is not None:
+        chosen = last; status = "FAIL"; basis = "MAX_FEASIBLE"
+        notes.append(f"D/C > 1 even at the most reinforcement that fits (ρ = {last[3] * 100:.2f} %): enlarge the column")
     if chosen is None:
-        chosen = last; status = "FAIL"
-    if chosen is None:
-        return {"status": "FAIL", "notes": ["No bar arrangement fits"], "DC": float("inf")}
+        # no arrangement within 1 %–6 % fits: still provide the Mabhas 9 minimum (lightest with ρ ≥ 1 %, else lightest)
+        opts = column_options(b, h)
+        o = next((x for x in opts if x[2] / ag >= 0.01), None) or (opts[0] if opts else (2, int(COLUMN_BARS[0]), 4 * bar_area(COLUMN_BARS[0])))
+        nface, db, ast = o
+        worst = (0.0, {}, None)
+        for mid, recs in records_by_member.items():
+            dc, gov = column_dc(recs, b, h, nface, db, fc, fy)
+            if dc > worst[0]:
+                worst = (dc, gov, mid)
+        chosen = (nface, db, ast, ast / ag, worst); status = "FAIL"; basis = "MINIMUM"
+        notes.append(f"No bar arrangement with 1 % ≤ ρ ≤ 6 % fits: NG, Mabhas 9 minimum {4*nface-4}Φ{db} shown; enlarge the column")
     nface, db, ast, rho, (dc, gov, mid) = chosen
+    sug = None
+    if status != "PASS" and _suggest:
+        recs = records_by_member.get(mid) or next(iter(records_by_member.values()), [])
+        s0 = max(b, h)
+        while s0 < 1200.0 - 1e-9 and sug is None:
+            s0 += 50.0
+            t = design_column_group({"g": recs}, s0, s0, fc, fy, clear_height, _suggest=False)
+            if t["status"] == "PASS":
+                sug = {"b_mm": int(s0), "h_mm": int(s0), "text": f"{int(s0)}×{int(s0)}", "bars": t["bars"]}
     return {"status": status, "bars": f"{4*nface-4}Φ{db}", "nface": nface, "db": db, "As_mm2": ast, "rho": rho,
             "DC": dc, "governing_member": mid, "governing": gov, "ties": ties(b, h, db, clear_height),
-            "notes": [] if status == "PASS" else ["D/C > 1 even at ρ = 6 %: enlarge the column"]}
+            "rebar_basis": basis, "suggested_section": sug, "notes": notes}

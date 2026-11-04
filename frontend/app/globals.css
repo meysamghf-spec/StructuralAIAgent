@@ -3340,3 +3340,17 @@ a.agent-card-link:focus-visible { outline: 2px solid #38bdf8; outline-offset: 2p
 }
 .workspace-project-bar-label { font-size: 0.85rem; }
 .workspace-project-bar .project-switcher { min-width: 0; max-width: 100%; }
+
+/* Mabhas 9 design tables: horizontal scroll on mobile, no digit breaking, sticky first column (#pt616u) */
+.design-table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+.design-table-scroll .engineering-result-table th,
+.design-table-scroll .engineering-result-table td { white-space: nowrap; }
+.design-table-scroll .engineering-result-table th:first-child,
+.design-table-scroll .engineering-result-table td:first-child { position: sticky; inset-inline-start: 0; z-index: 1; background: var(--card-bg, #0f172a); }
+.dc-ng { color: #f87171; font-weight: 600; cursor: help; }
+.dc-over { color: #f87171; }
+.rebar-ng-tag { margin-inline-start: 0.35rem; padding: 0 0.3rem; border-radius: 4px; font-size: 0.72rem; background: rgba(248, 113, 113, 0.18); color: #fca5a5; cursor: help; }
+.design-legend { margin: 0.5rem 0; font-size: 0.78rem; opacity: 0.9; }
+.design-legend summary { cursor: pointer; font-weight: 600; }
+.design-legend ul { margin: 0.25rem 0 0; padding-inline-start: 1rem; }
+.design-legend li { display: flex; flex-wrap: wrap; gap: 0.15rem 1rem; justify-content: space-between; }
