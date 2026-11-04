@@ -179,16 +179,60 @@ def zone_positions(f0: float, f1: float, zone: float, s_end: float, s_mid: float
     return head + mid + tail
 
 
-def split_bar(total: float, lap: float, centers: list[float], limit: float = STOCK_LENGTH_MM) -> list[tuple[float, float]]:
-    """Split a continuous bar [0,total] into stock lengths with laps centred on allowed points."""
-    pieces, start = [], 0.0
+def split_bar(total: float, lap: float, centers: list[float], limit: float = STOCK_LENGTH_MM,
+              zones: list[tuple[float, float]] | None = None, warnings: list[str] | None = None,
+              label: str = "bar", avoid: list[tuple[float, float]] | None = None,
+              joints: list[tuple[float, float]] | None = None) -> list[tuple[float, float]]:
+    """Split a continuous bar [0,total] into stock lengths with laps centred on allowed points.
+
+    Never raises for long bars. Order of preference for each splice:
+      1. a preferred point in `centers` or anywhere inside a permitted `zones` interval (lap fully inside it);
+      2. least-bad lap: the furthest reachable position whose lap avoids the hinge/max-moment `avoid` zones
+         and the `joints`, else the one with the least overlap with them -> warning;
+      3. if the stock length cannot even hold one lap (limit <= 2*lap), a mechanical coupler (no lap) -> warning.
+    Pieces are (start, end); for a coupler the next piece starts where the previous one ends."""
+    avoid = avoid or []
+    joints = joints or []
+    pieces: list[tuple[float, float]] = []
+    start = 0.0
+
+    def _ok(c: float) -> bool:
+        return c - lap / 2 > start + lap and c + lap / 2 - start <= limit + 1e-6
+
+    def _bad(c: float) -> float:
+        a, e = c - lap / 2, c + lap / 2
+        ov = sum(max(0.0, min(e, z1) - max(a, z0)) for z0, z1 in avoid)
+        return ov + 10 * sum(max(0.0, min(e, z1) - max(a, z0)) for z0, z1 in joints)
+
     while total - start > limit:
-        ok = [c for c in centers if c - lap / 2 > start + lap and c + lap / 2 - start <= limit]
-        if not ok:
-            raise ValueError("no permitted lap-splice location within one stock length")
-        c = max(ok)
-        pieces.append((start, c + lap / 2))
-        start = c - lap / 2
+        cand = [c for c in centers if _ok(c)]
+        for z0, z1 in zones or []:
+            lo, hi = max(z0 + lap / 2, start + 1.5 * lap + 1), min(z1 - lap / 2, start + limit - lap / 2)
+            if hi >= lo:
+                cand.append(hi)
+        if cand:
+            c = max(cand)
+            pieces.append((start, c + lap / 2))
+            start = c - lap / 2
+            continue
+        if limit > 2 * lap + 1:
+            lo, hi = start + 1.5 * lap + 1, start + limit - lap / 2
+            n = max(1, int((hi - lo) // 50))
+            pts = [lo + (hi - lo) * i / n for i in range(n + 1)]
+            c = min(pts, key=lambda x: (round(_bad(x), 0), -x))
+            if warnings is not None:
+                where = "inside a hinge / max-moment zone" if _bad(c) > 0 else "outside the preferred zone"
+                warnings.append(f"{label}: no permitted lap zone within one {limit / 1000:.1f} m stock length -> "
+                                f"lap at x={c:.0f} mm {where} (least-bad); use a mechanical coupler (Type 2) here or confirm")
+            pieces.append((start, c + lap / 2))
+            start = c - lap / 2
+            continue
+        cut = start + limit
+        if warnings is not None:
+            warnings.append(f"{label}: stock length {limit / 1000:.1f} m too short for a lap of {lap:.0f} mm -> "
+                            f"mechanical coupler (Type 2, Mabhas 9) at x={cut:.0f} mm")
+        pieces.append((start, cut))
+        start = cut
     pieces.append((start, total))
     return pieces
 
@@ -212,6 +256,7 @@ class _Sheet:
         self.msp, self.x0, self.y0 = msp, x0, 0.0
         self.title = title
         self.secs: list[dict] = []  # RC sections collected for the 1:20 section sheet
+        self.warnings: list[str] = []  # splice / detailing warnings, listed on R-03 instead of aborting
 
     def line(self, layer, a, b):
         self.msp.add_line((self.x0 + a[0], self.y0 + a[1]), (self.x0 + b[0], self.y0 + b[1]), dxfattribs={"layer": layer})
@@ -374,7 +419,18 @@ def _draw_beam(sh: _Sheet, y0: float, g: dict[str, Any], inp, rows: list[BarRow]
     lb = lap_length(dbb, fy, fc, False, A["splice_class"], A["psi_t"], A["ld_factor"])
     run = x_end1 - x_end0
     # top continuous (2 bars) with laps at midspans
-    top_pieces = split_bar(run, lt, [(k + 0.5) * L - x_end0 for k in range(nsp)], STOCK - hk_t)
+    warn = sh.warnings
+    q = max(zone, ln / 4)  # hinge (2h) and max negative-moment regions near the supports
+    joints = [(k * L - col / 2 - x_end0, k * L + col / 2 - x_end0) for k in range(nsp + 1)]
+    hinge = [(k * L + col / 2 - x_end0, k * L + col / 2 + zone - x_end0) for k in range(nsp)] + \
+            [((k + 1) * L - col / 2 - zone - x_end0, (k + 1) * L - col / 2 - x_end0) for k in range(nsp)]
+    # top bars: lap in the middle of the span (away from the supports' negative moment and the 2h zones)
+    top_z = [(k * L + col / 2 + q - x_end0, (k + 1) * L - col / 2 - q - x_end0) for k in range(nsp)]
+    nw = len(warn)
+    top_pieces = split_bar(run, lt, [(k + 0.5) * L - x_end0 for k in range(nsp)], STOCK - hk_t, zones=top_z,
+                           warnings=warn, label=f"{tag} top T1 2Φ{dt}", avoid=hinge + [(a - q + zone, a) for a, _ in joints[1:]] + [(e, e + q - zone) for _, e in joints[:-1]], joints=joints)
+    if len(warn) > nw:
+        sh.text("REBAR_TEXT", (-col / 2, y0 + h + 2050), 100, f"! {tag}: top-bar splice outside preferred zone / coupler - see R-03 SPLICE WARNINGS")
     for i, (a, e) in enumerate(top_pieces):
         xa, xe = x_end0 + a, x_end0 + e
         pts = ([(xa, yt - hk_t)] if i == 0 else []) + [(xa, yt), (xe, yt)] + ([(xe, yt - hk_t)] if i == len(top_pieces) - 1 else [])
@@ -405,7 +461,15 @@ def _draw_beam(sh: _Sheet, y0: float, g: dict[str, Any], inp, rows: list[BarRow]
             rows.append(BarRow(f"{tag}-T2i", tag, dt, "straight", L_int, n_extra * (nsp - 1) * lines))
     # bottom continuous with laps just outside the 2h zone
     bot_c = [k * L + col / 2 + zone + lb / 2 - x_end0 for k in range(nsp)]
-    bot_pieces = split_bar(run, lb, bot_c, STOCK - hk_b)
+    # bottom bars: lap near the supports, just outside the 2h hinge zone (low positive moment)
+    bot_z = [(k * L + col / 2 + zone - x_end0, k * L + col / 2 + q + lb - x_end0) for k in range(nsp)] + \
+            [((k + 1) * L - col / 2 - q - lb - x_end0, (k + 1) * L - col / 2 - zone - x_end0) for k in range(nsp)]
+    mid = [(k * L + L / 2 - ln / 4 - x_end0, k * L + L / 2 + ln / 4 - x_end0) for k in range(nsp)]
+    nw = len(warn)
+    bot_pieces = split_bar(run, lb, bot_c, STOCK - hk_b, zones=bot_z, warnings=warn, label=f"{tag} bottom B1 {nb}Φ{dbb}",
+                           avoid=hinge + mid, joints=joints)
+    if len(warn) > nw:
+        sh.text("REBAR_TEXT", (-col / 2, y0 - 1350), 100, f"! {tag}: bottom-bar splice outside preferred zone / coupler - see R-03 SPLICE WARNINGS")
     for i, (a, e) in enumerate(bot_pieces):
         xa, xe = x_end0 + a, x_end0 + e
         pts = ([(xa, yb + hk_b)] if i == 0 else []) + [(xa, yb), (xe, yb)] + ([(xe, yb + hk_b)] if i == len(bot_pieces) - 1 else [])
@@ -651,6 +715,7 @@ def build_rebar_doc(inp, design: dict[str, Any], project: str = "3D frame") -> t
             y += beam_row_h
         beam_sheets.append(sh)
         pages.append((sh, bw, y + 1200, "R-01" if j == 0 else f"R-01.{j + 1}", "نقشه آرماتوربندی تیرها", "BEAM REINFORCEMENT DETAILS"))
+    splice_warn = [w for sh_ in beam_sheets for w in sh_.warnings]
     # R-02 columns: details wrapped into balanced rows
     s2 = _Sheet(msp, pitch, "R-02")
     cw = inp.column_b_m * 1000 + COL_PITCH
@@ -671,6 +736,9 @@ def build_rebar_doc(inp, design: dict[str, Any], project: str = "3D frame") -> t
     s3 = _Sheet(msp, 2 * pitch, "R-03")
     notes = (["[code] " + s for s in DETAILING_BASIS] + ["[assumed] " + s for s in DETAILING_ASSUMPTIONS]
              + (["NOT DESIGNED / NG (drawn with Mabhas 9 defaults - enlarge the section and redesign):"] + ["  " + w for w in _warn] + [detailing_warning_fa(_warn)] if _warn else [])
+             + ((["SPLICE WARNINGS (no permitted lap zone within one stock length):"] + ["  " + w for w in splice_warn[:60]]
+                 + ([f"  ... and {len(splice_warn) - 60} more"] if len(splice_warn) > 60 else [])
+                 + ["هشدار وصله: در این اعضا محل مجاز وصله پوششی در یک شاخه میلگرد نبود؛ از وصله مکانیکی (کوپلر) استفاده شود یا محل وصله توسط مهندس تأیید شود."]) if splice_warn else [])
              + ["PROJECT ASSUMPTIONS (change from chat):"] + ["  " + r for r in da.describe(A, inp, "en")])
     import textwrap
     notes = [w for n_ in notes for w in (textwrap.wrap(n_, 105, subsequent_indent="    ") or [""])]
@@ -733,6 +801,7 @@ def build_rebar_doc(inp, design: dict[str, Any], project: str = "3D frame") -> t
             pen.text("S-TITLE", (X0, Y1 + 8 * 20), f"{name} REINFORCED CONCRETE SECTIONS 1:20", h=5.0)
             dstd.add_sheet_tiles(doc, name, (pen.ox + X0 - 400, pen.oy + Y0 - 400, pen.ox + X1 + 400, pen.oy + Y1 + 16 * 20 + 400), info,
                                  "برش‌های تیر و ستون", "BEAM & COLUMN SECTIONS", scale=20)
+    doc.splice_warnings = splice_warn  # type: ignore[attr-defined]
     return doc, rows, total
 
 
