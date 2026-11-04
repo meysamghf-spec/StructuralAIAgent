@@ -218,6 +218,8 @@ export type Frame3dDriftRow = {
   driftElasticMm: number | null;
   ratioElasticPct: number | null;
   ratioAmplifiedPct: number | null;
+  /** Elastic total lateral displacement of the storey (max over joints), mm. */
+  uMaxMm?: number | null;
 };
 
 export type Frame3dStoreyForces = {

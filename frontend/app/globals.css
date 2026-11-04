@@ -3322,3 +3322,6 @@ a.agent-card-link:focus-visible { outline: 2px solid #38bdf8; outline-offset: 2p
     overflow: hidden;
   }
 }
+.v3d-drift-wrap { display: flex; flex-direction: column; gap: 4px; }
+.v3d-drift-wrap .v3d-drift { max-width: 520px; }
+.v3d-drift-wrap circle:focus { outline: none; }
