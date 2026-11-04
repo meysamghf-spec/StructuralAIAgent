@@ -150,6 +150,14 @@ const FA: Record<string, string> = {
   "Story forces": "نیروی طبقات",
   "Base reactions": "عکس\u200cالعمل\u200cهای پایه",
   "Joint": "گره",
+  "Drift ratio (%)": "نسبت دریفت (%)",
+  "Displacement (mm)": "تغییرمکان (mm)",
+  "Drift": "دریفت",
+  "Displacement": "تغییرمکان",
+  "Limit": "حد مجاز",
+  "X and Y are identical (symmetric model); Y is drawn dashed over X.": "X و Y یکسان‌اند (مدل متقارن)؛ Y خط‌چین روی X رسم شده است.",
+  "Inter-storey drift ratio (amplified, as checked in design); tap a point for values.": "نسبت دریفت بین طبقه‌ای (تشدیدیافته، همان کنترل طراحی)؛ برای دیدن مقدار روی نقطه بزنید.",
+  "Elastic total displacement of each storey (max at roof).": "تغییرمکان کل الاستیک هر طبقه (بیشینه در بام).",
 };
 
 export function makeT(lang: Frame3dLang): (key: string) => string {

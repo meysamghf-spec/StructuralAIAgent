@@ -328,6 +328,7 @@ export function mapFrame3dResults(raw: unknown): Frame3dResults | null {
       driftElasticMm: parseOptionalNumber(item.drift_elastic_mm),
       ratioElasticPct: parseOptionalNumber(item.ratio_elastic_pct),
       ratioAmplifiedPct: parseOptionalNumber(item.ratio_amplified_pct),
+      uMaxMm: parseOptionalNumber(item.u_max_mm),
     })),
     driftReferenceLimitPct: parseOptionalNumber(data.drift_reference_limit_pct),
     storeyForces: recordList(data.beam_forces_by_storey).map((item) => {

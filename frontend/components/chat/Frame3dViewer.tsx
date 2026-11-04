@@ -3,6 +3,7 @@
 import { OrientationBadge } from "@/components/frame3d/OrientationBadge";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LARGE_VIEW_MEMBERS } from "@/lib/frame3d-limits";
+import DriftChart from "@/components/frame3d/DriftChart";
 
 import type { Frame3dResults } from "@/lib/chat-types";
 import {
@@ -510,7 +511,6 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
   const tree = explorerTree(data);
   const reactions = baseReactions(data, load);
   const drift = results.drift;
-  const driftMax = Math.max(0.01, ...drift.map((d) => d.ratioAmplifiedPct ?? 0), results.driftReferenceLimitPct ?? 0);
 
   return (
     <div className={embedded ? "v3d-overlay v3d-embedded" : "v3d-overlay"} dir={rtl ? "rtl" : "ltr"} lang={results.lang} role="dialog" aria-label={t("3D model view")}>
@@ -690,22 +690,7 @@ export default function Frame3dViewer({ data, results, t, onClose, embedded = fa
             ))}
           </div>
           {panel === "drift" ? (
-            <svg viewBox="0 0 220 160" className="v3d-drift" role="img" aria-label={t("Story drift")}>
-              {results.driftReferenceLimitPct ? (
-                <line x1={20 + (180 * results.driftReferenceLimitPct) / driftMax} x2={20 + (180 * results.driftReferenceLimitPct) / driftMax} y1={10} y2={140} stroke="#e53935" strokeDasharray="4 3" />
-              ) : null}
-              {(["X", "Y"] as const).map((dir, di) => {
-                const rows = drift.filter((d) => d.direction === dir).sort((a, b) => a.storey - b.storey);
-                const n = Math.max(1, data.levels.length);
-                const pts = [[20, 140], ...rows.map((r) => [20 + (180 * (r.ratioAmplifiedPct ?? 0)) / driftMax, 140 - (130 * r.storey) / n])];
-                return <polyline key={dir} points={pts.map((p) => p.join(",")).join(" ")} fill="none" stroke={di ? "#ffd54f" : "#5fa8ff"} strokeWidth={2} />;
-              })}
-              <line x1={20} y1={140} x2={200} y2={140} stroke="#9aa4b1" />
-              <line x1={20} y1={10} x2={20} y2={140} stroke="#9aa4b1" />
-              <text x={200} y={155} fill="#cfd8e3" fontSize={9} textAnchor="end">{driftMax.toFixed(2)}%</text>
-              <text x={30} y={20} fill="#5fa8ff" fontSize={9}>X</text>
-              <text x={45} y={20} fill="#ffd54f" fontSize={9}>Y</text>
-            </svg>
+            <DriftChart rows={drift} limitPct={results.driftReferenceLimitPct} storeys={Math.max(0, ...data.levels)} t={t} />
           ) : null}
           {panel === "forces" ? (
             <table className="v3d-table" dir="ltr">
