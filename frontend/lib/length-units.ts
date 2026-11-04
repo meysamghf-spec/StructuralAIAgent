@@ -1,3 +1,4 @@
+import { FRAME_LIMITS } from "@/lib/frame3d-limits";
 // Any-length-unit -> metres helper for the Model form and inline missing-input forms (mirrors backend length_units.py).
 export const LENGTH_UNITS = ["m", "cm", "mm", "ft"] as const;
 export type LengthUnit = (typeof LENGTH_UNITS)[number];
@@ -5,8 +6,8 @@ export type LengthUnit = (typeof LENGTH_UNITS)[number];
 const TO_M: Record<LengthUnit, number> = { m: 1, cm: 0.01, mm: 0.001, ft: 0.3048 };
 
 /** Allowed frame span range in metres (same limits as the backend /frame3d/run validation). */
-export const SPAN_MIN_M = 1.5;
-export const SPAN_MAX_M = 15;
+export const SPAN_MIN_M = FRAME_LIMITS.minSpanM;
+export const SPAN_MAX_M = FRAME_LIMITS.maxSpanM;
 
 const FA_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
 const AR_DIGITS = "٠١٢٣٤٥٦٧٨٩";

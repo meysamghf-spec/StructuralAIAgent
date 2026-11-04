@@ -7,6 +7,7 @@ import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
 
 import { SectionErrorBoundary } from "@/components/common/SectionErrorBoundary";
+import { TablePager, usePaged } from "@/components/common/TablePager";
 import type { Frame3dResults } from "@/lib/chat-types";
 import { approvalStatus, filterRows, memberDesignRows, memberForceRows } from "@/lib/chat-full-results";
 import { download, fetchDownload } from "@/lib/frame3d-downloads";
@@ -42,6 +43,7 @@ export function MemberForcesSection({ viewer, lang }: { viewer: ViewerData; lang
   const [load, setLoad] = useState(opts[opts.length - 1] ?? "");
   const [q, setQ] = useState("");
   const rows = useMemo(() => filterRows(memberForceRows(viewer, load), q), [viewer, load, q]);
+  const pg = usePaged(rows);
   if (!viewer.members.length || !opts.length) return null;
   return (
     <details className="engineering-result-block chat-full-section" data-testid="chat-member-forces">
@@ -59,13 +61,14 @@ export function MemberForcesSection({ viewer, lang }: { viewer: ViewerData; lang
         <table className="engineering-result-table" dir="ltr">
           <thead><tr><th>{tt(lang, "member")}</th><th>{tt(lang, "type")}</th><th>{tt(lang, "storey")}</th><th>{tt(lang, "section")}</th><th>N</th><th>V</th><th>M i</th><th>M j</th></tr></thead>
           <tbody>
-            {rows.map((r) => (
+            {pg.rows.map((r) => (
               <tr key={r.id}><td>{r.id}</td><td>{r.type}</td><td>{r.storey}</td><td>{r.section}</td><td>{f1(r.N)}</td><td>{f1(r.Vi)}</td><td>{f1(r.Mi)}</td><td>{f1(r.Mj)}</td></tr>
             ))}
           </tbody>
         </table>
         {!rows.length ? <p className="muted">{tt(lang, "noRows")}</p> : null}
       </div>
+      <TablePager {...pg} lang={lang} />
       <p className="muted">{tt(lang, "units")}</p>
     </details>
   );
@@ -75,6 +78,7 @@ export function MemberDesignSection({ viewer, lang }: { viewer: ViewerData; lang
   const [q, setQ] = useState("");
   const all = useMemo(() => memberDesignRows(viewer), [viewer]);
   const rows = useMemo(() => filterRows(all, q), [all, q]);
+  const pg = usePaged(rows);
   if (!all.length) return null;
   const failing = all.filter((r) => r.dc !== null && r.dc > 1).length;
   return (
@@ -85,7 +89,7 @@ export function MemberDesignSection({ viewer, lang }: { viewer: ViewerData; lang
         <table className="engineering-result-table" dir="ltr">
           <thead><tr><th>{tt(lang, "member")}</th><th>{tt(lang, "type")}</th><th>{tt(lang, "storey")}</th><th>{tt(lang, "section")}</th><th>{tt(lang, "group")}</th><th>{tt(lang, "bars")}</th><th>D/C</th><th>{tt(lang, "status")}</th></tr></thead>
           <tbody>
-            {rows.map((r) => (
+            {pg.rows.map((r) => (
               <tr key={r.id}>
                 <td>{r.id}</td><td>{r.type}</td><td>{r.storey}</td><td>{r.section}</td><td>{r.group}</td><td style={{ whiteSpace: "nowrap" }}>{r.rebar}</td>
                 <td style={{ color: r.dc !== null && r.dc > 1 ? "#b91c1c" : undefined }}>{r.dc === null ? "—" : r.dc.toFixed(2)}</td><td>{r.status}</td>
@@ -94,6 +98,7 @@ export function MemberDesignSection({ viewer, lang }: { viewer: ViewerData; lang
           </tbody>
         </table>
       </div>
+      <TablePager {...pg} lang={lang} />
     </details>
   );
 }

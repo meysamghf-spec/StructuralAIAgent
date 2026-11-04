@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from app.application import frame3d_limits as fl
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ def _frame_model(inputs: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
         assumed = fu.apply_defaults(inp)
     if f3.missing_inputs(inp):
         raise ValueError("frame inputs incomplete")
-    if inp.storeys > f3.MAX_STOREYS or max(inp.bays_x, inp.bays_y) > f3.MAX_BAYS:
+    if not fl.within_limits(inp.storeys, inp.bays_x, inp.bays_y, optimisation=True):
         raise ValueError("frame too large for chat optimization")
     return model_from_frame(inp), [f"{k} (پیش‌فرض)" for k in assumed]
 

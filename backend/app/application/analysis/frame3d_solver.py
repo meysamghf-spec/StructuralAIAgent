@@ -19,8 +19,14 @@ import math
 from dataclasses import dataclass, field
 
 import numpy as np
+import scipy.sparse as sp
+import scipy.sparse.linalg as spla
 
-from app.application.analysis.linear_algebra import SingularMatrixError, factor_linear_system
+from app.application.analysis.linear_algebra import SingularMatrixError
+
+# Reduced systems up to this size keep the dense eigen path for the P-Δ critical load factor (exactly the
+# previous behaviour); larger ones use ARPACK (scipy eigsh) on the sparse generalized problem.
+DENSE_EIGEN_MAX_DOF = 1500
 
 DOF_PER_NODE = 6
 
@@ -141,6 +147,7 @@ class SpaceFrameResult:
     max_abs_displacement: float
     solver: str = "internal_direct_stiffness_3d"
     warnings: list[str] = field(default_factory=list)
+    u_full: object = None  # numpy array of all nodal DOFs (n_full), for vectorised post-processing
 
 
 def torsion_constant_rectangle(width: float, depth: float) -> float:
@@ -170,6 +177,11 @@ def solve_space_frame(model: SpaceFrameModel) -> SpaceFrameResult:
 
 
 def assemble_space_system(model: SpaceFrameModel) -> dict:
+    """Assemble the sparse global stiffness (scipy CSR) and factor the reduced system (sparse LU).
+
+    Element matrices are stacked in numpy arrays (E×12×12) and scattered into a sparse matrix, so the
+    cost grows ~linearly with the model size (thousands of nodes/elements) instead of O(n²) memory.
+    """
     if not model.nodes:
         raise SpaceFrameSolverError("Space frame has no nodes", status="FAILED")
     if not model.elements:
@@ -182,11 +194,13 @@ def assemble_space_system(model: SpaceFrameModel) -> dict:
         raise SpaceFrameSolverError("Duplicate node ids", status="FAILED")
 
     n_full = len(model.nodes) * DOF_PER_NODE
-    stiffness = [[0.0] * n_full for _ in range(n_full)]
-    gravity_load = [0.0] * n_full
-    element_cache: dict = {}
-
-    for element in model.elements:
+    n_el = len(model.elements)
+    lk_all = np.empty((n_el, 12, 12))
+    tr_all = np.empty((n_el, 12, 12))
+    fl_all = np.empty((n_el, 12))
+    dofs_all = np.empty((n_el, 12), dtype=np.int64)
+    lengths: list[float] = []
+    for e_i, element in enumerate(model.elements):
         start = _require_node(model, node_index, element.start_node_id, element.id)
         end = _require_node(model, node_index, element.end_node_id, element.id)
         dx, dy, dz = end.x - start.x, end.y - start.y, end.z - start.z
@@ -194,16 +208,20 @@ def assemble_space_system(model: SpaceFrameModel) -> dict:
         if length <= 1e-9:
             raise SpaceFrameSolverError(f"Element {element.id} has zero length", status="FAILED")
         cx, cy, cz = dx / length, dy / length, dz / length
-        local_k = _local_stiffness(element, length)
         transform = _transformation(cx, cy, cz)
-        global_k = _triple(transform, local_k)
-        fixed_local = _fixed_end_forces(element, length, transform)
-        equiv_global = _matvec(_transpose(transform), [-value for value in fixed_local])
-        dofs = _element_dofs(node_index[start.id], node_index[end.id])
-        _assemble(stiffness, global_k, dofs)
-        for local_index, dof in enumerate(dofs):
-            gravity_load[dof] += equiv_global[local_index]
-        element_cache[element.id] = (local_k, fixed_local, dofs, length, transform)
+        lk_all[e_i] = _local_stiffness(element, length)
+        tr_all[e_i] = transform
+        fl_all[e_i] = _fixed_end_forces(element, length, transform)
+        dofs_all[e_i] = _element_dofs(node_index[start.id], node_index[end.id])
+        lengths.append(length)
+
+    k_glob = np.einsum("eji,ejk,ekl->eil", tr_all, lk_all, tr_all, optimize=True)  # Tᵀ·K_local·T
+    equiv = -np.einsum("eji,ej->ei", tr_all, fl_all)  # Tᵀ·(−fixed-end forces)
+    gravity_load = np.bincount(dofs_all.ravel(), weights=equiv.ravel(), minlength=n_full)
+    stiffness = _scatter(k_glob, dofs_all, n_full)
+    element_cache: dict = {}
+    for e_i, element in enumerate(model.elements):
+        element_cache[element.id] = (lk_all[e_i], fl_all[e_i], dofs_all[e_i], lengths[e_i], tr_all[e_i])
 
     restrained = set()
     for support in model.supports:
@@ -218,46 +236,76 @@ def assemble_space_system(model: SpaceFrameModel) -> dict:
     if reduced_count <= 0:
         raise SpaceFrameSolverError("No free degrees of freedom remain", status="UNSTABLE")
 
-    k_red = [[0.0] * reduced_count for _ in range(reduced_count)]
-    all_terms = [_terms(mapping, couplings, i) for i in range(n_full)]
-    for i in range(n_full):
-        i_terms = all_terms[i]
-        if not i_terms:
-            continue
-        row = stiffness[i]
-        for j in range(n_full):
-            j_terms = all_terms[j]
-            if not j_terms:
-                continue
-            kij = row[j]
-            if kij == 0.0:
-                continue
-            for ri, ci in i_terms:
-                for rj, cj in j_terms:
-                    k_red[ri][rj] += ci * cj * kij
-
+    prepared = {
+        "node_index": node_index,
+        "n_full": n_full,
+        "stiffness": stiffness,
+        "gravity_load": gravity_load.tolist(),
+        "mapping": mapping,
+        "couplings": couplings,
+        "reduced_count": reduced_count,
+        "element_cache": element_cache,
+        "element_arrays": {"lk": lk_all, "tr": tr_all, "fl": fl_all, "dofs": dofs_all},
+        "element_ids": [e.id for e in model.elements],
+        "restrained": restrained,
+    }
+    t = reduction_matrix(prepared)
+    k_red = (t.T @ stiffness @ t).tocsc()
+    k_red = (0.5 * (k_red + k_red.T)).tocsc()
+    prepared["k_red"] = k_red
     try:
-        factor = factor_linear_system(k_red)
+        prepared["factor"] = SparseFactor(k_red)
     except SingularMatrixError as exc:
         raise SpaceFrameSolverError(
             "Global stiffness matrix is singular (unstable or disconnected structure)",
             status="SINGULAR",
             details={"pivot": exc.pivot_row, "free_dof": reduced_count},
         ) from exc
+    return prepared
 
-    return {
-        "node_index": node_index,
-        "n_full": n_full,
-        "stiffness": stiffness,
-        "gravity_load": gravity_load,
-        "mapping": mapping,
-        "couplings": couplings,
-        "reduced_count": reduced_count,
-        "factor": factor,
-        "k_red": k_red,
-        "element_cache": element_cache,
-        "restrained": restrained,
-    }
+
+def reload_space_loads(prepared: dict, model: SpaceFrameModel) -> dict:
+    """Re-use an assembled/factored system for another load case of the SAME geometry and sections.
+
+    Only the member line loads (fixed-end forces → equivalent nodal loads) are rebuilt; the stiffness and its
+    sparse factor are shared, so D, L, Ex and Ey need a single factorisation (time and memory).
+    """
+    arr = prepared["element_arrays"]
+    ids = prepared["element_ids"]
+    if len(model.elements) != len(ids) or any(e.id != i for e, i in zip(model.elements, ids)):
+        raise SpaceFrameSolverError("Load-case model does not match the assembled system", status="FAILED")
+    cache = prepared["element_cache"]
+    fl_all = np.zeros_like(arr["fl"])
+    for e_i, element in enumerate(model.elements):
+        if element.udl_gx or element.udl_gy or element.udl_gz:
+            fl_all[e_i] = _fixed_end_forces(element, cache[element.id][3], arr["tr"][e_i])
+    equiv = -np.einsum("eji,ej->ei", arr["tr"], fl_all)
+    gravity_load = np.bincount(arr["dofs"].ravel(), weights=equiv.ravel(), minlength=prepared["n_full"])
+    out = dict(prepared)
+    out["element_arrays"] = {**arr, "fl": fl_all}
+    out["element_cache"] = {eid: (c[0], fl_all[e_i], c[2], c[3], c[4]) for e_i, (eid, c) in enumerate(cache.items())}
+    out["gravity_load"] = gravity_load.tolist()
+    return out
+
+
+def _scatter(blocks: np.ndarray, dofs: np.ndarray, n_full: int) -> sp.csr_matrix:
+    """Sum E×12×12 element blocks into an n_full×n_full sparse matrix."""
+    rows = np.repeat(dofs, 12, axis=1).ravel()
+    cols = np.tile(dofs, (1, 12)).ravel()
+    return sp.csr_matrix((blocks.ravel(), (rows, cols)), shape=(n_full, n_full))
+
+
+def element_end_forces(prepared: dict, u_full: np.ndarray, *, with_fixed: bool = True) -> np.ndarray:
+    """Local end forces of every element (E×12, or E×12×m for an n_full×m displacement array)."""
+    arr = prepared["element_arrays"]
+    lkt = arr.get("lkt")
+    if lkt is None:
+        lkt = arr["lkt"] = np.einsum("eij,ejk->eik", arr["lk"], arr["tr"], optimize=True)
+    u_el = np.asarray(u_full)[arr["dofs"]]
+    if u_el.ndim == 2:
+        out = np.einsum("eij,ej->ei", lkt, u_el)
+        return out + arr["fl"] if with_fixed else out
+    return np.einsum("eij,ejm->eim", lkt, u_el)
 
 
 def recover_space_result(
@@ -265,76 +313,59 @@ def recover_space_result(
     prepared: dict,
     load_vector: list[float],
 ) -> SpaceFrameResult:
-    mapping = prepared["mapping"]
-    couplings = prepared["couplings"]
-    n_full = prepared["n_full"]
+    t = reduction_matrix(prepared)
+    lv = np.asarray(load_vector, dtype=float)
     reduced_count = prepared["reduced_count"]
-    f_red = [0.0] * reduced_count
-    for i in range(n_full):
-        for ri, coef in _terms(mapping, couplings, i):
-            f_red[ri] += coef * load_vector[i]
+    n_full = prepared["n_full"]
+    f_red = t.T @ lv
     try:
-        u_red = prepared["factor"].solve(f_red)
+        u_red = prepared["factor"].solve_many(f_red)
     except SingularMatrixError as exc:
         raise SpaceFrameSolverError(
             "Global stiffness matrix is singular",
             status="SINGULAR",
             details={"pivot": exc.pivot_row},
         ) from exc
-
-    u_full = [0.0] * n_full
-    for i in range(n_full):
-        terms = _terms(mapping, couplings, i)
-        if terms:
-            u_full[i] = sum(coef * u_red[ri] for ri, coef in terms)
+    u_full = t @ u_red
 
     node_index = prepared["node_index"]
-    displacements: dict[str, tuple[float, float, float, float, float, float]] = {}
-    max_disp = 0.0
-    for node in model.nodes:
-        base = node_index[node.id] * DOF_PER_NODE
-        values = (
-            u_full[base],
-            u_full[base + 1],
-            u_full[base + 2],
-            u_full[base + 3],
-            u_full[base + 4],
-            u_full[base + 5],
-        )
-        displacements[node.id] = values
-        max_disp = max(max_disp, abs(values[0]), abs(values[1]), abs(values[2]))
+    u_nodes = u_full.reshape(-1, DOF_PER_NODE)
+    u_list = u_nodes.tolist()
+    displacements: dict[str, tuple[float, float, float, float, float, float]] = {
+        node.id: tuple(u_list[node_index[node.id]]) for node in model.nodes
+    }
+    max_disp = float(np.abs(u_nodes[:, :3]).max()) if len(u_list) else 0.0
 
-    ku = _matvec(prepared["stiffness"], u_full)
-    for g_dofs, g_global in prepared.get("geometric", ()):  # second-order (P-Δ): + K_G·u
-        u_e = [u_full[d] for d in g_dofs]
-        for a, d in enumerate(g_dofs):
-            ku[d] += sum(g_global[a][b] * u_e[b] for b in range(12))
+    ku = prepared["stiffness"] @ u_full
+    if prepared.get("kg_full") is not None:  # second-order (P-Δ): + K_G·u
+        ku = ku + prepared["kg_full"] @ u_full
     reactions: dict[str, tuple[float, float, float, float, float, float]] = {}
     for support in model.supports:
         base = node_index[support.node_id] * DOF_PER_NODE
-        residual = tuple(ku[base + k] - load_vector[base + k] for k in range(DOF_PER_NODE))
-        reactions[support.node_id] = residual
+        reactions[support.node_id] = tuple(float(ku[base + k] - lv[base + k]) for k in range(DOF_PER_NODE))
 
+    ends = element_end_forces(prepared, u_full)
+    ab = np.abs(ends)
+    max_ax = np.maximum(ab[:, 0], ab[:, 6])
+    max_sh = ab[:, [1, 2, 7, 8]].max(axis=1)
+    max_mo = ab[:, [4, 5, 10, 11]].max(axis=1)
+    ends_l = ends[:, :6].tolist()
     member_forces: dict[str, SpaceMemberForces] = {}
-    for element in model.elements:
-        local_k, fixed_local, dofs, length, transform = prepared["element_cache"][element.id]
-        u_g = [u_full[dof] for dof in dofs]
-        u_l = _matvec(transform, u_g)
-        end_local = _matvec(local_k, u_l)
-        forces = [end_local[i] + fixed_local[i] for i in range(12)]
+    for e_i, element in enumerate(model.elements):
+        f = ends_l[e_i]
         member_forces[element.id] = SpaceMemberForces(
             element_id=element.id,
             member_id=element.member_id,
-            length=length,
-            axial=forces[0],
-            shear_y=forces[1],
-            shear_z=forces[2],
-            torsion=forces[3],
-            moment_y=forces[4],
-            moment_z=forces[5],
-            max_abs_axial=max(abs(forces[0]), abs(forces[6])),
-            max_abs_shear=max(abs(forces[1]), abs(forces[2]), abs(forces[7]), abs(forces[8])),
-            max_abs_moment=max(abs(forces[4]), abs(forces[5]), abs(forces[10]), abs(forces[11])),
+            length=prepared["element_cache"][element.id][3],
+            axial=f[0],
+            shear_y=f[1],
+            shear_z=f[2],
+            torsion=f[3],
+            moment_y=f[4],
+            moment_z=f[5],
+            max_abs_axial=float(max_ax[e_i]),
+            max_abs_shear=float(max_sh[e_i]),
+            max_abs_moment=float(max_mo[e_i]),
         )
 
     warnings: list[str] = []
@@ -353,6 +384,7 @@ def recover_space_result(
         free_dof_count=reduced_count,
         max_abs_displacement=max_disp,
         warnings=warnings,
+        u_full=u_full,
     )
 
 
@@ -652,22 +684,58 @@ def geometric_stiffness_local(element: SpaceElement, length: float, compression:
     return k
 
 
-def reduction_matrix(prepared: dict) -> np.ndarray:
-    """Dense (n_full × n_reduced) matrix T with u_full = T·u_reduced (supports and diaphragm slaves included)."""
+def reduction_matrix(prepared: dict) -> sp.csr_matrix:
+    """Sparse (n_full × n_reduced) matrix T with u_full = T·u_reduced (supports and diaphragm slaves included)."""
     cached = prepared.get("_tmat")
     if cached is not None:
         return cached
     n_full, n_red = prepared["n_full"], prepared["reduced_count"]
-    t = np.zeros((n_full, n_red))
+    rows: list[int] = []
+    cols: list[int] = []
+    vals: list[float] = []
+    mapping, couplings = prepared["mapping"], prepared["couplings"]
     for dof in range(n_full):
-        for ri, coef in _terms(prepared["mapping"], prepared["couplings"], dof):
-            t[dof, ri] += coef
+        for ri, coef in _terms(mapping, couplings, dof):
+            rows.append(dof); cols.append(ri); vals.append(coef)
+    t = sp.csr_matrix((vals, (rows, cols)), shape=(n_full, n_red))
     prepared["_tmat"] = t
     return t
 
 
+class SparseFactor:
+    """Sparse LU (SuperLU, symmetric ordering) of a symmetric reduced stiffness matrix.
+
+    A pivot below ``pivot_tolerance``·max|K| flags a singular (unstable / disconnected) structure, the same
+    criterion as the previous dense Gaussian elimination.
+    """
+
+    def __init__(self, matrix, *, pivot_tolerance: float = 1e-12) -> None:
+        m = sp.csc_matrix(matrix)
+        self.size = m.shape[0]
+        self.matrix = m
+        scale = float(abs(m).max()) if m.nnz else 0.0
+        threshold = pivot_tolerance * max(scale, 1.0)
+        try:
+            self.lu = spla.splu(m, permc_spec="MMD_AT_PLUS_A", diag_pivot_thresh=0.0,
+                                options={"SymmetricMode": True})
+        except RuntimeError as exc:  # "Factor is exactly singular"
+            raise SingularMatrixError(-1) from exc
+        diag = np.abs(self.lu.U.diagonal())
+        if diag.size and (not np.all(np.isfinite(diag)) or float(diag.min()) <= threshold):
+            raise SingularMatrixError(int(np.argmin(diag)))
+
+    def solve(self, rhs) -> list[float]:
+        return self.solve_many(np.asarray(rhs, dtype=float)).tolist()
+
+    def solve_many(self, rhs: np.ndarray) -> np.ndarray:
+        out = self.lu.solve(np.asarray(rhs, dtype=float))
+        if not np.all(np.isfinite(out)):
+            raise SingularMatrixError(-1)
+        return out
+
+
 class DenseCholeskyFactor:
-    """Cholesky factor (numpy) of a symmetric positive-definite reduced matrix."""
+    """Cholesky factor (numpy) of a symmetric positive-definite reduced matrix (small systems)."""
 
     def __init__(self, matrix: np.ndarray) -> None:
         self.matrix = matrix
@@ -684,26 +752,25 @@ class DenseCholeskyFactor:
         return self.linv.T @ (self.linv @ rhs)
 
 
-def solve_space_many(prepared: dict, load_vectors: list[list[float]]) -> np.ndarray:
-    """Solve several full-DOF load vectors at once (numpy). Returns u_full as an (n_full × m) array.
+SOLVE_CHUNK = 64  # right-hand sides per sparse solve (bounds peak memory of n_full × m results)
 
-    Uses the reduced elastic (or second-order) matrix of ``prepared``; numerically equal to repeated
-    ``recover_space_result`` solves (≈1e-10 relative) but ~50× faster for tens of load cases.
+
+def solve_space_many(prepared: dict, load_vectors) -> np.ndarray:
+    """Solve several full-DOF load vectors at once. Returns u_full as an (n_full × m) array.
+
+    Uses the sparse factor of the reduced elastic (or second-order) matrix of ``prepared``.
     """
     t = reduction_matrix(prepared)
     f_full = np.asarray(load_vectors, dtype=float).T  # n_full × m
-    f_red = t.T @ f_full
-    factor = prepared.get("dense_factor")
-    if factor is None:
-        factor = prepared["dense_factor"] = _dense_factor_of(prepared)
-    return t @ factor.solve_many(f_red)
-
-
-def _dense_factor_of(prepared: dict) -> DenseCholeskyFactor:
-    k = np.asarray(prepared["k_red"], dtype=float)
-    if "k_geo_red" in prepared:
-        k = k + prepared["k_geo_red"]
-    return DenseCholeskyFactor(0.5 * (k + k.T))
+    if f_full.ndim == 1:
+        f_full = f_full[:, None]
+    f_red = np.asarray(t.T @ f_full)
+    factor = prepared["factor"]
+    out = np.empty((prepared["n_full"], f_red.shape[1]))
+    for c0 in range(0, f_red.shape[1], SOLVE_CHUNK):
+        u_red = factor.solve_many(f_red[:, c0:c0 + SOLVE_CHUNK])
+        out[:, c0:c0 + SOLVE_CHUNK] = (t @ u_red).reshape(prepared["n_full"], -1)
+    return out
 
 
 def prepare_second_order(
@@ -723,30 +790,29 @@ def prepare_second_order(
     reactions include K_G so global equilibrium in the deformed geometry is exact.
     """
     n_full = prepared["n_full"]
-    kg_full = np.zeros((n_full, n_full))
-    geometric: list[tuple[list[int], list[list[float]]]] = []
     by_id = {e.id: e for e in model.elements}
-    for eid, (_lk, _fl, dofs, length, transform) in prepared["element_cache"].items():
+    arr = prepared["element_arrays"]
+    sel, kgl = [], []
+    for e_i, eid in enumerate(prepared["element_ids"]):
         p = compression.get(eid, 0.0)
         if p == 0.0:
             continue
-        kg_local = geometric_stiffness_local(by_id[eid], length, p)
-        kg_global = _triple(transform, kg_local)
-        geometric.append((dofs, kg_global))
-        idx = np.asarray(dofs)
-        kg_full[np.ix_(idx, idx)] += np.asarray(kg_global)
+        sel.append(e_i)
+        kgl.append(geometric_stiffness_local(by_id[eid], prepared["element_cache"][eid][3], p))
+    if sel:
+        tr = arr["tr"][sel]
+        kg_glob = np.einsum("eji,ejk,ekl->eil", tr, np.asarray(kgl), tr, optimize=True)
+        kg_full = _scatter(kg_glob, arr["dofs"][sel], n_full)
+    else:
+        kg_full = sp.csr_matrix((n_full, n_full))
     t = reduction_matrix(prepared)
-    kg_red = t.T @ kg_full @ t
-    kg_red = 0.5 * (kg_red + kg_red.T)
-    k_el = np.asarray(prepared["k_red"], dtype=float)
-    k_el = 0.5 * (k_el + k_el.T)
+    kg_red = (t.T @ kg_full @ t).tocsc()
+    kg_red = (0.5 * (kg_red + kg_red.T)).tocsc()
+    k_el = prepared["k_red"]
     try:
-        el = DenseCholeskyFactor(k_el)
-        a = el.linv @ (-kg_red) @ el.linv.T
-        mu = float(np.linalg.eigvalsh(0.5 * (a + a.T)).max())
+        lam = _critical_load_factor(k_el, kg_red, prepared["factor"])
     except SingularMatrixError as exc:
         raise SpaceFrameSolverError("Elastic stiffness is not positive definite", status="SINGULAR") from exc
-    lam = (1.0 / mu) if mu > 1e-12 else math.inf
     if lam <= min_load_factor:
         raise SpaceFrameSolverError(
             f"Gravity load pattern exceeds the elastic critical load (λcr = {lam:.3f} ≤ {min_load_factor:g}); "
@@ -754,12 +820,31 @@ def prepare_second_order(
             status="UNSTABLE", details={"lambda_cr": lam},
         )
     try:
-        factor = DenseCholeskyFactor(0.5 * (k_el + kg_red + (k_el + kg_red).T))
+        factor = SparseFactor(k_el + kg_red)
     except SingularMatrixError as exc:
         raise SpaceFrameSolverError("Second-order stiffness is not positive definite (unstable)", status="UNSTABLE",
                                     details={"lambda_cr": lam}) from exc
     second = dict(prepared)
-    second.pop("dense_factor", None)
-    second.update({"factor": factor, "geometric": geometric, "k_geo_red": kg_red,
+    second.update({"factor": factor, "kg_full": kg_full, "k_geo_red": kg_red,
                    "second_order": {"lambda_cr": lam, "method": "geometric stiffness K_G, frozen axial forces"}})
     return second
+
+
+def _critical_load_factor(k_el, kg_red, factor: "SparseFactor") -> float:
+    """λcr = 1/μmax of K φ = λ(−K_G) φ. Dense eigen for small systems, ARPACK (eigsh, mode 2) otherwise."""
+    n = k_el.shape[0]
+    if n <= DENSE_EIGEN_MAX_DOF:
+        k_d = k_el.toarray()
+        k_d = 0.5 * (k_d + k_d.T)
+        g_d = kg_red.toarray()
+        el = DenseCholeskyFactor(k_d)
+        a = el.linv @ (-g_d) @ el.linv.T
+        mu = float(np.linalg.eigvalsh(0.5 * (a + a.T)).max())
+    else:
+        if kg_red.nnz == 0:
+            return math.inf
+        minv = spla.LinearOperator((n, n), matvec=factor.solve_many, dtype=float)
+        vals = spla.eigsh(-kg_red, k=1, M=k_el, Minv=minv, which="LA", return_eigenvectors=False,
+                          tol=1e-10, maxiter=5000, ncv=min(n - 1, 40))
+        mu = float(vals.max())
+    return (1.0 / mu) if mu > 1e-12 else math.inf
