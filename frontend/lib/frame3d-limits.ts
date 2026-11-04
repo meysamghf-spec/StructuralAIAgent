@@ -20,3 +20,13 @@ export const LARGE_MODEL_NODES = 1500;
 
 /** Viewer: above this many visible members the 3D view draws merged line layers (one draw call each). */
 export const LARGE_VIEW_MEMBERS = 3000;
+
+/** "Large model" notice (form + chat) when a run is above backgroundNodes; null for normal models. */
+export function largeModelNotice(storeys: number, baysX: number, baysY: number, lang: "en" | "fa"): string | null {
+  if (![storeys, baysX, baysY].every((v) => Number.isFinite(v) && v > 0)) return null;
+  const n = frameNodeCount(storeys, baysX, baysY);
+  if (n <= FRAME_LIMITS.backgroundNodes || n > FRAME_LIMITS.nodes) return null;
+  return lang === "fa"
+    ? `مدل بزرگ (${n.toLocaleString("fa-IR")} گره) — تحلیل و طراحی ممکن است حدود ۳۰ ثانیه یا بیشتر طول بکشد.`
+    : `Large model (${n} nodes) — analysis + design may take ~30 s or more.`;
+}

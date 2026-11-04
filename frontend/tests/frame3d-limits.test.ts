@@ -1,3 +1,4 @@
+import { largeModelNotice } from "@/lib/frame3d-limits";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -19,5 +20,14 @@ describe("frame3d limits stay in sync with the backend", () => {
   });
   it("counts nodes like the solver", () => {
     expect(frameNodeCount(30, 15, 15)).toBe(7936);
+  });
+});
+
+describe("large model notice", () => {
+  it("shows only between backgroundNodes and the cap", () => {
+    expect(largeModelNotice(4, 3, 3, "en")).toBeNull();
+    expect(largeModelNotice(13, 10, 10, "en")).toContain("1694");
+    expect(largeModelNotice(13, 10, 10, "fa")).toContain("۳۰ ثانیه");
+    expect(largeModelNotice(50, 20, 20, "en")).toBeNull();
   });
 });
