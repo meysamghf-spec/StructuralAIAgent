@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import {
   fmtLimit,
   fmtStorage,
@@ -133,6 +135,18 @@ function UpgradesInner() {
             </div>
           </div>
 
+          {account?.test_plan ? (
+            <div className="workspace-card" data-testid="test-plan-card" style={{ border: "2px dashed #d97706" }}>
+              <strong>TEST plan (only your account sees this)</strong>
+              <p>
+                {account.test_plan.name}: {account.test_plan.price_usdt} USDT. Activates Pro-level limits for a short test
+                period after a real on-chain payment.
+              </p>
+              <Link className="workspace-secondary-button" href={`/workspace/upgrades/pay?plan=${account.test_plan.id}&duration=1m`}>
+                Pay test plan
+              </Link>
+            </div>
+          ) : null}
           <section className="billing-grid">
             {catalog.plans.map((p) => {
               const q = p.quotes?.[duration];
