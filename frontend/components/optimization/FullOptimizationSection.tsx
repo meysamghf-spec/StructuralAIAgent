@@ -97,7 +97,11 @@ export function FullOptimizationSection({ projectId: projectIdProp }: { projectI
             ? `ورودی پروژه فعال (${frame.chat_title ? `گفتگوی «${frame.chat_title}»` : frame.label?.fa ?? frame.source}): ${frame.inputs.storeys ?? "?"} طبقه، ${frame.inputs.bays_x ?? "?"}×${frame.inputs.bays_y ?? "?"} دهانه، ${frame.inputs.bay_x_m ?? "?"}×${frame.inputs.bay_y_m ?? "?"} متر`
             : "در حال خواندن قاب پروژه فعال…"}
         </p>
-      ) : (
+      ) : null}
+      {projectId && frame?.limit_warning ? (
+        <p className="field-hint" data-testid="full-opt-limit-warning" role="alert">{frame.limit_warning.fa}</p>
+      ) : null}
+      {projectId ? null : (
         <p className="field-hint">پروژه‌ای انتخاب نشده است.</p>
       )}
 

@@ -145,6 +145,7 @@ export type ProjectFrame = {
   inputs: Record<string, unknown>;
   from_chat: string[];
   assumed: string[];
+  limit_warning?: { en: string; fa: string } | null;
 };
 
 /** The project's frame from its whole chat history (same resolver as optimization); defaults filled for missing geometry. */
