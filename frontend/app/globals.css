@@ -3364,3 +3364,17 @@ a.agent-card-link:focus-visible { outline: 2px solid #38bdf8; outline-offset: 2p
 .opt-table-scroll .rebar-line { white-space: nowrap; line-height: 1.35; }
 .opt-table-scroll .data-table td:first-child { white-space: nowrap; }
 .opt-table-scroll .data-table th, .opt-table-scroll .data-table td { padding-inline: 0.5rem; }
+
+/* Global chat dock (all app pages): docked + resizable on desktop, bottom sheet on mobile. */
+.chat-dock[hidden] { display: none !important; }
+@media (min-width: 961px) {
+  .shell[data-chat-docked="true"] { padding-right: var(--chat-dock-w, 420px); }
+  .chat-dock--docked { width: var(--chat-dock-w, 420px); box-shadow: none; }
+}
+.chat-dock-resizer { position: absolute; left: -4px; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 2; touch-action: none; }
+.chat-dock-resizer:hover, .chat-dock-resizer:focus-visible { background: #2563eb66; outline: none; }
+body.chat-dock-resizing { cursor: col-resize; user-select: none; }
+@media (max-width: 960px) {
+  .chat-dock--sheet { top: auto; left: 0; right: 0; width: 100vw; height: min(78dvh, 640px); border-left: none; border-top: 1px solid #334155; border-radius: 16px 16px 0 0; box-shadow: 0 -10px 30px #000a; z-index: 950; padding-bottom: env(safe-area-inset-bottom); }
+  .chat-dock-grabber { width: 44px; height: 5px; border-radius: 3px; background: #475569; margin: 6px auto 0; flex: none; }
+}
