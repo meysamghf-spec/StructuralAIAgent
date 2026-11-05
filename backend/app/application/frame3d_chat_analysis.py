@@ -175,7 +175,7 @@ def requested_mode_shape(user_request: str) -> int | None:
 
 
 def is_frame3d_request(user_request: str) -> bool:
-    t = _norm(user_request).lower()
+    t = _fa_numbers(_norm(user_request)).lower()  # also maps colloquial «دهنه» -> «دهانه»
     storey = re.search(r"stor(e)?y|stories|storeys|floors?\b|طبقه", t)
     frame = re.search(r"\bframe\b|\bbays?\b|قاب|دهانه|3d|سه ?بعدی", t)
     if storey and frame:
@@ -311,6 +311,22 @@ def _parse_fa_storey_height(t: str, inp: "Frame3dInputs") -> None:
             inp.storey_height_m = v; inp.parsed.append("storey_height_m")
 
 
+_ALONG = re.compile(
+    rf"(\d+)\s*(?:دهانه|bays?)\s*(?:در|به|along|in)?\s*(?:راستای|جهت|امتداد|طول|سمت|the)?\s*{_NUM}\s*"
+    rf"({bays_parser.UNIT_PATTERN})(?:ی)?", re.I)
+
+
+def _parse_bays_along_length(t: str, inp: "Frame3dInputs") -> None:
+    """«۱۰۰ دهانه در راستای ۱۰۰۰ متری و ۲۰۰ دهانه در راستای ۲۰۰۰ متری» -> bays_x=100 (10 m), bays_y=200 (10 m).
+
+    The first «N bays along L» is X and the second is Y; the span is L/N.
+    """
+    hits = [(int(m.group(1)), to_metres(float(m.group(2)), m.group(3))) for m in _ALONG.finditer(t)]
+    hits = [(n, L) for n, L in hits if n > 0 and L > 0][:2]
+    for (n, L), (ck, sk) in zip(hits, (("bays_x", "bay_x_m"), ("bays_y", "bay_y_m"))):
+        setattr(inp, ck, n); setattr(inp, sk, round(L / n, 3)); inp.parsed += [ck, sk]
+
+
 def parse_frame3d_request(user_request: str) -> Frame3dInputs:
     t = _fa_numbers(_norm(user_request))
     inp = Frame3dInputs()
@@ -321,6 +337,8 @@ def parse_frame3d_request(user_request: str) -> Frame3dInputs:
     for key, val in {**bp.counts, **bp.spans}.items():
         setattr(inp, key, val); inp.parsed.append(key)
     if not ({"bays_x", "bays_y"} & set(bp.counts)):
+        _parse_bays_along_length(t, inp)
+    if not ({"bays_x", "bays_y"} & set(inp.parsed)):
         inp.pending_bays = bp.ambiguous
     _parse_fa_storey_height(t, inp)
     if "storey_height_m" not in inp.parsed:

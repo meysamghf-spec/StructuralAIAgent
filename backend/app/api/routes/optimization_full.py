@@ -84,6 +84,25 @@ def _frame_model(body: OptimizationJobRequest, acc, conv, access, out_inputs: di
     return model_from_frame(inp), assumed_notes + [f"{k} (default)" for k in assumed]
 
 
+def _limit_warning(inputs: dict[str, Any]) -> dict[str, str] | None:
+    """The chat's frame is reported as written; if it is beyond the solver/optimizer limits say so (never silently shrink it)."""
+    from app.application.frame3d_limits import MAX_BAYS, MAX_NODES, MAX_OPT_NODES, MAX_STOREYS, node_count
+
+    try:
+        s, bx, by = int(inputs["storeys"]), int(inputs["bays_x"]), int(inputs["bays_y"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    n = node_count(s, bx, by)
+    if s <= MAX_STOREYS and bx <= MAX_BAYS and by <= MAX_BAYS and n <= MAX_OPT_NODES:
+        return None
+    return {
+        "fa": f"این قاب ({s} طبقه، {bx}×{by} دهانه، {n:,} گره) از حد مجاز بزرگ‌تر است: حداکثر {MAX_BAYS} دهانه در هر جهت، "
+              f"{MAX_NODES:,} گره برای تحلیل و {MAX_OPT_NODES:,} گره برای بهینه‌سازی. یک بخش نماینده (مثلاً یک بلوک بین درزهای انقطاع) را مدل کنید.",
+        "en": f"This frame ({s} storeys, {bx}x{by} bays, {n:,} nodes) exceeds the limits: max {MAX_BAYS} bays per direction, "
+              f"{MAX_NODES:,} nodes for analysis and {MAX_OPT_NODES:,} for optimization. Model a representative block (e.g. between expansion joints).",
+    }
+
+
 @router.get("/project-frame")
 def project_frame(project_id: str, acc: Annotated[AuthenticatedAccount, Depends(get_current_account)],
                   conv=Depends(get_conversation_service), access=Depends(get_project_access_service)) -> dict[str, Any]:
@@ -103,6 +122,7 @@ def project_frame(project_id: str, acc: Annotated[AuthenticatedAccount, Depends(
     inputs = res["inputs"]
     assumed = list(res["assumed"]) if res["source"] != "default" else list(GEOMETRY)
     return {
+        "limit_warning": _limit_warning(inputs),
         "source": res["source"], "label": res["label"], "chat_title": res.get("chat_title"),
         "inputs": {k: v for k, v in inputs.items() if isinstance(v, (int, float, str, bool)) or v is None},
         "from_chat": [k for k in GEOMETRY if k not in assumed], "assumed": assumed,
