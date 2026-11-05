@@ -3354,3 +3354,39 @@ a.agent-card-link:focus-visible { outline: 2px solid #38bdf8; outline-offset: 2p
 .design-legend summary { cursor: pointer; font-weight: 600; }
 .design-legend ul { margin: 0.25rem 0 0; padding-inline-start: 1rem; }
 .design-legend li { display: flex; flex-wrap: wrap; gap: 0.15rem 1rem; justify-content: space-between; }
+
+/* Optimization result tables: horizontal scroll on mobile, no wrapping of numbers/sections, sticky first column, LTR isolation (#pt624u) */
+.opt-table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+.opt-table-scroll .data-table td.num, .opt-table-scroll .data-table th { white-space: nowrap; }
+.opt-table-scroll .data-table th:first-child,
+.opt-table-scroll .data-table td:first-child { position: sticky; inset-inline-start: 0; z-index: 1; background: var(--card-bg, #0f172a); }
+.opt-table-scroll .ltr-iso { direction: ltr; unicode-bidi: isolate; white-space: nowrap; }
+.opt-table-scroll .rebar-line { white-space: nowrap; line-height: 1.35; }
+.opt-table-scroll .data-table td:first-child { white-space: nowrap; }
+.opt-table-scroll .data-table th, .opt-table-scroll .data-table td { padding-inline: 0.5rem; }
+
+/* Global chat dock (all app pages): docked + resizable on desktop, bottom sheet on mobile. */
+.chat-dock[hidden] { display: none !important; }
+@media (min-width: 961px) {
+  .shell[data-chat-docked="true"] { padding-right: var(--chat-dock-w, 420px); }
+  .chat-dock--docked { width: var(--chat-dock-w, 420px); box-shadow: none; }
+}
+.chat-dock-resizer { position: absolute; left: -4px; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 2; touch-action: none; }
+.chat-dock-resizer:hover, .chat-dock-resizer:focus-visible { background: #2563eb66; outline: none; }
+body.chat-dock-resizing { cursor: col-resize; user-select: none; }
+@media (max-width: 960px) {
+  .chat-dock--sheet { top: auto; left: 0; right: 0; width: 100vw; height: min(78dvh, 640px); border-left: none; border-top: 1px solid #334155; border-radius: 16px 16px 0 0; box-shadow: 0 -10px 30px #000a; z-index: 950; padding-bottom: env(safe-area-inset-bottom); }
+  .chat-dock-grabber { width: 44px; height: 5px; border-radius: 3px; background: #475569; margin: 6px auto 0; flex: none; }
+}
+
+/* All result tables on every page (analysis, design, detailing, report, model, optimization, inspector): on mobile they
+   scroll horizontally instead of wrapping numbers/units/sections (generalises #98). */
+@media (max-width: 960px) {
+  .engineering-result-table, .an-table, .mini-table, .data-table, .v3d-table, .billing-table {
+    display: block; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch;
+  }
+  .engineering-result-table th, .engineering-result-table td, .an-table th, .an-table td,
+  .mini-table th, .mini-table td, .data-table th, .data-table td.num, .v3d-table th, .v3d-table td {
+    white-space: nowrap;
+  }
+}

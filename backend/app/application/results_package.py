@@ -3,6 +3,8 @@
 Generic for any frame the in-house solver supports; everything is rebuilt deterministically from the run ``inputs``.
 """
 from __future__ import annotations
+import logging as _logging
+logger = _logging.getLogger(__name__)
 
 import csv
 import io
@@ -411,6 +413,8 @@ def dxf_pdf(doc) -> bytes:
     lays = [l for l in doc.layouts if l.name.lower() != "model" and len(l)] or [doc.modelspace()]
     for lay in lays:
         be = pmb.PyMuPdfBackend()
+        from app.application.autocad.pdf_fonts import require_fonts
+        require_fonts()
         Frontend(RenderContext(doc), be, config=cfg).draw_layout(lay, finalize=True)
         if lay.name.lower() == "model":
             page = dlayout.Page(420, 297, dlayout.Units.mm, margins=dlayout.Margins.all(10))
@@ -419,3 +423,26 @@ def dxf_pdf(doc) -> bytes:
             data = be.get_pdf_bytes(dlayout.Page(lay.dxf.paper_width or 420, lay.dxf.paper_height or 297, dlayout.Units.mm))
         out.insert_pdf(pymupdf.open("pdf", data))
     return out.tobytes(deflate=True)
+
+
+def empty_download_problem(name: str, data: bytes | None) -> str:
+    """'' when the file has real content; else a short reason (0 bytes, no pages, blank pages, blank text file).
+    Drawing text rendered as boxes is prevented earlier by autocad.pdf_fonts.require_fonts()."""
+    if not data:
+        return "0 bytes"
+    lower = (name or "").lower()
+    try:
+        if lower.endswith(".pdf"):
+            import pymupdf
+
+            doc = pymupdf.open("pdf", data)
+            if doc.page_count == 0:
+                return "PDF has no pages"
+            if not any(page.get_text().strip() or page.get_drawings() or page.get_images() for page in doc):
+                return "PDF pages are blank"
+        elif lower.endswith((".csv", ".dxf", ".e2k", ".f2k", ".s2k", ".txt", ".md", ".svg")):
+            if not data.strip():
+                return "blank text file"
+    except Exception as exc:  # noqa: BLE001 - validation must not hide a good file
+        logger.warning("download validation skipped for %s: %s", name, exc)
+    return ""

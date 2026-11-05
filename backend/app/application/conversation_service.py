@@ -512,6 +512,13 @@ class ConversationService:
             if direct is not None:
                 direct[1]["selected_mode"] = mode or "auto"
                 return direct
+        if conversation.project_id is not None and self._is_free_question(user_content, enriched_request, history, mode):
+            # No engineering intent matched (e.g. «چرا چیزی در فایل دانلودی نوشته نشده»): answer with the LLM using the
+            # project context + chat history instead of the empty 'project readiness' workflow template.
+            content, metadata = self._llm_free_answer(conversation, account, user_content, enriched_request, history,
+                                                      attachments, progress_sink)
+            metadata["selected_mode"] = mode or "auto"
+            return content, metadata
         if conversation.project_id is not None:
             from app.application.agent_intent_routing import frame_context
 
@@ -531,6 +538,62 @@ class ConversationService:
                                                    conversation=conversation)
         metadata["selected_mode"] = mode or "auto"
         return content, metadata
+
+    @staticmethod
+    def _is_free_question(user_content: str, enriched_request: str, history, mode: str | None) -> bool:
+        """True when nothing routes the message to an engineering agent (no keyword, no mode hint, no pending workflow)."""
+        try:
+            from app.application.agent_intent_routing import resolve_agent_intent
+
+            if chat_mode_to_agent_type(mode) is not None or _find_resumable_workflow_context(history) is not None:
+                return False
+            from app.application import frame3d_followup as _fu
+
+            prior = [m.content for m in reversed(history) if m.role == MessageRole.USER]
+            if _fu.merge_with_pending(user_content, prior) != user_content:
+                return False
+            return resolve_agent_intent(enriched_request).score <= 0.0
+        except Exception:  # noqa: BLE001 - when unsure keep the old pipeline
+            logger.exception("free-question check failed")
+            return False
+
+    def _llm_free_answer(self, conversation, account: AuthenticatedAccount, user_content: str, enriched_request: str,
+                         history, attachments, progress_sink) -> tuple[str, dict]:
+        """Free question / follow-up -> LLM (Gemini + fallbacks) with project context and chat history.
+        Never returns an empty 'completed': if the LLM fails the user sees a real error and a useful fallback."""
+        fa = any("\u0600" <= ch <= "\u06ff" for ch in user_content)
+        error = ""
+        try:
+            from app.application.platform_helper_factory import get_helper_service
+
+            svc = get_helper_service()
+            pairs = [("user" if m.role == MessageRole.USER else "assistant", m.content)
+                     for m in history[-_MAX_HISTORY_MESSAGES:] if m.role in (MessageRole.USER, MessageRole.ASSISTANT)]
+            if pairs and pairs[-1] == ("user", user_content):
+                pairs = pairs[:-1]
+            message = enriched_request if attachments else user_content
+            if svc.llm.configured:
+                reply = svc.converse(
+                    message, pairs, intent="general_chat", context=self._helper_context(conversation, account), fa=fa,
+                    on_token=(lambda d: emit_progress(progress_sink, EVENT_TOKEN, {"delta": d})) if progress_sink else None)
+                if reply.provider != "stub" and reply.text.strip():
+                    md = reply.to_metadata()
+                    md["mode"] = "general_chat"
+                    md["routed"] = "free_question"
+                    return reply.text, md
+                error = "LLM unavailable (all providers failed or quota exhausted)"
+            else:
+                error = "LLM not configured"
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("free-question LLM answer failed")
+            error = type(exc).__name__
+        logger.warning("free question answered without LLM: %s", error)
+        from app.application import general_beam_engine as gbe
+
+        head = ("⚠️ پاسخ هوش مصنوعی (Gemini) الان در دسترس نیست؛ لطفاً چند دقیقه دیگر دوباره بپرسید."
+                if fa else "⚠️ The AI model (Gemini) is unavailable right now; please ask again in a few minutes.")
+        return f"{head}\n\n{gbe.capabilities_message(user_content)}", {
+            "mode": "llm_error", "provider": "none", "error": error, "routed": "free_question"}
 
     def _maybe_feature_request(self, conversation, account: AuthenticatedAccount, text: str) -> tuple[str, dict] | None:
         """Unsupported capability -> honest ETA estimate + automatic feature request (FEATURE_REQUEST_AUTOREPORT_ENABLED, default
@@ -961,6 +1024,13 @@ class ConversationService:
             progress_sink=progress_sink,
         )
         assistant_content, assistant_metadata = _format_execution_response(record)
+        if _is_empty_completed(assistant_content, assistant_metadata):
+            # A workflow that 'completed' with nothing to show is never returned as-is: answer with the LLM instead.
+            original = user_request
+            text, md = self._llm_free_answer(conversation, account, original, original, history, attachments, progress_sink)
+            md["replaced_empty_workflow"] = True
+            md["selected_mode"] = mode or "auto"
+            return text, md
         assistant_content = self._attach_full_optimization(conversation, account, user_request, history,
                                                            assistant_content, assistant_metadata)
         assistant_metadata["selected_mode"] = mode or "auto"
@@ -1253,6 +1323,19 @@ def _fopt_is_optimize(text: str) -> bool:
     from app.application import frame_optimizer as _fopt
 
     return _fopt.is_optimize_request(text)
+
+
+_EMPTY_RESULT_MARKERS = ("Completed successfully.", "با موفقیت تکمیل شد.")
+
+
+def _is_empty_completed(content: str, metadata: dict) -> bool:
+    """Workflow template whose only 'result' is the generic success line and that produced no engineering output."""
+    if not isinstance(metadata, dict) or isinstance(metadata.get("engineering_results"), dict):
+        return False
+    if metadata.get("engineering_results") or metadata.get("approval") or metadata.get("pending_approval"):
+        return False
+    text = content or ""
+    return any(m in text for m in _EMPTY_RESULT_MARKERS)
 
 
 def _find_resumable_workflow_context(

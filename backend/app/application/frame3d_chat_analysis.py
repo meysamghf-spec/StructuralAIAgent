@@ -175,7 +175,7 @@ def requested_mode_shape(user_request: str) -> int | None:
 
 
 def is_frame3d_request(user_request: str) -> bool:
-    t = _norm(user_request).lower()
+    t = _fa_numbers(_norm(user_request)).lower()  # also maps colloquial «دهنه» -> «دهانه»
     storey = re.search(r"stor(e)?y|stories|storeys|floors?\b|طبقه", t)
     frame = re.search(r"\bframe\b|\bbays?\b|قاب|دهانه|3d|سه ?بعدی", t)
     if storey and frame:
@@ -311,6 +311,32 @@ def _parse_fa_storey_height(t: str, inp: "Frame3dInputs") -> None:
             inp.storey_height_m = v; inp.parsed.append("storey_height_m")
 
 
+_ALONG = re.compile(
+    rf"(\d+)\s*(?:دهانه|bays?)\s*(?:در|به|along|in)?\s*(?:راستای|جهت|امتداد|طول|سمت|the)?\s*{_NUM}\s*"
+    rf"({bays_parser.UNIT_PATTERN})(?:ی)?", re.I)
+
+
+def _parse_bays_along_length(t: str, inp: "Frame3dInputs") -> None:
+    """«۱۰۰ دهانه در راستای ۱۰۰۰ متری و ۲۰۰ دهانه در راستای ۲۰۰۰ متری» -> bays_x=100 (10 m), bays_y=200 (10 m).
+
+    The first «N bays along L» is X and the second is Y; the span is L/N.
+    """
+    hits = [(int(m.group(1)), to_metres(float(m.group(2)), m.group(3))) for m in _ALONG.finditer(t)]
+    hits = [(n, L) for n, L in hits if n > 0 and L > 0][:2]
+    for (n, L), (ck, sk) in zip(hits, (("bays_x", "bay_x_m"), ("bays_y", "bay_y_m"))):
+        setattr(inp, ck, n); setattr(inp, sk, round(L / n, 3)); inp.parsed += [ck, sk]
+
+
+_BY_BAYS = re.compile(r"(\d+)\s*(?:دهانه|bays?)\s*(?:در|×|x|\*|by|ضرب(?:\s*در)?)\s*(\d+)\s*(?:دهانه|bays?)", re.I)
+
+
+def _parse_bays_by_bays(t: str, inp: "Frame3dInputs") -> None:
+    """«۳ دهانه در ۳ دهانه» / «3 bays by 4 bays» -> bays_x, bays_y."""
+    m = _BY_BAYS.search(t)
+    if m and int(m.group(1)) > 0 and int(m.group(2)) > 0:
+        inp.bays_x, inp.bays_y = int(m.group(1)), int(m.group(2)); inp.parsed += ["bays_x", "bays_y"]
+
+
 def parse_frame3d_request(user_request: str) -> Frame3dInputs:
     t = _fa_numbers(_norm(user_request))
     inp = Frame3dInputs()
@@ -321,6 +347,10 @@ def parse_frame3d_request(user_request: str) -> Frame3dInputs:
     for key, val in {**bp.counts, **bp.spans}.items():
         setattr(inp, key, val); inp.parsed.append(key)
     if not ({"bays_x", "bays_y"} & set(bp.counts)):
+        _parse_bays_along_length(t, inp)
+    if not ({"bays_x", "bays_y"} & set(inp.parsed)):
+        _parse_bays_by_bays(t, inp)
+    if not ({"bays_x", "bays_y"} & set(inp.parsed)):
         inp.pending_bays = bp.ambiguous
     _parse_fa_storey_height(t, inp)
     if "storey_height_m" not in inp.parsed:
@@ -1082,6 +1112,7 @@ def _loc(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 MAX_MODE_SHAPES = 6
+MAX_INSPECTOR_MEMBERS = 4000
 
 
 def _viewer_raw(nodes, beams, cols, base, cases, combos, supports) -> dict[str, Any]:
@@ -1095,10 +1126,17 @@ def _viewer_raw(nodes, beams, cols, base, cases, combos, supports) -> dict[str, 
     members = [{"id": bid, "i": a, "j": b, "type": "beam", "storey": k} for bid, a, b, k, *_ in beams] + \
               [{"id": cid, "i": a, "j": b, "type": "column", "storey": k} for cid, a, b, k in cols]
     forces: dict[str, dict[str, list[float]]] = {}
+    forces6: dict[str, dict[str, list[float]]] = {}
     disp: dict[str, dict[str, list[float]]] = {}
+    # Member inspector: full local end forces (skipped for very large models to keep the payload small).
+    with_f6 = len(members) <= MAX_INSPECTOR_MEMBERS
     for c in cases:
         ends, w = base[c]["ends"], base[c]["w"]
         row = {}
+        if with_f6:
+            # [N, V2, V3, T, M2, M3] at i then j; i-end as the solver's local end force, j-end negated
+            # (same sign as the existing N (compression +) / M j convention).
+            forces6[c] = {m["id"]: [r3(x) for x in ends[m["id"]][:6]] + [r3(-x) for x in ends[m["id"]][6:12]] for m in members}
         for m in members:
             f = ends[m["id"]]
             if m["type"] == "beam":
@@ -1114,7 +1152,7 @@ def _viewer_raw(nodes, beams, cols, base, cases, combos, supports) -> dict[str, 
         "nodes": [{"id": n.id, "x": n.x, "y": n.y, "z": n.z} for n in nodes],
         "supports": [s.node_id for s in supports],
         "members": members, "cases": list(cases), "combos": combos,
-        "forces": forces, "displacements_mm": disp,
+        "forces": forces, "forces6": forces6, "displacements_mm": disp,
         "reactions": {c: {nid: [r3(x) for x in v] for nid, v in base[c]["supp"].items()} for c in cases},
     }
 
@@ -1169,6 +1207,8 @@ def _viewer_payload(raw: dict[str, Any], inp: "Frame3dInputs", design: dict[str,
                         "rebar": (f"{g.get('top_bars')} / {g.get('bottom_bars')}" if m["type"] == "beam" else g.get("bars")) if g else None})
     return {**{k: v[k] for k in ("nodes", "supports", "cases", "combos", "forces", "displacements_mm", "reactions")},
             "members": members,
+            "forces6": v.get("forces6") or {},
+            "material": {"type": "concrete", "fc_mpa": inp.fc_mpa, "fy_mpa": inp.fy_mpa},
             "footings": (fdn or {}).get("footings") or [],
             "diaphragm_levels": list(range(1, inp.storeys + 1)),
             "modes": (raw.get("modal") or {}).get("shapes") or []}

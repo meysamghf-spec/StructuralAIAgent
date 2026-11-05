@@ -249,4 +249,8 @@ def structural_set_pdf(sid: str, account: Annotated[AuthenticatedAccount, Depend
         raise HTTPException(404, "not found")
     if not p.exists():
         raise HTTPException(404, "no PDF for this set")
+    from app.application.results_package import empty_download_problem
+    problem = empty_download_problem("set.pdf", p.read_bytes())
+    if problem:
+        raise HTTPException(500, f"The generated file is empty ({problem}) — not sent. / فایل ساخته‌شده خالی بود و ارسال نشد.")
     return FileResponse(p, media_type="application/pdf", filename="structural-drawing-set.pdf")

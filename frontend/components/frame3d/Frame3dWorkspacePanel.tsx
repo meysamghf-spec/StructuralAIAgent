@@ -118,7 +118,7 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
         const apply = (chat: ProjectFrame | null) => {
           if (getCurrentProjectId() !== pid) return;
           setValues((prev) => {
-            const r = prefillGeometry(prev, chat);
+            const r = prefillGeometry(prev, chat, new Set(Object.keys(saved ?? {})));
             if (r.fromChat.length || r.assumed.length)
               setPrefill({ fromChat: r.fromChat, assumed: r.assumed, chatTitle: chat?.chat_title ?? null, sourceLabel: chat?.label });
             return r.values;

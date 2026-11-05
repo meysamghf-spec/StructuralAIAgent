@@ -112,6 +112,15 @@ export function barsLabel(g: OptGroup): string {
   return "—";
 }
 
+/** Top/bottom rebar as separate lines (Persian labels) for stacked display; null when only a single bars string exists. */
+export function barsLines(g: OptGroup): { label: string; value: string }[] | null {
+  if (g.bars || !(g.top_bars || g.bottom_bars)) return null;
+  return [
+    { label: "بالا", value: g.top_bars ?? "—" },
+    { label: "پایین", value: g.bottom_bars ?? "—" },
+  ];
+}
+
 export function savingsPct(r: Pick<OptResult, "cost" | "initial_cost">): number | null {
   if (!r.initial_cost || !(r.initial_cost > 0)) return null;
   return Math.round(((r.initial_cost - r.cost) / r.initial_cost) * 1000) / 10;
@@ -145,6 +154,7 @@ export type ProjectFrame = {
   inputs: Record<string, unknown>;
   from_chat: string[];
   assumed: string[];
+  limit_warning?: { en: string; fa: string } | null;
 };
 
 /** The project's frame from its whole chat history (same resolver as optimization); defaults filled for missing geometry. */
