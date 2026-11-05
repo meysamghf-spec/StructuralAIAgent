@@ -1,7 +1,7 @@
 "use client";
 
 import { CostBreakdownTable } from "./CostBreakdownTable";
-import { barsLabel, costChangeText, fmtNum, savingsPct, type OptResult } from "@/lib/optimization-full";
+import { barsLabel, barsLines, costChangeText, fmtNum, savingsPct, type OptResult } from "@/lib/optimization-full";
 
 /** Result of a full section optimization (Optimization page and chat card). */
 export function OptResultView({ r, assumptionsOpen = false }: { r: OptResult; assumptionsOpen?: boolean }) {
@@ -17,15 +17,22 @@ export function OptResultView({ r, assumptionsOpen = false }: { r: OptResult; as
         {r.quantities.steel_kg ? ` — فولاد ${fmtNum(r.quantities.steel_kg)} kg` : ""} — {fmtNum(r.evaluations)} تحلیل در {fmtNum(r.elapsed_s, 1)} ثانیه
       </p>
       <CostBreakdownTable r={r} />
-      <div style={{ overflowX: "auto" }}>
+      <div className="opt-table-scroll" data-testid="opt-groups-table">
         <table className="data-table" style={{ minWidth: 560, width: "100%" }}>
-          <thead><tr><th>گروه</th><th>اعضا</th><th>مقطع</th><th>میلگرد</th><th>خاموت / تنگ</th><th>D/C</th></tr></thead>
+          <thead><tr><th>گروه</th><th>اعضا (تعداد)</th><th>مقطع (mm)</th><th>میلگرد طولی (Φ mm)</th><th>خاموت / تنگ (Φ mm @ mm)</th><th>D/C (–)</th></tr></thead>
           <tbody>
             {r.groups.map((g) => (
               <tr key={g.group}>
-                <td>{g.label}</td><td>{fmtNum(g.members)}</td><td dir="ltr">{g.section}</td>
-                <td dir="ltr">{barsLabel(g)}</td><td dir="ltr" style={{ fontSize: 12 }}>{g.stirrups ?? g.ties ?? "—"}</td>
-                <td style={{ color: g.DC > 1 ? "#b91c1c" : undefined }}>{fmtNum(g.DC, 2)}</td>
+                <td>{g.label}</td><td className="num">{fmtNum(g.members)}</td><td className="num"><bdi dir="ltr" className="ltr-iso">{g.section}</bdi></td>
+                <td className="num">{(() => {
+                  const lines = barsLines(g);
+                  if (!lines) return <bdi dir="ltr" className="ltr-iso">{barsLabel(g)}</bdi>;
+                  return lines.map((l) => (
+                    <div key={l.label} className="rebar-line"><span>{l.label}:</span> <bdi dir="ltr" className="ltr-iso">{l.value}</bdi></div>
+                  ));
+                })()}</td>
+                <td className="num" style={{ fontSize: 12 }}><bdi dir="ltr" className="ltr-iso">{g.stirrups ?? g.ties ?? "—"}</bdi></td>
+                <td className="num" style={{ color: g.DC > 1 ? "#b91c1c" : undefined }}>{fmtNum(g.DC, 2)}</td>
               </tr>
             ))}
           </tbody>
