@@ -40,3 +40,16 @@ describe("validateGeometry limits", () => {
     expect(validateGeometry(base, {}, "en", keys)).toEqual({});
   });
 });
+
+describe("prefill of non-geometry values from the project's chats", () => {
+  it("replaces generic defaults with chat values but keeps saved ones", () => {
+    const vals = { storeys: "", bays_x: "", bays_y: "", bay_x_m: "", bay_y_m: "", storey_height_m: "3.2", dead_kn_m2: "6", live_kn_m2: "2" };
+    const chat = { inputs: { storeys: 5, bays_x: 3, bays_y: 3, bay_x_m: 6, bay_y_m: 6, storey_height_m: 3.5, dead_kn_m2: 7, live_kn_m2: 2.5 },
+      from_chat: ["storeys", "bays_x", "bays_y", "bay_x_m", "bay_y_m", "storey_height_m", "dead_kn_m2", "live_kn_m2"] };
+    const r = prefillGeometry(vals, chat, new Set(["live_kn_m2"]));
+    expect(r.values.storey_height_m).toBe("3.5");
+    expect(r.values.dead_kn_m2).toBe("7");
+    expect(r.values.live_kn_m2).toBe("2");
+    expect(r.assumed).toEqual([]);
+  });
+});

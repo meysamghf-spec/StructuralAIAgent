@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 
 from app.api.deps import get_accessible_project, get_pem_service
@@ -94,6 +94,10 @@ def download_current_drawing_set_pdf(
 ) -> Response:
     drawing_set = drawings.current_drawing_set(project_id)
     pdf = render_drawing_set_pdf(drawing_set)
+    from app.application.results_package import empty_download_problem
+    problem = empty_download_problem("set.pdf", pdf)
+    if problem:
+        raise HTTPException(500, f"The generated file is empty ({problem}) — not sent. / فایل ساخته‌شده خالی بود و ارسال نشد.")
     version = drawing_set.pem_version if drawing_set.pem_version is not None else 0
     filename = f"drawing-set-{project_id}-v{version}.pdf"
     return Response(

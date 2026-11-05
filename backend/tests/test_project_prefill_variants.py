@@ -59,3 +59,14 @@ def test_run_missing_fields_filled_from_chat_before_defaults():
     conv = _Conv({p: ([run], ["قاب ۴ طبقه ۲ دهنه ۷ متری در هر دو جهت با ارتفاع طبقه ۳.۵ متر"])})
     r = resolve_project_frame(conv, None, p)
     assert r["inputs"]["bay_x_m"] == 7.0 and r["inputs"]["storey_height_m"] == 3.5 and r["assumed"] == []
+
+
+@pytest.mark.parametrize("text", [
+    "قاب ۵ طبقه ۳ دهنه ۶ متری در هر دو جهت، ارتفاع طبقه ۳.۵ متر، بار مرده ۷ و بار زنده ۲.۵ کیلونیوتن بر متر مربع",
+    "5 storey frame 3x3 bays of 6 m, storey height 3.5 m, dead load 7 kN/m2, live load 2.5 kN/m2",
+])
+def test_loads_and_height_come_from_project_chat(text):
+    p = str(uuid4())
+    r = resolve_project_frame(_Conv({p: ([], [text])}), None, p)
+    assert r["inputs"]["dead_kn_m2"] == 7.0 and r["inputs"]["live_kn_m2"] == 2.5
+    assert {"dead_kn_m2", "live_kn_m2", "storey_height_m"} <= set(r["found_keys"])

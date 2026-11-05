@@ -3378,3 +3378,15 @@ body.chat-dock-resizing { cursor: col-resize; user-select: none; }
   .chat-dock--sheet { top: auto; left: 0; right: 0; width: 100vw; height: min(78dvh, 640px); border-left: none; border-top: 1px solid #334155; border-radius: 16px 16px 0 0; box-shadow: 0 -10px 30px #000a; z-index: 950; padding-bottom: env(safe-area-inset-bottom); }
   .chat-dock-grabber { width: 44px; height: 5px; border-radius: 3px; background: #475569; margin: 6px auto 0; flex: none; }
 }
+
+/* All result tables on every page (analysis, design, detailing, report, model, optimization, inspector): on mobile they
+   scroll horizontally instead of wrapping numbers/units/sections (generalises #98). */
+@media (max-width: 960px) {
+  .engineering-result-table, .an-table, .mini-table, .data-table, .v3d-table, .billing-table {
+    display: block; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch;
+  }
+  .engineering-result-table th, .engineering-result-table td, .an-table th, .an-table td,
+  .mini-table th, .mini-table td, .data-table th, .data-table td.num, .v3d-table th, .v3d-table td {
+    white-space: nowrap;
+  }
+}

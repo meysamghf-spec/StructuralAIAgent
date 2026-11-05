@@ -14,6 +14,7 @@ const blank = (v: string | undefined) => !v || !v.trim();
 export function prefillGeometry(
   values: Record<string, string>,
   chat: { inputs: Record<string, unknown>; from_chat: string[] } | null,
+  keep?: Set<string>,
 ): { values: Record<string, string>; fromChat: string[]; assumed: string[] } {
   const out = { ...values };
   const fromChat: string[] = [];
@@ -28,6 +29,15 @@ export function prefillGeometry(
       out[k] = String(GEOMETRY_DEFAULTS[k]);
       assumed.push(k);
     }
+  }
+  // Non-geometry values the project's own chats gave (storey height, sections, materials, loads, seismic data):
+  // they replace the generic defaults, but never a value saved/typed for this project.
+  for (const k of chat?.from_chat ?? []) {
+    if ((REQUIRED_GEOMETRY as readonly string[]).includes(k) || keep?.has(k)) continue;
+    const v = chat?.inputs?.[k];
+    if (v === null || v === undefined || String(v).trim() === "") continue;
+    out[k] = String(v);
+    fromChat.push(k);
   }
   return { values: out, fromChat, assumed };
 }

@@ -17,6 +17,10 @@ from uuid import UUID
 from app.application.frame3d_followup import DEFAULTS
 
 GEOMETRY = ("storeys", "bays_x", "bays_y", "bay_x_m", "bay_y_m", "storey_height_m")
+# Every form field the project's own chats/runs may supply (geometry, sections, materials, loads, seismic data).
+_PREFILL_KEYS = GEOMETRY + ("column_b_m", "column_h_m", "beam_b_m", "beam_h_m", "slab_t_m", "fc_mpa", "fy_mpa",
+                            "dead_kn_m2", "live_kn_m2", "roof_live_kn_m2", "wall_kn_m", "zone", "soil", "importance",
+                            "system", "allowable_bearing_kpa")
 _FA_DIGITS = str.maketrans("0123456789.", "۰۱۲۳۴۵۶۷۸۹٫")
 
 LABELS = {
@@ -148,5 +152,6 @@ def resolve_project_frame(conv, account, project_id: str | None, *, include_defa
         raw = {**raw, **{k: txt[k] for k in GEOMETRY if raw.get(k) is None and txt.get(k) is not None}}
     inputs, assumed = _fill(raw)
     notes = [f"{_KEY_FA[k]}: {_fa(float(inputs[k]) if isinstance(inputs[k], float) else inputs[k])} (پیش‌فرض)" for k in assumed]
+    found_keys = [k for k, v in raw.items() if v is not None and k in _PREFILL_KEYS]
     return {"source": source, "inputs": inputs, "assumed": assumed, "assumptions_fa": notes, "label": LABELS[source],
-            "chat_title": chat_title or None}
+            "chat_title": chat_title or None, "found_keys": found_keys}
