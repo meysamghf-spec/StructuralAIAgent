@@ -1082,6 +1082,7 @@ def _loc(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 MAX_MODE_SHAPES = 6
+MAX_INSPECTOR_MEMBERS = 4000
 
 
 def _viewer_raw(nodes, beams, cols, base, cases, combos, supports) -> dict[str, Any]:
@@ -1095,10 +1096,17 @@ def _viewer_raw(nodes, beams, cols, base, cases, combos, supports) -> dict[str, 
     members = [{"id": bid, "i": a, "j": b, "type": "beam", "storey": k} for bid, a, b, k, *_ in beams] + \
               [{"id": cid, "i": a, "j": b, "type": "column", "storey": k} for cid, a, b, k in cols]
     forces: dict[str, dict[str, list[float]]] = {}
+    forces6: dict[str, dict[str, list[float]]] = {}
     disp: dict[str, dict[str, list[float]]] = {}
+    # Member inspector: full local end forces (skipped for very large models to keep the payload small).
+    with_f6 = len(members) <= MAX_INSPECTOR_MEMBERS
     for c in cases:
         ends, w = base[c]["ends"], base[c]["w"]
         row = {}
+        if with_f6:
+            # [N, V2, V3, T, M2, M3] at i then j; i-end as the solver's local end force, j-end negated
+            # (same sign as the existing N (compression +) / M j convention).
+            forces6[c] = {m["id"]: [r3(x) for x in ends[m["id"]][:6]] + [r3(-x) for x in ends[m["id"]][6:12]] for m in members}
         for m in members:
             f = ends[m["id"]]
             if m["type"] == "beam":
@@ -1114,7 +1122,7 @@ def _viewer_raw(nodes, beams, cols, base, cases, combos, supports) -> dict[str, 
         "nodes": [{"id": n.id, "x": n.x, "y": n.y, "z": n.z} for n in nodes],
         "supports": [s.node_id for s in supports],
         "members": members, "cases": list(cases), "combos": combos,
-        "forces": forces, "displacements_mm": disp,
+        "forces": forces, "forces6": forces6, "displacements_mm": disp,
         "reactions": {c: {nid: [r3(x) for x in v] for nid, v in base[c]["supp"].items()} for c in cases},
     }
 
@@ -1169,6 +1177,8 @@ def _viewer_payload(raw: dict[str, Any], inp: "Frame3dInputs", design: dict[str,
                         "rebar": (f"{g.get('top_bars')} / {g.get('bottom_bars')}" if m["type"] == "beam" else g.get("bars")) if g else None})
     return {**{k: v[k] for k in ("nodes", "supports", "cases", "combos", "forces", "displacements_mm", "reactions")},
             "members": members,
+            "forces6": v.get("forces6") or {},
+            "material": {"type": "concrete", "fc_mpa": inp.fc_mpa, "fy_mpa": inp.fy_mpa},
             "footings": (fdn or {}).get("footings") or [],
             "diaphragm_levels": list(range(1, inp.storeys + 1)),
             "modes": (raw.get("modal") or {}).get("shapes") or []}
