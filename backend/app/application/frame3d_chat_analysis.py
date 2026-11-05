@@ -327,6 +327,16 @@ def _parse_bays_along_length(t: str, inp: "Frame3dInputs") -> None:
         setattr(inp, ck, n); setattr(inp, sk, round(L / n, 3)); inp.parsed += [ck, sk]
 
 
+_BY_BAYS = re.compile(r"(\d+)\s*(?:دهانه|bays?)\s*(?:در|×|x|\*|by|ضرب(?:\s*در)?)\s*(\d+)\s*(?:دهانه|bays?)", re.I)
+
+
+def _parse_bays_by_bays(t: str, inp: "Frame3dInputs") -> None:
+    """«۳ دهانه در ۳ دهانه» / «3 bays by 4 bays» -> bays_x, bays_y."""
+    m = _BY_BAYS.search(t)
+    if m and int(m.group(1)) > 0 and int(m.group(2)) > 0:
+        inp.bays_x, inp.bays_y = int(m.group(1)), int(m.group(2)); inp.parsed += ["bays_x", "bays_y"]
+
+
 def parse_frame3d_request(user_request: str) -> Frame3dInputs:
     t = _fa_numbers(_norm(user_request))
     inp = Frame3dInputs()
@@ -338,6 +348,8 @@ def parse_frame3d_request(user_request: str) -> Frame3dInputs:
         setattr(inp, key, val); inp.parsed.append(key)
     if not ({"bays_x", "bays_y"} & set(bp.counts)):
         _parse_bays_along_length(t, inp)
+    if not ({"bays_x", "bays_y"} & set(inp.parsed)):
+        _parse_bays_by_bays(t, inp)
     if not ({"bays_x", "bays_y"} & set(inp.parsed)):
         inp.pending_bays = bp.ambiguous
     _parse_fa_storey_height(t, inp)

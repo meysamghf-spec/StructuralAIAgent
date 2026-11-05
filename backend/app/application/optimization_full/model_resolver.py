@@ -142,6 +142,10 @@ def resolve_project_frame(conv, account, project_id: str | None, *, include_defa
         return {"source": "default", "inputs": inputs, "assumed": assumed, "assumptions_fa": default_assumptions_fa(),
                 "label": LABELS["default"], "chat_title": None}
     source, raw = found
+    if source != "chat_text" and project_id and conv is not None and any(raw.get(k) is None for k in GEOMETRY):
+        # A run without some geometry: take the missing fields from the project's own chat messages before defaults.
+        txt = inputs_from_texts(_project_user_texts(conv, account, project_id)) or {}
+        raw = {**raw, **{k: txt[k] for k in GEOMETRY if raw.get(k) is None and txt.get(k) is not None}}
     inputs, assumed = _fill(raw)
     notes = [f"{_KEY_FA[k]}: {_fa(float(inputs[k]) if isinstance(inputs[k], float) else inputs[k])} (پیش‌فرض)" for k in assumed]
     return {"source": source, "inputs": inputs, "assumed": assumed, "assumptions_fa": notes, "label": LABELS[source],
