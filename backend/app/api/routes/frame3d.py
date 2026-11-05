@@ -16,6 +16,8 @@ from app.application.analysis.frame3d_solver import SpaceFrameSolverError
 from app.application.frame3d_chat_analysis import build_frame3d_payload, run_frame3d_for_export
 from app.domain.models.user import AuthenticatedAccount
 
+import logging as _logging
+logger = _logging.getLogger(__name__)
 router = APIRouter(prefix="/frame3d", tags=["frame3d"])
 
 
@@ -251,6 +253,10 @@ def download_item(body: Frame3dDownloadRequest, acc: Annotated[AuthenticatedAcco
         raise HTTPException(404, f"unknown or empty item {body.kind}/{body.name}") from exc
     except (TypeError, ValueError, SpaceFrameSolverError) as exc:
         raise HTTPException(422, f"Cannot build this download: {exc}") from exc
+    problem = rp.empty_download_problem(name, data)
+    if problem:
+        logger.error("refusing empty download %s/%s: %s", body.kind, body.name, problem)
+        raise HTTPException(500, f"The generated file is empty ({problem}) — not sent. / فایل ساخته‌شده خالی بود و ارسال نشد.")
     headers = {"Content-Disposition": f'attachment; filename="{name}"'}
     if body.save_to_files and body.project_id:
         headers["X-File-Id"] = _saver(files, body.project_id, acc)(name, data, mime)

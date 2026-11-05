@@ -357,6 +357,8 @@ def render_pdf(sheets: list[Sheet]) -> bytes:
             if lay.name.lower() == "model" or len(lay) == 0:
                 continue
             be = pmb.PyMuPdfBackend()
+            from app.application.autocad.pdf_fonts import require_fonts
+            require_fonts()
             Frontend(RenderContext(sh.doc), be, config=cfg).draw_layout(lay, finalize=True)
             w, h = lay.dxf.paper_width or 420, lay.dxf.paper_height or 297
             page = dlayout.Page(w, h, dlayout.Units.mm)
