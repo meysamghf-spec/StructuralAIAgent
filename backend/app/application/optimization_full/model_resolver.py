@@ -161,11 +161,15 @@ def resolve_project_frame(conv, account, project_id: str | None, *, include_defa
         newer_texts = [t for t, _, created_at in titled if created_at and created_at > found_at]
         newer_chat = inputs_from_texts(newer_texts) or {}
         if newer_chat:
-            if any(k in newer_chat for k in GEOMETRY):
+            geometry_restart = any(k in newer_chat for k in GEOMETRY)
+            if geometry_restart:
                 # A new geometry request starts a new model definition; do not silently carry old spans/heights.
                 raw = {k: v for k, v in raw.items() if k not in GEOMETRY}
             raw.update(newer_chat)
             chat_updated_keys = list(newer_chat)
+            if geometry_restart:
+                # Include newly assumed geometry too, so stale browser values are replaced by explicit defaults.
+                chat_updated_keys = list(dict.fromkeys([*chat_updated_keys, *GEOMETRY]))
             chat_title = next((title for t, title, created_at in titled
                                if created_at and created_at > found_at and inputs_from_texts([t])), chat_title)
 
