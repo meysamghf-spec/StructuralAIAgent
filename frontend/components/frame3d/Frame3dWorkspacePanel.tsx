@@ -143,7 +143,10 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
               setPendingChatSpec(true);
               if (mode !== "model") setNote(t("A newer chat specification was loaded. Review the model inputs before running analysis."));
             }
-            if (mode === "model") setValues(inputsToForm({ ...DEFAULT_FRAME_INPUTS, ...next }));
+            if (mode === "model") {
+              setValues(inputsToForm({ ...DEFAULT_FRAME_INPUTS, ...next }));
+              setPrefill({ fromChat: chat.from_chat, assumed: chat.assumed, chatTitle: chat.chat_title, sourceLabel: chat.label });
+            }
             return;
           }
           if (mode === "model") {
@@ -296,6 +299,12 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
           {optView === "optimized" && hasGroupSections(loadFrame3dInputs(projectId)) ? (
             <p className="muted">نمایش مقاطع بهینه‌شده (تحلیل مجدد). برای مقایسه «مدل اولیه» را بزنید.</p>
           ) : null}
+        </div>
+      ) : null}
+      {pendingChatSpec && mode !== "model" ? (
+        <div className="alert warning" role="status" data-testid="chat-spec-review">
+          {t("A newer project-chat specification replaced the previous model. Review its spans and assumptions on the Model page before running a new analysis.")}{" "}
+          <Link href="/workspace/model">{t("Review Model")}</Link>
         </div>
       ) : null}
       {note ? <p className="muted">{note}</p> : null}
