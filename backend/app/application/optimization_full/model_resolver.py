@@ -11,6 +11,7 @@ the user never has to type «assume defaults».
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -47,6 +48,17 @@ def default_assumptions_fa() -> list[str]:
         "بارها و ترکیب‌بارها طبق مبحث ۶؛ طراحی و کنترل‌ها طبق مبحث ۹",
         "مقاطع: کاتالوگ استاندارد با گام ۵ سانتی‌متر",
     ]
+
+
+def _timestamp_key(value: Any) -> float:
+    """Compare database datetimes and ISO timestamps consistently, including same-day values."""
+    try:
+        dt = value if isinstance(value, datetime) else datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.timestamp()
+    except (TypeError, ValueError, OverflowError):
+        return float("-inf")
 
 
 def _project_runs(conv, account, project_id: str) -> list[dict[str, Any]]:
@@ -119,7 +131,7 @@ def resolve_project_frame(conv, account, project_id: str | None, *, include_defa
 
     found: tuple[str, dict[str, Any]] | None = None
     chat_title: str | None = None
-    found_at = ""
+    found_at = float("-inf")
     titled: list[tuple[str, str, str]] = []
     chat_updated_keys: list[str] = []
     if project_id and conv is not None:
@@ -129,7 +141,7 @@ def resolve_project_frame(conv, account, project_id: str | None, *, include_defa
         if run:
             found = ("frame", dict(run["inputs"]))
             chat_title = run.get("conversation_title")
-            found_at = str(run.get("created_at") or "")
+            found_at = _timestamp_key(run.get("created_at"))
         if found is None:
             for r in sorted(runs, key=lambda r: str(r.get("created_at") or ""), reverse=True):
                 ins = r.get("inputs")
@@ -138,7 +150,7 @@ def resolve_project_frame(conv, account, project_id: str | None, *, include_defa
                 ):
                     found = ("optimization" if r.get("kind") == "frame_optimization" else "frame", dict(ins))
                     chat_title = r.get("conversation_title")
-                    found_at = str(r.get("created_at") or "")
+                    found_at = _timestamp_key(r.get("created_at"))
                     break
         if found is None:
             ins = inputs_from_texts([t for t, _, _ in titled])
@@ -158,7 +170,7 @@ def resolve_project_frame(conv, account, project_id: str | None, *, include_defa
         # Older chat text may fill gaps, but a newer explicit project-chat specification supersedes an older run.
         all_chat = inputs_from_texts([t for t, _, _ in titled]) or {}
         raw = {**raw, **{k: all_chat[k] for k in GEOMETRY if raw.get(k) is None and all_chat.get(k) is not None}}
-        newer_texts = [t for t, _, created_at in titled if created_at and created_at > found_at]
+        newer_texts = [t for t, _, created_at in titled if _timestamp_key(created_at) > found_at]
         newer_chat = inputs_from_texts(newer_texts) or {}
         if newer_chat:
             geometry_restart = any(k in newer_chat for k in GEOMETRY)
@@ -171,7 +183,7 @@ def resolve_project_frame(conv, account, project_id: str | None, *, include_defa
                 # Include newly assumed geometry too, so stale browser values are replaced by explicit defaults.
                 chat_updated_keys = list(dict.fromkeys([*chat_updated_keys, *GEOMETRY]))
             chat_title = next((title for t, title, created_at in titled
-                               if created_at and created_at > found_at and inputs_from_texts([t])), chat_title)
+                               if _timestamp_key(created_at) > found_at and inputs_from_texts([t])), chat_title)
 
     inputs, assumed = _fill(raw)
     notes = [f"{_KEY_FA[k]}: {_fa(float(inputs[k]) if isinstance(inputs[k], float) else inputs[k])} (پیش‌فرض)" for k in assumed]
