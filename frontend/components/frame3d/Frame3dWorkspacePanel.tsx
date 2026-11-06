@@ -21,6 +21,7 @@ import { getCurrentProjectId, PROJECT_EVENT } from "@/lib/current-project";
 import {
   DEFAULT_FRAME_INPUTS,
   FRAME3D_EVENT,
+  clearFrame3dPayload,
   inputsToForm,
   loadFrame3dInputs,
   loadFrame3dPayload,
@@ -76,14 +77,17 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
   // Original/optimized toggle, present once an optimization was applied to this project.
   const [optView, setOptViewState] = useState<OptView | null>(null);
   const [prefill, setPrefill] = useState<PrefillInfo | null>(null);
+  const [pendingChatSpec, setPendingChatSpec] = useState(false);
 
   useEffect(() => {
-    const sync = () => {
+    const sync = (event?: Event) => {
+      const fromFrameEvent = event?.type === FRAME3D_EVENT;
       const pid = getCurrentProjectId();
       if (!pid) void ensureCurrentProject();
       setProjectId(pid);
       setError(null);
       setNote(null);
+      if (!fromFrameEvent) setPendingChatSpec(false);
       setPayload(loadFrame3dPayload(pid));
       const saved = loadFrame3dInputs(pid);
       setSavedKey(saved ? JSON.stringify(saved) : "");
@@ -145,6 +149,7 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
       const p = await runFrame3d(inputs, assumeDefaults);
       saveFrame3dInputs(projectId, inputs);
       saveFrame3dPayload(projectId, p);
+      setPendingChatSpec(false);
       setPayload(p);
       setNote(t("Saved to this project."));
     } catch (err) {
@@ -155,11 +160,11 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
   }
 
   useEffect(() => {
-    if ((mode === "analysis" || mode === "results" || mode === "design" || mode === "foundation") && !payload && !busy && loadFrame3dInputs(projectId)) {
+    if ((mode === "analysis" || mode === "results" || mode === "design" || mode === "foundation") && !payload && !busy && !pendingChatSpec && loadFrame3dInputs(projectId)) {
       void run({ ...loadFrame3dInputs(projectId)!, lang });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, payload, projectId, savedKey]);
+  }, [mode, payload, projectId, savedKey, pendingChatSpec]);
 
   // A newer «بهینه کن» in the chat becomes the model shown here (optimized sections, re-analysed).
   useEffect(() => {
