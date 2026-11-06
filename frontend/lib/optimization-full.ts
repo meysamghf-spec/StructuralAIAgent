@@ -153,6 +153,7 @@ export type ProjectFrame = {
   chat_title: string | null;
   inputs: Record<string, unknown>;
   from_chat: string[];
+  update_from_chat?: string[];
   assumed: string[];
   limit_warning?: { en: string; fa: string } | null;
 };
