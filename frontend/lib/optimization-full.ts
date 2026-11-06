@@ -153,6 +153,7 @@ export type ProjectFrame = {
   chat_title: string | null;
   inputs: Record<string, unknown>;
   from_chat: string[];
+  update_from_chat?: string[];
   assumed: string[];
   limit_warning?: { en: string; fa: string } | null;
 };
@@ -162,6 +163,12 @@ export type ProjectFrame = {
 // per project for a short while so the server resolves the chat history once, not N times.
 const frameCache = new Map<string, { at: number; p: Promise<ProjectFrame> }>();
 const FRAME_TTL_MS = 30_000;
+
+/** Invalidate after a successful chat write; otherwise SPA navigation can reuse a pre-chat frame. */
+export function invalidateProjectFrame(projectId?: string | null): void {
+  if (projectId) frameCache.delete(projectId);
+  else frameCache.clear();
+}
 
 export async function getProjectFrame(projectId: string): Promise<ProjectFrame> {
   const hit = frameCache.get(projectId);

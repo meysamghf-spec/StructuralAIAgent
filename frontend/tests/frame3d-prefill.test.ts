@@ -53,3 +53,19 @@ describe("prefill of non-geometry values from the project's chats", () => {
     expect(r.assumed).toEqual([]);
   });
 });
+
+
+describe("newer chat specification synchronization", () => {
+  it("overrides stale saved fields only when the backend marks them as newer chat updates", () => {
+    const saved = { storeys: "3", bays_x: "2", bays_y: "200", bay_x_m: "5", bay_y_m: "5", storey_height_m: "3.2" };
+    const chat = {
+      inputs: { storeys: 15, bays_x: 2, bays_y: 5, bay_x_m: 5, bay_y_m: 5, storey_height_m: 3.2 },
+      from_chat: ["storeys", "bays_x", "bays_y", "bay_x_m", "bay_y_m", "storey_height_m"],
+      update_from_chat: ["storeys", "bays_x", "bays_y"],
+    };
+    const r = prefillGeometry(saved, chat, new Set(Object.keys(saved)));
+    expect(r.values).toMatchObject({ storeys: "15", bays_x: "2", bays_y: "5" });
+    expect(r.values.bay_x_m).toBe("5");
+    expect(r.fromChat).toEqual(["storeys", "bays_x", "bays_y"]);
+  });
+});

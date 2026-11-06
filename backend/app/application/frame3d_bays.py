@@ -41,7 +41,7 @@ NOUN = r"(?:bays?|spans?|دهانه)"
 SUF = r"(?:\s*(?:ها|های|ی|ای))?"
 INTRO = r"(?:of|@|at|each|spaced\s+at|به\s*طول|به\s*عرض|هر\s*کدام|هرکدام|به\s*اندازه)"
 PREP = r"(?:in|along|on|for|towards?)"
-KEY = r"(?:جهت|راستای|راستا|امتداد|محور|سمت)"
+KEY = r"(?:جهت|راستا\s*ی?|امتداد|محور|سمت)"
 
 
 def _dir(name: str, *, bare: bool = False) -> str:

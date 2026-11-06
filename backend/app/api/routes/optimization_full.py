@@ -126,7 +126,7 @@ def project_frame(project_id: str, acc: Annotated[AuthenticatedAccount, Depends(
         "source": res["source"], "label": res["label"], "chat_title": res.get("chat_title"),
         "inputs": {k: v for k, v in inputs.items() if isinstance(v, (int, float, str, bool)) or v is None},
         "from_chat": [k for k in GEOMETRY if k not in assumed] + [k for k in res.get("found_keys", []) if k not in GEOMETRY]
-        if res["source"] != "default" else [], "assumed": assumed,
+        if res["source"] != "default" else [], "update_from_chat": res.get("chat_updated_keys", []), "assumed": assumed,
     }
 
 
