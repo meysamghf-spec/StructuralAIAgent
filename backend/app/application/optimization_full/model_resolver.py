@@ -58,11 +58,11 @@ def _project_runs(conv, account, project_id: str) -> list[dict[str, Any]]:
 
 def _project_user_texts(conv, account, project_id: str, limit: int = 400) -> list[str]:
     """User messages of every chat in the project, newest first."""
-    return [t for t, _ in _project_user_texts_titled(conv, account, project_id, limit)]
+    return [t for t, _, _ in _project_user_texts_titled(conv, account, project_id, limit)]
 
 
-def _project_user_texts_titled(conv, account, project_id: str, limit: int = 400) -> list[tuple[str, str]]:
-    """(text, chat title) of every user message in the project's chats, newest first."""
+def _project_user_texts_titled(conv, account, project_id: str, limit: int = 400) -> list[tuple[str, str, str]]:
+    """(text, chat title, created_at) of every user message in the project's chats, newest first."""
     out: list[tuple[str, str, str]] = []
     try:
         convs = conv.list_conversations(account, project_id=UUID(project_id), limit=200)
@@ -79,7 +79,7 @@ def _project_user_texts_titled(conv, account, project_id: str, limit: int = 400)
             if str(getattr(m.role, "value", m.role)).lower() == "user" and (m.content or "").strip():
                 out.append((str(getattr(m, "created_at", "")), m.content, str(getattr(c, "title", "") or "")))
     out.sort(key=lambda t: t[0], reverse=True)
-    return [(t, title) for _, t, title in out[:limit]]
+    return [(t, title, created_at) for created_at, t, title in out[:limit]]
 
 
 def inputs_from_texts(texts: list[str]) -> dict[str, Any] | None:
@@ -119,13 +119,34 @@ def resolve_project_frame(conv, account, project_id: str | None, *, include_defa
 
     found: tuple[str, dict[str, Any]] | None = None
     chat_title: str | None = None
+    found_at = ""
+    titled: list[tuple[str, str, str]] = []
+    chat_updated_keys: list[str] = []
     if project_id and conv is not None:
         runs = _project_runs(conv, account, project_id)
+        titled = _project_user_texts_titled(conv, account, project_id)
         run = pick_usable_frame_run(runs)
         if run:
             found = ("frame", dict(run["inputs"]))
             chat_title = run.get("conversation_title")
+            found_at = str(run.get("created_at") or "")
         if found is None:
+            for r in sorted(runs, key=lambda r: str(r.get("created_at") or ""), reverse=True):
+                ins = r.get("inputs")
+                if r.get("kind") in ("frame_optimization", "frame3d_analysis") and isinstance(ins, dict) and any(
+                    ins.get(k) is not None for k in ("storeys", "bays_x", "bays_y")
+                ):
+                    found = ("optimization" if r.get("kind") == "frame_optimization" else "frame", dict(ins))
+                    chat_title = r.get("conversation_title")
+                    found_at = str(r.get("created_at") or "")
+                    break
+        if found is None:
+            ins = inputs_from_texts([t for t, _, _ in titled])
+            if ins:
+                found = ("chat_text", ins)
+                chat_title = next((title for t, title, _ in titled if inputs_from_texts([t])), None)
+                chat_updated_keys = list(ins)
+    if found is None:
             for r in sorted(runs, key=lambda r: str(r.get("created_at") or ""), reverse=True):
                 ins = r.get("inputs")
                 if r.get("kind") in ("frame_optimization", "frame3d_analysis") and isinstance(ins, dict) and \
@@ -146,12 +167,22 @@ def resolve_project_frame(conv, account, project_id: str | None, *, include_defa
         return {"source": "default", "inputs": inputs, "assumed": assumed, "assumptions_fa": default_assumptions_fa(),
                 "label": LABELS["default"], "chat_title": None}
     source, raw = found
-    if source != "chat_text" and project_id and conv is not None and any(raw.get(k) is None for k in GEOMETRY):
-        # A run without some geometry: take the missing fields from the project's own chat messages before defaults.
-        txt = inputs_from_texts(_project_user_texts(conv, account, project_id)) or {}
-        raw = {**raw, **{k: txt[k] for k in GEOMETRY if raw.get(k) is None and txt.get(k) is not None}}
+    if source != "chat_text" and project_id and conv is not None:
+        # Older chat text may fill gaps, but a newer explicit project-chat specification supersedes an older run.
+        all_chat = inputs_from_texts([t for t, _, _ in titled]) or {}
+        raw = {**raw, **{k: all_chat[k] for k in GEOMETRY if raw.get(k) is None and all_chat.get(k) is not None}}
+        newer_texts = [t for t, _, created_at in titled if created_at and created_at > found_at]
+        newer_chat = inputs_from_texts(newer_texts) or {}
+        if newer_chat:
+            if any(k in newer_chat for k in GEOMETRY):
+                # A new geometry request starts a new model definition; do not silently carry old spans/heights.
+                raw = {k: v for k, v in raw.items() if k not in GEOMETRY}
+            raw.update(newer_chat)
+            chat_updated_keys = list(newer_chat)
+            chat_title = next((title for t, title, created_at in titled
+                               if created_at and created_at > found_at and inputs_from_texts([t])), chat_title)
     inputs, assumed = _fill(raw)
     notes = [f"{_KEY_FA[k]}: {_fa(float(inputs[k]) if isinstance(inputs[k], float) else inputs[k])} (پیش‌فرض)" for k in assumed]
     found_keys = [k for k, v in raw.items() if v is not None and k in _PREFILL_KEYS]
     return {"source": source, "inputs": inputs, "assumed": assumed, "assumptions_fa": notes, "label": LABELS[source],
-            "chat_title": chat_title or None, "found_keys": found_keys}
+            "chat_title": chat_title or None, "found_keys": found_keys, "chat_updated_keys": chat_updated_keys}
