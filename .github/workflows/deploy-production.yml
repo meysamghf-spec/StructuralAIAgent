@@ -1,0 +1,72 @@
+name: SAIA production deploy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: saia-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to production VPS
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Validate deployment secrets
+        env:
+          SSH_HOST: ${{ secrets.SAIA_SSH_HOST }}
+          SSH_USER: ${{ secrets.SAIA_SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SAIA_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SAIA_SSH_KNOWN_HOSTS }}
+        run: |
+          set -eu
+          test -n "$SSH_HOST" || { echo "::error::Missing SAIA_SSH_HOST"; exit 1; }
+          test -n "$SSH_USER" || { echo "::error::Missing SAIA_SSH_USER"; exit 1; }
+          test -n "$SSH_PRIVATE_KEY" || { echo "::error::Missing SAIA_SSH_PRIVATE_KEY"; exit 1; }
+          test -n "$SSH_KNOWN_HOSTS" || { echo "::error::Missing SAIA_SSH_KNOWN_HOSTS"; exit 1; }
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SAIA_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SAIA_SSH_KNOWN_HOSTS }}
+        run: |
+          set -eu
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/saia_deploy
+          chmod 600 ~/.ssh/saia_deploy
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Back up and deploy
+        env:
+          SSH_HOST: ${{ secrets.SAIA_SSH_HOST }}
+          SSH_USER: ${{ secrets.SAIA_SSH_USER }}
+          SSH_PORT: ${{ secrets.SAIA_SSH_PORT }}
+        run: |
+          set -eu
+          PORT="${SSH_PORT:-22}"
+          ssh -i ~/.ssh/saia_deploy -p "$PORT" \
+            -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            "$SSH_USER@$SSH_HOST" 'bash -se' <<'REMOTE'
+          set -euo pipefail
+          cd /opt/sazeh
+          test -f .env.production
+          test -f docker-compose.prod.yml
+          git diff --quiet
+          git diff --cached --quiet
+          git pull --ff-only origin master
+          docker compose --env-file .env.production -f docker-compose.prod.yml config -q
+          bash deploy/backup.sh
+          docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+          docker compose --env-file .env.production -f docker-compose.prod.yml ps
+          REMOTE
+
+      - name: Verify public health endpoints
+        run: |
+          set -eu
+          curl --fail --silent --show-error --retry 12 --retry-delay 10 --retry-connrefused https://structuralai.ir/health
+          curl --fail --silent --show-error --retry 12 --retry-delay 10 --retry-connrefused https://structuralai.ir/ready
