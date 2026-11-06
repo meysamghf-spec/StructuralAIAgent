@@ -41,6 +41,16 @@ export function saveFrame3dPayload(projectId: string | null, payload: unknown): 
   if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(FRAME3D_EVENT));
 }
 
+/** Remove a stale result when a newer project-chat specification changes the model inputs. */
+export function clearFrame3dPayload(projectId: string | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(key("payload", projectId));
+  } catch {
+    /* storage may be unavailable */
+  }
+}
+
 export function loadFrame3dPayload(projectId: string | null): unknown {
   return read<unknown>(key("payload", projectId));
 }
