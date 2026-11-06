@@ -30,3 +30,19 @@ def test_resolver_uses_project_chat_not_defaults():
 def test_limit_warning():
     assert _limit_warning({"storeys": 13, "bays_x": 100, "bays_y": 200})
     assert _limit_warning({"storeys": 4, "bays_x": 3, "bays_y": 3}) is None
+
+
+P3_LATEST = "15 طبقه ۲ دهانه در راستا x ۵ دهانه در راستا ی y داشته باشد"
+
+
+def test_latest_project3_request_parses_two_by_five_bays():
+    i = f3.parse_frame3d_request(P3_LATEST)
+    assert i.storeys == 15
+    assert (i.bays_x, i.bays_y) == (2, 5)
+    assert {"storeys", "bays_x", "bays_y"} <= set(i.parsed)
+
+
+def test_latest_project3_request_is_used_by_project_prefill():
+    ins = inputs_from_texts([P3_LATEST])
+    assert ins is not None
+    assert (ins["storeys"], ins["bays_x"], ins["bays_y"]) == (15, 2, 5)
