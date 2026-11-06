@@ -13,14 +13,15 @@ const blank = (v: string | undefined) => !v || !v.trim();
  */
 export function prefillGeometry(
   values: Record<string, string>,
-  chat: { inputs: Record<string, unknown>; from_chat: string[] } | null,
+  chat: { inputs: Record<string, unknown>; from_chat: string[]; update_from_chat?: string[] } | null,
   keep?: Set<string>,
 ): { values: Record<string, string>; fromChat: string[]; assumed: string[] } {
   const out = { ...values };
   const fromChat: string[] = [];
   const assumed: string[] = [];
   for (const k of REQUIRED_GEOMETRY) {
-    if (!blank(out[k])) continue;
+    const chatUpdate = chat?.update_from_chat?.includes(k) ?? false;
+    if (!blank(out[k]) && !chatUpdate) continue;
     const v = chat?.inputs?.[k];
     if (chat && chat.from_chat.includes(k) && v !== null && v !== undefined && String(v).trim() !== "") {
       out[k] = String(v);
@@ -33,7 +34,7 @@ export function prefillGeometry(
   // Non-geometry values the project's own chats gave (storey height, sections, materials, loads, seismic data):
   // they replace the generic defaults, but never a value saved/typed for this project.
   for (const k of chat?.from_chat ?? []) {
-    if ((REQUIRED_GEOMETRY as readonly string[]).includes(k) || keep?.has(k)) continue;
+    if ((REQUIRED_GEOMETRY as readonly string[]).includes(k) || (keep?.has(k) && !(chat?.update_from_chat?.includes(k) ?? false))) continue;
     const v = chat?.inputs?.[k];
     if (v === null || v === undefined || String(v).trim() === "") continue;
     out[k] = String(v);
