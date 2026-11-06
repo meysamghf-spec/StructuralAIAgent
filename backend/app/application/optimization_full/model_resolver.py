@@ -114,7 +114,7 @@ def _fill(inputs: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
 
 
 def resolve_project_frame(conv, account, project_id: str | None, *, include_default: bool = True) -> dict[str, Any] | None:
-    """{'source', 'inputs', 'assumed' (keys), 'assumptions_fa', 'label'} or None (only when include_default=False)."""
+    """Resolve a project's current frame; newer explicit chat specifications supersede older saved runs."""
     from app.application.chat_runs import pick_usable_frame_run
 
     found: tuple[str, dict[str, Any]] | None = None
@@ -147,25 +147,12 @@ def resolve_project_frame(conv, account, project_id: str | None, *, include_defa
                 chat_title = next((title for t, title, _ in titled if inputs_from_texts([t])), None)
                 chat_updated_keys = list(ins)
     if found is None:
-            for r in sorted(runs, key=lambda r: str(r.get("created_at") or ""), reverse=True):
-                ins = r.get("inputs")
-                if r.get("kind") in ("frame_optimization", "frame3d_analysis") and isinstance(ins, dict) and \
-                        any(ins.get(k) is not None for k in ("storeys", "bays_x", "bays_y")):
-                    found = ("optimization" if r.get("kind") == "frame_optimization" else "frame", dict(ins))
-                    chat_title = r.get("conversation_title")
-                    break
-        if found is None:
-            titled = _project_user_texts_titled(conv, account, project_id)
-            ins = inputs_from_texts([t for t, _ in titled])
-            if ins:
-                found = ("chat_text", ins)
-                chat_title = next((title for t, title in titled if inputs_from_texts([t])), None)
-    if found is None:
         if not include_default:
             return None
         inputs, assumed = _fill({"lang": "fa", "zone": "HIGH", "soil": "II", "seismic_code": "IRAN_2800"})
         return {"source": "default", "inputs": inputs, "assumed": assumed, "assumptions_fa": default_assumptions_fa(),
-                "label": LABELS["default"], "chat_title": None}
+                "label": LABELS["default"], "chat_title": None, "chat_updated_keys": []}
+
     source, raw = found
     if source != "chat_text" and project_id and conv is not None:
         # Older chat text may fill gaps, but a newer explicit project-chat specification supersedes an older run.
@@ -181,6 +168,7 @@ def resolve_project_frame(conv, account, project_id: str | None, *, include_defa
             chat_updated_keys = list(newer_chat)
             chat_title = next((title for t, title, created_at in titled
                                if created_at and created_at > found_at and inputs_from_texts([t])), chat_title)
+
     inputs, assumed = _fill(raw)
     notes = [f"{_KEY_FA[k]}: {_fa(float(inputs[k]) if isinstance(inputs[k], float) else inputs[k])} (پیش‌فرض)" for k in assumed]
     found_keys = [k for k, v in raw.items() if v is not None and k in _PREFILL_KEYS]
