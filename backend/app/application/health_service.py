@@ -21,7 +21,9 @@ def get_readiness_status() -> dict[str, object]:
         "app_env": settings.app_env,
     }
     ready = checks["database"] == "ok" and checks["file_storage"] == "ok"
-    if settings.is_production:
+    # A payment gateway is a readiness dependency only when payments are enabled.
+    # Iran free-launch production deliberately uses the mock gateway with payments disabled.
+    if settings.is_production and settings.payments_enabled:
         ready = ready and settings.crypto_payment_gateway.strip().lower() == "btcpay"
     return {
         "status": "ready" if ready else "not_ready",
