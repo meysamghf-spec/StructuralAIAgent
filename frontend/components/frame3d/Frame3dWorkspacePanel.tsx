@@ -114,22 +114,50 @@ function Frame3dWorkspacePanelInner({ mode }: { mode: Mode }) {
             .catch(() => undefined);
         }
       }
-      // A project without saved inputs shows the defaults, never the previous project's form values.
+      // Project chat is the current specification. Newer chat fields supersede stale saved inputs.
       if (mode === "model") {
         setValues(inputsToForm({ ...DEFAULT_FRAME_INPUTS, ...(saved ?? {}) }));
         setPrefill(null);
-        // Blank geometry: take it from the project's whole chat history (same resolver as optimization), else defaults.
-        const apply = (chat: ProjectFrame | null) => {
+      }
+      if (pid && !fromFrameEvent) {
+        void getProjectFrame(pid).then((chat) => {
           if (getCurrentProjectId() !== pid) return;
-          setValues((prev) => {
-            const r = prefillGeometry(prev, chat, new Set(Object.keys(saved ?? {})));
+          const updates = chat.update_from_chat ?? [];
+          if (updates.length) {
+            const current = loadFrame3dInputs(pid) ?? {};
+            const next = { ...current };
+            for (const key of updates) {
+              const value = chat.inputs[key];
+              if (value === null || value === undefined) delete next[key];
+              else next[key] = value;
+            }
+            const changed = updates.some((key) => String(current[key] ?? "") !== String(chat.inputs[key] ?? ""));
+            const needsReview = changed || !loadFrame3dPayload(pid);
+            if (changed) {
+              saveFrame3dInputs(pid, next);
+              clearFrame3dPayload(pid);
+              setPayload(null);
+              setSavedKey(JSON.stringify(next));
+            }
+            if (needsReview) {
+              setPendingChatSpec(true);
+              if (mode !== "model") setNote(t("A newer chat specification was loaded. Review the model inputs before running analysis."));
+            }
+            if (mode === "model") setValues(inputsToForm({ ...DEFAULT_FRAME_INPUTS, ...next }));
+            return;
+          }
+          if (mode === "model") {
+            const r = prefillGeometry(inputsToForm({ ...DEFAULT_FRAME_INPUTS, ...(saved ?? {}) }), chat,
+              new Set(Object.keys(saved ?? {})));
             if (r.fromChat.length || r.assumed.length)
-              setPrefill({ fromChat: r.fromChat, assumed: r.assumed, chatTitle: chat?.chat_title ?? null, sourceLabel: chat?.label });
-            return r.values;
-          });
-        };
-        if (pid) void getProjectFrame(pid).then(apply).catch(() => apply(null));
-        else apply(null);
+              setPrefill({ fromChat: r.fromChat, assumed: r.assumed, chatTitle: chat.chat_title ?? null, sourceLabel: chat.label });
+            setValues(r.values);
+          }
+        }).catch(() => {
+          if (mode === "model" && !saved) setValues(inputsToForm(DEFAULT_FRAME_INPUTS));
+        });
+      } else if (mode === "model" && !pid) {
+        setValues(inputsToForm(DEFAULT_FRAME_INPUTS));
       }
     };
     sync();
