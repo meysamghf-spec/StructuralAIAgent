@@ -164,6 +164,12 @@ export type ProjectFrame = {
 const frameCache = new Map<string, { at: number; p: Promise<ProjectFrame> }>();
 const FRAME_TTL_MS = 30_000;
 
+/** Invalidate after a successful chat write; otherwise SPA navigation can reuse a pre-chat frame. */
+export function invalidateProjectFrame(projectId?: string | null): void {
+  if (projectId) frameCache.delete(projectId);
+  else frameCache.clear();
+}
+
 export async function getProjectFrame(projectId: string): Promise<ProjectFrame> {
   const hit = frameCache.get(projectId);
   if (hit && Date.now() - hit.at < FRAME_TTL_MS) return hit.p;

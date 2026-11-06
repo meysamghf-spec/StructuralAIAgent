@@ -33,6 +33,8 @@ import type { ProjectFileSummary } from "@/lib/api";
 import { STREAMING_CAPABILITIES, type AgentChatMode, type ExecutionPhase } from "@/lib/chat-types";
 import { mapBackendMessage } from "@/lib/chat-mappers";
 import { parseChatActionMeta, runChatDownloads } from "@/lib/chat-actions";
+import { invalidateProjectFrame } from "@/lib/optimization-full";
+import { PROJECT_EVENT } from "@/lib/current-project";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type UseChatOptions = {
@@ -250,6 +252,14 @@ export function useChat({
         }
       } else {
         response = await sendChatMessage(payload);
+      }
+      // A successful project-chat write may change the authoritative frame specification.
+      // Drop the in-memory resolver cache so the next workspace tab reads the latest chat.
+      if (request.project_id) {
+        invalidateProjectFrame(request.project_id);
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent(PROJECT_EVENT, { detail: request.project_id }));
+        }
       }
       setActiveConversationId(response.conversation_id);
       storeActiveConversationId(response.conversation_id, selectedProjectId || null);

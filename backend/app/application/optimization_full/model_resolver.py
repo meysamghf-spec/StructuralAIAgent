@@ -157,7 +157,10 @@ def resolve_project_frame(conv, account, project_id: str | None, *, include_defa
             if ins:
                 found = ("chat_text", ins)
                 chat_title = next((title for t, title, _ in titled if inputs_from_texts([t])), None)
-                chat_updated_keys = list(ins)
+                # A chat-only frame is newer than any browser-cached model. Mark the full geometry
+                # as authoritative so unspecified spans/heights are reset to project defaults,
+                # rather than silently inherited from a stale model in localStorage.
+                chat_updated_keys = list(dict.fromkeys([*ins.keys(), *GEOMETRY]))
     if found is None:
         if not include_default:
             return None

@@ -102,3 +102,12 @@ def test_newer_project_chat_spec_supersedes_older_complete_run():
     assert (r["inputs"]["storeys"], r["inputs"]["bays_x"], r["inputs"]["bays_y"]) == (15, 2, 5)
     assert set(r["chat_updated_keys"]) >= {"storeys", "bays_x", "bays_y"}
     assert {"bay_x_m", "bay_y_m", "storey_height_m"} <= set(r["assumed"])
+
+
+def test_chat_only_spec_marks_all_geometry_for_sync_and_resets_unspecified_fields():
+    latest = "15 طبقه ۲ دهانه در راستا x ۵ دهانه در راستا ی y داشته باشد"
+    r = resolve_project_frame(FakeConv(texts=[latest]), None, PID)
+    assert r["source"] == "chat_text"
+    assert (r["inputs"]["storeys"], r["inputs"]["bays_x"], r["inputs"]["bays_y"]) == (15, 2, 5)
+    assert set(r["chat_updated_keys"]) >= {"storeys", "bays_x", "bays_y", "bay_x_m", "bay_y_m", "storey_height_m"}
+    assert {"bay_x_m", "bay_y_m", "storey_height_m"} <= set(r["assumed"])
