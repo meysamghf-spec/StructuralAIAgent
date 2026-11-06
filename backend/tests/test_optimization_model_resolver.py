@@ -89,3 +89,16 @@ def test_export_limit_message_names_value_and_limit():
         run_frame3d_for_export({"storeys": 3, "bays_x": 100, "bays_y": 2, "bay_x_m": 5, "bay_y_m": 5, "storey_height_m": 3.2})
     msg = str(e.value)
     assert "100" in msg and f"1–{MAX_BAYS}" in msg and "مجاز" in msg
+
+
+def test_newer_project_chat_spec_supersedes_older_complete_run():
+    old_run = {
+        "kind": "frame3d_analysis", "status": "completed", "created_at": "2025-12-31T23:59:00",
+        "inputs": {"storeys": 3, "bays_x": 2, "bays_y": 200, "bay_x_m": 5.0, "bay_y_m": 5.0,
+                   "storey_height_m": 3.2},
+    }
+    latest = "15 طبقه ۲ دهانه در راستا x ۵ دهانه در راستا ی y داشته باشد"
+    r = resolve_project_frame(FakeConv(texts=[latest], runs=[old_run]), None, PID)
+    assert (r["inputs"]["storeys"], r["inputs"]["bays_x"], r["inputs"]["bays_y"]) == (15, 2, 5)
+    assert set(r["chat_updated_keys"]) >= {"storeys", "bays_x", "bays_y"}
+    assert {"bay_x_m", "bay_y_m", "storey_height_m"} <= set(r["assumed"])
