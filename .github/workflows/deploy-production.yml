@@ -1,6 +1,9 @@
 name: SAIA production deploy
 
 on:
+  push:
+    branches:
+      - master
   workflow_dispatch:
 
 permissions:
