@@ -155,8 +155,25 @@ INTERNAL_FIELDS = ("parsed", "pending_bays", "spans_assumed")
 SPAN_KEYS = ("bay_x_m", "bay_y_m")
 
 
+_FINGLISH_FRAME_WORDS = {
+    "tabaghat": "طبقات", "tabagheh": "طبقه", "tabaghe": "طبقه", "tabaqat": "طبقات", "tabaqe": "طبقه",
+    "dahaneh": "دهانه", "dahane": "دهانه", "dehaneh": "دهانه", "dehane": "دهانه", "dahneh": "دهانه",
+    "rastaye": "راستای", "rastay": "راستای", "rastayei": "راستای",
+    "sakhteman": "ساختمان", "sakhtemoon": "ساختمان",
+    "meter": "متر", "metre": "متر", "metr": "متر",
+    "tool": "طول", "tol": "طول",
+    "tarahi": "طراحی", "tarrahi": "طراحی",
+    "dar": "در", "kon": "کن",
+}
+
+
 def _norm(text: str) -> str:
-    return (text or "").translate(_PERSIAN_DIGITS).replace("×", "x").replace("*", "x")
+    t = (text or "").translate(_PERSIAN_DIGITS).replace("×", "x").replace("*", "x")
+    # Accept common Latin transliterations so Persian prompts typed without a Persian keyboard
+    # still reach the same deterministic frame parser (e.g. "20 tabaghe, 5 dahane ...").
+    for word, persian in sorted(_FINGLISH_FRAME_WORDS.items(), key=lambda item: len(item[0]), reverse=True):
+        t = re.sub(rf"(?<![A-Za-z]){re.escape(word)}(?![A-Za-z])", persian, t, flags=re.IGNORECASE)
+    return t
 
 
 def requested_foundation_view(user_request: str) -> bool:
@@ -343,7 +360,7 @@ def parse_frame3d_request(user_request: str) -> Frame3dInputs:
     m = re.search(r"(\d+)\s*-?\s*(?:stor(?:e)?y|stories|storeys|floors?|طبقه)", t, re.I) or re.search(r"طبقات\s*[:=]?\s*(\d+)", t)
     if m:
         inp.storeys = int(m.group(1)); inp.parsed.append("storeys")
-    bp = bays_parser.parse_bays(user_request)
+    bp = bays_parser.parse_bays(t)
     for key, val in {**bp.counts, **bp.spans}.items():
         setattr(inp, key, val); inp.parsed.append(key)
     if not ({"bays_x", "bays_y"} & set(bp.counts)):
