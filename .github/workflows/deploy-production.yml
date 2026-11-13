@@ -125,6 +125,7 @@ jobs:
           if [ -n "$(docker compose --env-file .env.production -f docker-compose.prod.yml ps -q db)" ]; then
             bash deploy/backup.sh
           fi
+          docker compose --env-file .env.production -f docker-compose.prod.yml build --no-cache frontend
           docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
           docker compose --env-file .env.production -f docker-compose.prod.yml ps
           REMOTE
@@ -152,14 +153,20 @@ jobs:
             const page = await fetch(origin + "/workspace/model");
             if (!page.ok) throw new Error("Frontend page returned " + page.status);
             const html = await page.text();
-            const hrefs = [...html.matchAll(/href="([^"]+\\.css[^"]*)"/g)].map((match) => match[1]);
+            const hrefs = [...html.matchAll(/href="([^"]+\.css[^"]*)"/g)].map((match) => match[1]);
             const href = hrefs.find((value) => value.includes("/_next/static/css/"));
             if (!href) throw new Error("No Next.js stylesheet linked by the live page");
             const response = await fetch(new URL(href, origin));
             if (!response.ok) throw new Error("Stylesheet returned " + response.status);
             const css = await response.text();
-            if (!css.includes("width:44px") || !css.includes(".content .an-kpis")) {
-              throw new Error("Live page stylesheet is missing the mobile layout rules");
+            const phoneMedia = css.match(/@media\\s*\\(max-width:\\s*600px\\)\\s*\\{([\\s\\S]*?)\\n\\}/);
+            const phoneRules = phoneMedia?.[1] ?? "";
+            const compactPhoneRules = phoneRules.replace(/\\s+/g, "");
+            if (
+              !/\\.chat-dock-toggle\\s*\\{[^}]*\\bwidth:\\s*44px/.test(phoneRules) ||
+              !/\\.content\\s+\\.an-kpis\\s*\\{[^}]*grid-template-columns:\\s*minmax\\(0,\\s*1fr\\)/.test(phoneRules)
+            ) {
+              throw new Error("Live page stylesheet is missing the scoped phone chat-button and one-column KPI rules");
             }
             console.log("Verified live stylesheet: " + href + " (mobile rules present)");
           })().catch((error) => {
