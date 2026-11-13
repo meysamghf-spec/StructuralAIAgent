@@ -14,8 +14,11 @@ jobs:
   deploy:
     name: Deploy to production VPS
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
+      - name: Check out the selected commit
+        uses: actions/checkout@v4
+
       - name: Validate deployment secrets
         env:
           SSH_HOST: ${{ secrets.SAIA_SSH_HOST }}
@@ -41,26 +44,70 @@ jobs:
           printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Back up and deploy
+      - name: Transfer application source
         env:
           SSH_HOST: ${{ secrets.SAIA_SSH_HOST }}
           SSH_USER: ${{ secrets.SAIA_SSH_USER }}
           SSH_PORT: ${{ secrets.SAIA_SSH_PORT }}
         run: |
-          set -eu
+          set -euo pipefail
+          PORT="${SSH_PORT:-22}"
+          tar \
+            --exclude='./.git' \
+            --exclude='./.env' \
+            --exclude='./.env.production' \
+            --exclude='./backups' \
+            -czf - . |
+            ssh -i ~/.ssh/saia_deploy -p "$PORT" \
+              -o BatchMode=yes -o StrictHostKeyChecking=yes \
+              "$SSH_USER@$SSH_HOST" \
+              'mkdir -p /opt/sazeh && tar -xzf - -C /opt/sazeh'
+
+      - name: Initialize and deploy application
+        env:
+          SSH_HOST: ${{ secrets.SAIA_SSH_HOST }}
+          SSH_USER: ${{ secrets.SAIA_SSH_USER }}
+          SSH_PORT: ${{ secrets.SAIA_SSH_PORT }}
+        run: |
+          set -euo pipefail
           PORT="${SSH_PORT:-22}"
           ssh -i ~/.ssh/saia_deploy -p "$PORT" \
             -o BatchMode=yes -o StrictHostKeyChecking=yes \
             "$SSH_USER@$SSH_HOST" 'bash -se' <<'REMOTE'
           set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          if ! command -v docker >/dev/null 2>&1; then
+            apt-get update
+            apt-get install -y docker.io docker-compose-v2
+            systemctl enable --now docker
+          elif ! docker compose version >/dev/null 2>&1; then
+            apt-get update
+            apt-get install -y docker-compose-v2
+          fi
+
           cd /opt/sazeh
-          test -f .env.production
+          test -f .env.production.example
           test -f docker-compose.prod.yml
-          git diff --quiet
-          git diff --cached --quiet
-          git pull --ff-only origin master
+
+          if [ ! -f .env.production ]; then
+            cp .env.production.example .env.production
+            DB_PASSWORD="$(openssl rand -hex 24)"
+            JWT_SECRET="$(openssl rand -hex 48)"
+            sed -i 's|^DOMAIN=.*|DOMAIN=structuralai.ir|' .env.production
+            sed -i 's|^CORS_ORIGINS=.*|CORS_ORIGINS=https://structuralai.ir|' .env.production
+            sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$DB_PASSWORD|" .env.production
+            sed -i "s|^AUTH_JWT_SECRET=.*|AUTH_JWT_SECRET=$JWT_SECRET|" .env.production
+          fi
+          chmod 600 .env.production
+          if grep -Eq '^(DOMAIN|POSTGRES_PASSWORD|AUTH_JWT_SECRET)=(app\.example\.ir|change-me)' .env.production; then
+            echo "Production configuration still contains example values; refusing deployment."
+            exit 1
+          fi
+
           docker compose --env-file .env.production -f docker-compose.prod.yml config -q
-          bash deploy/backup.sh
+          if [ -n "$(docker compose --env-file .env.production -f docker-compose.prod.yml ps -q db)" ]; then
+            bash deploy/backup.sh
+          fi
           docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
           docker compose --env-file .env.production -f docker-compose.prod.yml ps
           REMOTE
