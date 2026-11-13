@@ -159,12 +159,12 @@ jobs:
             const response = await fetch(new URL(href, origin));
             if (!response.ok) throw new Error("Stylesheet returned " + response.status);
             const css = await response.text();
-            const phoneMedia = css.match(/@media\\s*\\(max-width:\\s*600px\\)\\s*\\{([\\s\\S]*?)\\n\\}/);
+            const phoneMedia = css.match(/@media\s*\(max-width:\s*600px\)\s*\{([\s\S]*?)\n\}/);
             const phoneRules = phoneMedia?.[1] ?? "";
-            const compactPhoneRules = phoneRules.replace(/\\s+/g, "");
+            const compactPhoneRules = phoneRules.replace(/\s+/g, "");
             if (
-              !/\\.chat-dock-toggle\\s*\\{[^}]*\\bwidth:\\s*44px/.test(phoneRules) ||
-              !/\\.content\\s+\\.an-kpis\\s*\\{[^}]*grid-template-columns:\\s*minmax\\(0,\\s*1fr\\)/.test(phoneRules)
+              !/\.chat-dock-toggle\s*\{[^}]*\bwidth:\s*44px/.test(phoneRules) ||
+              !/\.content\s+\.an-kpis\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/.test(phoneRules)
             ) {
               throw new Error("Live page stylesheet is missing the scoped phone chat-button and one-column KPI rules");
             }
