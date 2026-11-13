@@ -3390,3 +3390,23 @@ body.chat-dock-resizing { cursor: col-resize; user-select: none; }
     white-space: nowrap;
   }
 }
+
+
+/* Phone layouts: keep the persistent chat shortcut clear of form controls and give analysis KPIs room to read. */
+@media (max-width: 600px) {
+  .chat-dock-toggle {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    font-size: 0;
+  }
+  .chat-dock-toggle::before {
+    content: "💬";
+    font-size: 1.25rem;
+  }
+  .content .an-kpis {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
