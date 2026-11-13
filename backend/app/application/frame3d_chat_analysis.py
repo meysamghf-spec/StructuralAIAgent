@@ -357,7 +357,7 @@ def _parse_bays_by_bays(t: str, inp: "Frame3dInputs") -> None:
 def _parse_explicit_directional_bays(t: str, inp: "Frame3dInputs") -> None:
     """Honor explicit '5 bays along X and 5 along Y; bay length 10 m' statements."""
     count_pattern = re.compile(
-        rf"(?P<count>\\d+)\\s*(?:دهانه|bays?)\\s*(?:در\\s*(?:جهت|راستای|راستا|محور)\\s*)?"
+        rf"(?P<count>\d+)\s*(?:دهانه|bays?)\s*(?:در\s*(?:جهت|راستای|راستا|محور)\s*)?"
         rf"(?P<direction>[xy])(?![a-z0-9_])",
         re.I,
     )
@@ -368,8 +368,8 @@ def _parse_explicit_directional_bays(t: str, inp: "Frame3dInputs") -> None:
             inp.parsed.append(key)
 
     span_pattern = re.compile(
-        rf"(?:طول\\s*(?:هر\\s*)?دهانه|bay\\s+(?:length|span))\\s*"
-        rf"(?P<length>{_NUM})\\s*(?P<unit>{bays_parser.UNIT_PATTERN})",
+        rf"(?:طول\s*(?:هر\s*)?دهانه|bay\s+(?:length|span))\s*"
+        rf"(?P<length>{_NUM})\s*(?P<unit>{bays_parser.UNIT_PATTERN})",
         re.I,
     )
     match = span_pattern.search(t)
