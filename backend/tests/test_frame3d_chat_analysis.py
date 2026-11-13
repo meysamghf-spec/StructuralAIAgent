@@ -32,6 +32,15 @@ def test_parser_reads_all_prompt_values() -> None:
     assert inp.design_code == "NONE"
 
 
+def test_finglish_explicit_5_by_5_grid_and_10m_spans() -> None:
+    inp = parse_frame3d_request(
+        "yek sakhteman 5 dahane dar rastaye x 5 dahane dar rastaye y "
+        "tool dahane 10 metr 20 tabaghe tarahi kon"
+    )
+    assert (inp.storeys, inp.bays_x, inp.bays_y) == (20, 5, 5)
+    assert (inp.bay_x_m, inp.bay_y_m) == (10.0, 10.0)
+
+
 def test_regression_against_reference_frame3d_run() -> None:
     """Numbers from /workspace/farasa/frame3d/run_frame3d.py (same model, same solver)."""
     payload = build_frame3d_payload(PROMPT)
