@@ -1,5 +1,4 @@
 {
-	email {$ACME_EMAIL}
 }
 
 # One domain: API + health on the backend, everything else on the Next.js frontend.
