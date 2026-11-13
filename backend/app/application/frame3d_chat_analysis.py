@@ -354,6 +354,33 @@ def _parse_bays_by_bays(t: str, inp: "Frame3dInputs") -> None:
         inp.bays_x, inp.bays_y = int(m.group(1)), int(m.group(2)); inp.parsed += ["bays_x", "bays_y"]
 
 
+def _parse_explicit_directional_bays(t: str, inp: "Frame3dInputs") -> None:
+    """Honor explicit '5 bays along X and 5 along Y; bay length 10 m' statements."""
+    count_pattern = re.compile(
+        rf"(?P<count>\\d+)\\s*(?:دهانه|bays?)\\s*(?:در\\s*(?:جهت|راستای|راستا|محور)\\s*)?"
+        rf"(?P<direction>[xy])(?![a-z0-9_])",
+        re.I,
+    )
+    for match in count_pattern.finditer(t):
+        key = f"bays_{match.group('direction').lower()}"
+        setattr(inp, key, int(match.group("count")))
+        if key not in inp.parsed:
+            inp.parsed.append(key)
+
+    span_pattern = re.compile(
+        rf"(?:طول\\s*(?:هر\\s*)?دهانه|bay\\s+(?:length|span))\\s*"
+        rf"(?P<length>{_NUM})\\s*(?P<unit>{bays_parser.UNIT_PATTERN})",
+        re.I,
+    )
+    match = span_pattern.search(t)
+    if match:
+        length = to_metres(float(match.group("length")), match.group("unit"))
+        for key in SPAN_KEYS:
+            setattr(inp, key, length)
+            if key not in inp.parsed:
+                inp.parsed.append(key)
+
+
 def parse_frame3d_request(user_request: str) -> Frame3dInputs:
     t = _fa_numbers(_norm(user_request))
     inp = Frame3dInputs()
@@ -363,6 +390,7 @@ def parse_frame3d_request(user_request: str) -> Frame3dInputs:
     bp = bays_parser.parse_bays(t)
     for key, val in {**bp.counts, **bp.spans}.items():
         setattr(inp, key, val); inp.parsed.append(key)
+    _parse_explicit_directional_bays(t, inp)
     if not ({"bays_x", "bays_y"} & set(bp.counts)):
         _parse_bays_along_length(t, inp)
     if not ({"bays_x", "bays_y"} & set(inp.parsed)):
