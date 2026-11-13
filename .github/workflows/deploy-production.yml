@@ -129,8 +129,22 @@ jobs:
           docker compose --env-file .env.production -f docker-compose.prod.yml ps
           REMOTE
 
-      - name: Verify public health endpoints
+      - name: Verify deployed services
+        env:
+          SSH_HOST: ${{ secrets.SAIA_SSH_HOST }}
+          SSH_USER: ${{ secrets.SAIA_SSH_USER }}
+          SSH_PORT: ${{ secrets.SAIA_SSH_PORT }}
         run: |
-          set -eu
-          curl --fail --silent --show-error --retry 12 --retry-delay 10 --retry-connrefused https://structuralai.ir/health
-          curl --fail --silent --show-error --retry 12 --retry-delay 10 --retry-connrefused https://structuralai.ir/ready
+          set -euo pipefail
+          PORT="${SSH_PORT:-22}"
+          ssh -i ~/.ssh/saia_deploy -p "$PORT" \
+            -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            "$SSH_USER@$SSH_HOST" 'bash -se' <<'REMOTE'
+          set -euo pipefail
+          cd /opt/sazeh
+          COMPOSE="docker compose --env-file .env.production -f docker-compose.prod.yml"
+          $COMPOSE exec -T backend python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=10)"
+          $COMPOSE exec -T backend python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=10)"
+          $COMPOSE exec -T frontend node -e "fetch('http://127.0.0.1:3000/workspace/model').then(r => { if (!r.ok) process.exit(1); }).catch(() => process.exit(1))"
+          $COMPOSE exec -T frontend sh -lc "grep -R -q '.chat-dock-toggle::before' .next/static/css"
+          REMOTE
