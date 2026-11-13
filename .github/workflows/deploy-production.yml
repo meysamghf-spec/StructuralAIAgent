@@ -27,25 +27,39 @@ jobs:
           SSH_HOST: ${{ secrets.SAIA_SSH_HOST }}
           SSH_USER: ${{ secrets.SAIA_SSH_USER }}
           SSH_PRIVATE_KEY: ${{ secrets.SAIA_SSH_PRIVATE_KEY }}
-          SSH_KNOWN_HOSTS: ${{ secrets.SAIA_SSH_KNOWN_HOSTS }}
         run: |
           set -eu
           test -n "$SSH_HOST" || { echo "::error::Missing SAIA_SSH_HOST"; exit 1; }
           test -n "$SSH_USER" || { echo "::error::Missing SAIA_SSH_USER"; exit 1; }
           test -n "$SSH_PRIVATE_KEY" || { echo "::error::Missing SAIA_SSH_PRIVATE_KEY"; exit 1; }
-          test -n "$SSH_KNOWN_HOSTS" || { echo "::error::Missing SAIA_SSH_KNOWN_HOSTS"; exit 1; }
 
-      - name: Configure SSH
+      - name: Configure SSH key
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SAIA_SSH_PRIVATE_KEY }}
-          SSH_KNOWN_HOSTS: ${{ secrets.SAIA_SSH_KNOWN_HOSTS }}
         run: |
           set -eu
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/saia_deploy
           chmod 600 ~/.ssh/saia_deploy
-          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/known_hosts
+
+      - name: Verify and trust server host key
+        env:
+          SSH_HOST: ${{ secrets.SAIA_SSH_HOST }}
+          SSH_PORT: ${{ secrets.SAIA_SSH_PORT }}
+        run: |
+          set -euo pipefail
+          PORT="${SSH_PORT:-22}"
+          EXPECTED_FINGERPRINT="SHA256:VU972JSyeu7dmu10v0o8kngzCRcLOsHTbMkNlS3RhoA"
+          HOST_KEYS="$(mktemp)"
+          trap 'rm -f "$HOST_KEYS"' EXIT
+          ssh-keyscan -T 10 -p "$PORT" -t ed25519 "$SSH_HOST" > "$HOST_KEYS" 2>/dev/null
+          test -s "$HOST_KEYS" || { echo "::error::Could not retrieve the server ED25519 host key"; exit 1; }
+          ACTUAL_FINGERPRINT="$(ssh-keygen -lf "$HOST_KEYS" | awk 'NR == 1 {print $2}')"
+          test "$ACTUAL_FINGERPRINT" = "$EXPECTED_FINGERPRINT" || {
+            echo "::error::Server host key fingerprint did not match the verified ArvanCloud fingerprint"
+            exit 1
+          }
+          install -m 600 "$HOST_KEYS" ~/.ssh/known_hosts
 
       - name: Transfer application source
         env:
